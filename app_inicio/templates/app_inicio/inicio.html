@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Inicio -Proyecto{% endblock %}
+
+{% block header %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <h2>{{ mensaje }}</h2>
+        <p>Proyecto echo solo con ia :D .</p>
+        
+        <img src="{% static 'img/cp.jpg' %}" alt="Imagen de inicio" class="img-fluid rounded mt-3"> <!-- Cambien la imagen nomas si quieren -->
+    </div> <!-- si era para ver si se ve bien nomas -->
+    <div class="col-md-4">
+        <h3>Nuestro Equipo</h3>
+        <div class="list-group">
+            {% for miembro in equipo %}
+            <div class="list-group-item">
+                <h5>{{ miembro.nombre }}</h5>
+                <p class="mb-1"><strong>Rol:</strong> {{ miembro.rol }}</p>
+                <p class="mb-0">{{ miembro.descripcion }}</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
