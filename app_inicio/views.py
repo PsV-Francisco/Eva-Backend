@@ -1,12 +1,10 @@
 from django.shortcuts import render
-
-# Create your views here.
 import json
 
 
 def inicio(request):
-    """Vista de la página de inicio"""
-    with open('data/equipo.json', 'r', encoding='utf-8') as archivo:
+    #Página de Inicio
+    with open('static/data/equipo.json', 'r', encoding='utf-8') as archivo:
         equipo = json.load(archivo)
     
     contexto = {
