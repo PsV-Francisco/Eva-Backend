@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ noticia.titulo }} - Noticias{% endblock %}
+
+{% block header %}{{ noticia.titulo }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <img src="{% static noticia.imagen %}" class="card-img-top" alt="{{ noticia.titulo }}">
+            <div class="card-body">
+                <span class="badge bg-primary mb-3">{{ noticia.categoria }}</span>
+                <p class="text-muted"><small>{{ noticia.fecha }}</small></p>
+                <p class="card-text">{{ noticia.descripcion }}</p>
+                <a href="{% url 'lista_noticias' %}" class="btn btn-secondary">← Volver a noticias</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
