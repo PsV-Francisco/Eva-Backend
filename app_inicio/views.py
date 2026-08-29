@@ -5,8 +5,8 @@ import json
 
 
 def inicio(request):
-    """Vista de la página de inicio"""
-    with open('data/equipo.json', 'r', encoding='utf-8') as archivo:
+    #Página de Inicio con rutas arregladas
+    with open('static/data/equipo.json', 'r', encoding='utf-8') as archivo:
         equipo = json.load(archivo)
     
     contexto = {
@@ -17,7 +17,7 @@ def inicio(request):
     return render(request, 'app_inicio/inicio.html', contexto)
 
 def about(request):
-    """Vista de acerca de"""
+    #Ruta Arreglada
     contexto = {
         'titulo': 'Acerca de',
         'descripcion': 'Este proyecto fue desarrollado como parte de la Evaluación Sumativa 1 de Programación Back End.'
