@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     'app_inicio',
     'app_noticias',
     'app_turismo',
+    'app_servicios',
 ]
 
 MIDDLEWARE = [

@@ -6,4 +6,5 @@ urlpatterns = [
     path('', include('app_inicio.urls')),
     path('noticias/', include('app_noticias.urls')),
     path('turismo/', include('app_turismo.urls')),
+    path('guia-ciudadana/', include('app_servicios.urls')),
 ]

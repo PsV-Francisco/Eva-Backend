@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}Guia ciudadana | La Serena{% endblock %}
+{% block header %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<section class="bg-light border-start border-4 border-info rounded-3 p-4 p-lg-5 mb-5 shadow-sm">
+    <div class="row align-items-center g-4">
+        <div class="col-lg-8">
+            <span class="badge text-bg-info mb-3">Informacion para tu dia a dia</span>
+            <h2 class="display-6 fw-bold">Recursos utiles para vivir mejor en La Serena</h2>
+            <p class="lead mb-0">Una guia breve para encontrar orientacion en temas que importan a tu barrio, tu familia y tu comunidad.</p>
+        </div>
+        <div class="col-lg-4 text-lg-end">
+            <div class="d-inline-block bg-white rounded-circle p-4 shadow-sm" aria-hidden="true">
+                <span class="display-4">+</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="row g-4">
+    {% for servicio in servicios %}
+    <div class="col-md-6 col-xl-4">
+        <article class="card h-100 border-0 shadow-sm">
+            <div class="card-body d-flex flex-column p-4">
+                <span class="badge rounded-pill text-bg-dark align-self-start mb-3">{{ servicio.categoria }}</span>
+                <h3 class="h4 card-title">{{ servicio.titulo }}</h3>
+                <p class="card-text text-secondary">{{ servicio.descripcion }}</p>
+                <div class="mt-auto pt-3 border-top">
+                    <p class="small fw-semibold mb-2">{{ servicio.contacto }}</p>
+                    <p class="small text-secondary mb-0">{{ servicio.detalle }}</p>
+                </div>
+            </div>
+        </article>
+    </div>
+    {% empty %}
+    <div class="col-12">
+        <div class="alert alert-info">No hay servicios disponibles en este momento.</div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="alert alert-warning mt-5 mb-0" role="alert">
+    <strong>Importante:</strong> esta guia es orientativa. En una emergencia, utiliza los numeros oficiales de atencion inmediata.
+</div>
+{% endblock %}
