@@ -3,6 +3,7 @@ from django.urls import path, include # se me olvio el inlude, lo agrego para po
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('app_inicio.urls')), # cabros solo porciacaso aca se agregan las otras urls 
+    path('', include('app_inicio.urls')),
     path('noticias/', include('app_noticias.urls')),
+    path('turismo/', include('app_turismo.urls')),
 ]

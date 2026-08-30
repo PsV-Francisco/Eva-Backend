@@ -26,7 +26,7 @@
                         <a class="nav-link" href="{% url 'lista_noticias' %}">Noticias</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#">app 3</a>
+                        <a class="nav-link" href="{% url 'turismo' %}">Turismo</a>
                     </li>
                 </ul>
             </div>
@@ -44,9 +44,28 @@
         {% endblock %}
     </main>
 
-    <footer class="bg-dark text-white text-center py-3 mt-4">
+    <footer class="bg-dark text-white py-4 mt-4">
         <div class="container">
-            <p> Proyecto Django Evaluación</p>
+            <div class="row text-center text-md-start">
+                <div class="col-md-4 mb-3">
+                    <h5>Proyecto</h5>
+                    <p class="mb-0">Plataforma regional con noticias, historia y turismo.</p>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <h5>Descubre</h5>
+                    <ul class="list-unstyled mb-0">
+                        <li><a href="{% url 'inicio' %}" class="text-white text-decoration-none">Inicio</a></li>
+                        <li><a href="{% url 'lista_noticias' %}" class="text-white text-decoration-none">Noticias</a></li>
+                        <li><a href="{% url 'turismo' %}" class="text-white text-decoration-none">Turismo</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <h5>Región</h5>
+                    <p class="mb-0">Experiencias del mismo contexto regional, pensadas para conectar comunidad y visitantes.</p>
+                </div>
+            </div>
+            <hr class="border-secondary">
+            <p class="mb-0 text-center">Proyecto Django Evaluación</p>
         </div>
     </footer>
 
