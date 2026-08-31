@@ -1,6 +1,4 @@
 from django.shortcuts import render
-
-# Create your views here.
 import json
 
 
@@ -17,9 +15,11 @@ def lista_noticias(request):
 
 def detalle_noticia(request, id_noticia):
     """Vista que muestra el detalle de una noticia específica"""
+    #Carga de noticias
     with open('static/data/noticias.json', 'r', encoding='utf-8') as archivo:
         noticias = json.load(archivo)
-    
+
+    #Bucle que muestra las noticias
     noticia = None
     for n in noticias:
         if n['id'] == int(id_noticia):

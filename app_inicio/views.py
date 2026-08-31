@@ -1,11 +1,9 @@
 from django.shortcuts import render
-
-# Create your views here.
 import json
 
 
 def inicio(request):
-    #Página de Inicio con rutas arregladas
+    """Página principal"""
     with open('static/data/equipo.json', 'r', encoding='utf-8') as archivo:
         equipo = json.load(archivo)
     
@@ -17,7 +15,8 @@ def inicio(request):
     return render(request, 'app_inicio/inicio.html', contexto)
 
 def about(request):
-    #Ruta Arreglada
+    """Página que contiene el 'Acerca de'"""
+
     contexto = {
         'titulo': 'Acerca de',
         'descripcion': 'Este proyecto fue desarrollado como parte de la Evaluación Sumativa 1 de Programación Back End.'
