@@ -15,6 +15,12 @@
         .footer-guia-link:focus {
             color: #0dcaf0 !important;
         }
+
+        .navbar-ccv {
+            width: 56px;
+            height: 40px;
+            object-fit: contain;
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -22,6 +28,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
             <a class="navbar-brand" href="{% url 'inicio' %}">Mi Proyecto</a>
+            <img src="{% static 'img/ccv.avif' %}" class="navbar-ccv ms-2 me-3" alt="Controles de copiar y pegar">
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
