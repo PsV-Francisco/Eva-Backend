@@ -1,0 +1,16 @@
+Instrucciones recibidas
+=======================
+
+Contexto : Ocupa los requerimientos formales ubicados en /project_info/ y el diagrama de clases ubicado en la misma carpeta.
+Tarea : Implementa 4 aplicaciones de Django para mejorar la organización de la aplicación.
+Limitaciones :
+1) Debes crear 6 aplicaciones Django: "FuncionarioApp","SupervisorApp","DelegadoApp", "CoordinadorApp", "AdminApp" y "VistaFApp".
+2) Cada aplicación debe responder a la lógica del rol, detallada en los requerimientos.
+3) La última vista "VistaFApp" de momento dejala vacía, debido a que sus templates se deben confirmar.
+4) Crea una carpea en la raíz llamada static, donde ahí guardes el css, la data, el JS y las img (Recuerda arreglar el direccionamiento al cambiar las direcciones de los archivos)
+5) Debes eliminar la carpeta core y dejar la carpeta config para lo principal de Django, dejando el enrutamiento adecuado para cada aplicación.
+6) Crea en la raiz del proyecto una carpeta Templates, donde guardes en base a cada app sus templates correspondientes, considerando la creación de un template "base.html" el cual sea el padre sobre el cual se extiendan los otros templates.
+Otras Consideraciones:
+1) Crea en la raiz del proyecto una carpeta donde guardes en un archivo de texto las instrucciones que te voy dando para asegurar la trazabilidad del avance hecho.
+
+Decisión de alcance: los requerimientos asignan validación de evidencias al rol Verificador, pero no existe VerificadorApp en la lista solicitada. Se expone ese flujo desde SupervisorApp y se conserva el perfil Verificador de demostración.

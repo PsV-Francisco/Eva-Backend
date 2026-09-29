@@ -1,0 +1,56 @@
+{
+  "parameters": {
+    "maxCompliance": 150,
+    "collectiveThreshold": 80,
+    "amberRatio": 60,
+    "evidenceMaxSizeMb": 5,
+    "allowedEvidenceTypes": ["image/jpeg", "image/png", "application/pdf"]
+  },
+  "currentUserId": "usr-002",
+  "adjustments": [
+    { "id": "adj-001", "type": "Bonificación", "description": "Felicitación por coordinación territorial", "percent": "", "userId": "usr-002", "periodId": "per-2026-03", "status": "Vigente" },
+    { "id": "adj-002", "type": "Penalización", "description": "Reclamo pendiente de resolución", "percent": "", "userId": "usr-001", "periodId": "per-2026-03", "status": "Vigente" }
+  ],
+  "periods": [
+    { "id": "per-2026-03", "name": "Tercer trimestre 2026", "start": "2026-07-01", "end": "2026-09-30", "status": "Abierto" },
+    { "id": "per-2026-02", "name": "Segundo trimestre 2026", "start": "2026-04-01", "end": "2026-06-30", "status": "Cerrado" }
+  ],
+  "delegations": [
+    { "id": "del-rural", "name": "Delegación Rural", "zone": "Sectores rurales", "status": "Activa" },
+    { "id": "del-norte", "name": "Delegación Norte", "zone": "Zona norte", "status": "Activa" }
+  ],
+  "users": [
+    { "id": "usr-001", "name": "Javier Valdés", "role": "Delegado", "roleLabel": "Delegado de delegación", "delegationId": "del-rural", "position": "Jefe de delegación", "initials": "JV" },
+    { "id": "usr-002", "name": "María Cifuentes", "role": "Coordinador", "roleLabel": "Coordinadora de delegaciones", "delegationId": "del-rural", "position": "Coordinadora de gestión", "initials": "MC" },
+    { "id": "usr-003", "name": "Tomás Rojas", "role": "Funcionario", "roleLabel": "Funcionario", "delegationId": "del-rural", "position": "Gestor territorial", "initials": "TR" },
+    { "id": "usr-004", "name": "Elena Morales", "role": "Verificador", "roleLabel": "Revisora", "delegationId": "del-rural", "position": "Supervisora operativa", "initials": "EM" },
+    { "id": "usr-005", "name": "Daniela Soto", "role": "Usuario", "roleLabel": "Usuario de consulta", "delegationId": "del-rural", "position": "Analista de consulta", "initials": "DS" },
+    { "id": "usr-006", "name": "Elena Morales", "role": "Supervisor", "roleLabel": "Supervisora operativa", "delegationId": "del-rural", "position": "Supervisora operativa", "initials": "EM" },
+    { "id": "usr-007", "name": "Administración SGR", "role": "Admin", "roleLabel": "Administrador", "delegationId": "del-rural", "position": "Administración del sistema", "initials": "AS" }
+  ],
+  "items": [
+    { "id": "itm-001", "name": "Atenciones territoriales", "shortName": "Atenciones", "unit": "atenciones", "target": 20, "weight": 35, "responsible": "Gestor territorial" },
+    { "id": "itm-002", "name": "Seguimiento de compromisos", "shortName": "Compromisos", "unit": "compromisos", "target": 10, "weight": 35, "responsible": "Gestor territorial" },
+    { "id": "itm-003", "name": "Coordinaciones interáreas", "shortName": "Coordinaciones", "unit": "gestiones", "target": 8, "weight": 30, "responsible": "Gestor territorial" }
+  ],
+  "activities": [
+    { "id": "act-1001", "code": "SGR-2609-1001", "date": "2026-09-18", "description": "Orientación para acceso a subsidio de agua potable", "action": "Se revisaron antecedentes y se derivó a oficina correspondiente.", "contact": "Caso ficticio A-104", "phone": "9 5555 0101", "itemId": "itm-001", "userId": "usr-003", "delegationId": "del-rural", "periodId": "per-2026-03", "evidenceId": "ev-1001", "status": "Validada", "agenda": false },
+    { "id": "act-1002", "code": "SGR-2609-1002", "date": "2026-09-19", "description": "Visita de coordinación con comité vecinal El Arrayán", "action": "Se levantaron necesidades y se acordó seguimiento con DIDECO.", "contact": "Comité ficticio El Arrayán", "phone": "9 5555 0102", "itemId": "itm-003", "userId": "usr-003", "delegationId": "del-rural", "periodId": "per-2026-03", "evidenceId": "ev-1002", "status": "Pendiente de validación", "agenda": true },
+    { "id": "act-1003", "code": "SGR-2609-1003", "date": "2026-09-16", "description": "Seguimiento de reparación de luminarias", "action": "Se verificó avance con equipo técnico y se registró nueva fecha.", "contact": "Solicitud ficticia L-208", "phone": "9 5555 0103", "itemId": "itm-002", "userId": "usr-003", "delegationId": "del-rural", "periodId": "per-2026-03", "evidenceId": "ev-1003", "status": "Observada", "agenda": true }
+  ],
+  "evidences": [
+    { "id": "ev-1001", "activityId": "act-1001", "fileName": "SGR-2609-1001.jpg", "type": "image/jpeg", "size": 1.8, "uploadedAt": "2026-09-18T16:22:00", "uploadedBy": "usr-003", "status": "Aprobada", "reviewerId": "usr-004", "reviewedAt": "2026-09-19T09:15:00", "comment": "Evidencia suficiente para validar la atención." },
+    { "id": "ev-1002", "activityId": "act-1002", "fileName": "SGR-2609-1002.jpg", "type": "image/jpeg", "size": 2.4, "uploadedAt": "2026-09-19T17:40:00", "uploadedBy": "usr-003", "status": "Pendiente", "reviewerId": null, "reviewedAt": null, "comment": "" },
+    { "id": "ev-1003", "activityId": "act-1003", "fileName": "SGR-2609-1003.pdf", "type": "application/pdf", "size": 0.8, "uploadedAt": "2026-09-16T14:05:00", "uploadedBy": "usr-003", "status": "Rechazada", "reviewerId": "usr-004", "reviewedAt": "2026-09-17T10:30:00", "comment": "Solicitar una imagen con fecha visible." }
+  ],
+  "commitments": [
+    { "id": "com-001", "description": "Coordinar visita de inspección de camino Las Palmas", "requester": "Caso ficticio C-018", "territory": "Las Palmas", "responsibleId": "usr-003", "supportArea": "Obras Municipales", "dueDate": "2026-09-23", "status": "En proceso", "periodId": "per-2026-03", "history": [{ "from": "Pendiente", "to": "En proceso", "date": "2026-09-18", "author": "usr-003", "comment": "Visita coordinada con el área técnica." }] },
+    { "id": "com-002", "description": "Entregar respuesta sobre punto de reciclaje", "requester": "Organización ficticia R-021", "territory": "Altovalsol", "responsibleId": "usr-003", "supportArea": "Medio Ambiente", "dueDate": "2026-09-20", "status": "Pendiente", "periodId": "per-2026-03", "history": [] },
+    { "id": "com-003", "description": "Enviar minuta de reunión territorial", "requester": "Comité ficticio M-009", "territory": "Quebrada de Talca", "responsibleId": "usr-003", "supportArea": "DIDECO", "dueDate": "2026-09-12", "status": "Realizado", "periodId": "per-2026-03", "history": [{ "from": "En proceso", "to": "Realizado", "date": "2026-09-11", "author": "usr-003", "comment": "Minuta enviada al comité." }] }
+  ],
+  "audit": [
+    { "id": "aud-001", "action": "Validación de evidencia", "entity": "Evidencia", "entityId": "ev-1001", "userId": "usr-004", "date": "2026-09-19T09:15:00", "detail": "Estado cambió de Pendiente a Aprobada" },
+    { "id": "aud-002", "action": "Cambio de estado", "entity": "Compromiso", "entityId": "com-001", "userId": "usr-003", "date": "2026-09-18T11:08:00", "detail": "Estado cambió de Pendiente a En proceso" },
+    { "id": "aud-003", "action": "Registro de actividad", "entity": "Actividad", "entityId": "act-1003", "userId": "usr-003", "date": "2026-09-16T14:05:00", "detail": "Actividad creada con código SGR-2609-1003" }
+  ]
+}
