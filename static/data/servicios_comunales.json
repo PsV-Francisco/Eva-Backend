@@ -1,0 +1,44 @@
+[
+  {
+    "categoria": "Emergencias",
+    "titulo": "Numeros de ayuda inmediata",
+    "descripcion": "Ten a mano los contactos esenciales para pedir apoyo ante una emergencia en la comuna.",
+    "contacto": "131 Ambulancia | 132 Bomberos | 133 Carabineros",
+    "detalle": "Si existe riesgo vital, llama primero al numero correspondiente y entrega tu direccion exacta."
+  },
+  {
+    "categoria": "Medioambiente",
+    "titulo": "Puntos limpios",
+    "descripcion": "Separa papel, carton, latas, plasticos y vidrio para facilitar su reciclaje.",
+    "contacto": "Revisa el punto limpio mas cercano antes de salir",
+    "detalle": "Entrega los materiales limpios, secos y separados. No mezcles residuos organicos ni objetos peligrosos."
+  },
+  {
+    "categoria": "Salud",
+    "titulo": "Atencion de salud primaria",
+    "descripcion": "La red comunal orienta controles, vacunacion, salud familiar y atenciones de urgencia primaria.",
+    "contacto": "SAPS y centros de salud de La Serena",
+    "detalle": "Para una orientacion fuera del horario habitual, utiliza Salud Responde: 600 360 7777."
+  },
+  {
+    "categoria": "Transporte",
+    "titulo": "Planifica tus desplazamientos",
+    "descripcion": "Antes de viajar, considera horarios de mayor congestion y prefiere caminar, bicicleta o transporte publico cuando sea posible.",
+    "contacto": "Consulta recorridos y tiempos en fuentes oficiales",
+    "detalle": "Planifica con anticipacion en dias de actividades masivas y respeta las zonas demarcadas."
+  },
+  {
+    "categoria": "Comunidad",
+    "titulo": "Participacion vecinal",
+    "descripcion": "Las organizaciones comunitarias son un canal para detectar necesidades y construir soluciones para cada barrio.",
+    "contacto": "Juntas de vecinos y organizaciones territoriales",
+    "detalle": "Acercate a tu organizacion local para conocer reuniones, iniciativas y formas de colaborar."
+  },
+  {
+    "categoria": "Tramites",
+    "titulo": "Orientacion municipal",
+    "descripcion": "Infórmate sobre permisos, solicitudes y beneficios antes de iniciar un tramite presencial.",
+    "contacto": "Municipalidad de La Serena",
+    "detalle": "Lleva tu cedula de identidad y los antecedentes solicitados para evitar visitas innecesarias."
+  }
+]

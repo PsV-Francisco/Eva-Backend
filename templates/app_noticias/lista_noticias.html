@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Noticias - La Serena{% endblock %}
+
+{% block header %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    {% for noticia in noticias %}
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <img src="{% static noticia.imagen %}" class="card-img-top" alt="{{ noticia.titulo }}">
+            <div class="card-body">
+                <span class="badge bg-primary mb-2">{{ noticia.categoria }}</span>
+                <h5 class="card-title">{{ noticia.titulo }}</h5>
+                <p class="card-text">{{ noticia.descripcion }}</p>
+                <p class="text-muted"><small>{{ noticia.fecha }}</small></p>
+                <a href="{% url 'detalle_noticia' noticia.id %}" class="btn btn-primary">Leer más</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+"""Django's command-line utility for administrative tasks."""
 import os
 import sys
 
@@ -8,7 +9,9 @@ def main():
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:
-        raise ImportError('Django no esta instalado. Activa .venv e instala requirements.txt.') from exc
+        raise ImportError(
+            'Django no está instalado. Activa .venv e instala requirements.txt.'
+        ) from exc
     execute_from_command_line(sys.argv)
 
 

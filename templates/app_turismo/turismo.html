@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+{% block title %}Turismo regional{% endblock %}
+{% block header %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4 align-items-center">
+    <div class="col-lg-8">
+        <h2>{{ mensaje }}</h2>
+        <p class="lead">Explora experiencias auténticas del mismo contexto regional, pensadas para atraer turismo local y visitantes de otras ciudades.</p>
+    </div>
+    <div class="col-lg-4">
+        <div class="bg-light rounded p-3 shadow-sm">
+            <p class="mb-1"><strong>Temporada recomendada</strong></p>
+            <p class="mb-0 text-muted">Primavera y verano para rutas de paisaje y aventura.</p>
+        </div>
+    </div>
+</div>
+
+<div class="row text-center mb-4">
+    <div class="col-md-4 mb-3">
+        <div class="border rounded p-3 bg-success bg-opacity-10 h-100">
+            <h4 class="text-success mb-1">6</h4>
+            <small class="text-muted">experiencias destacadas</small>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="border rounded p-3 bg-primary bg-opacity-10 h-100">
+            <h4 class="text-primary mb-1">+20</h4>
+            <small class="text-muted">puntos de interés</small>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="border rounded p-3 bg-warning bg-opacity-10 h-100">
+            <h4 class="text-warning mb-1">4</h4>
+            <small class="text-muted">regiones invitadas</small>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-5">
+    <div class="col-12">
+        <h3 class="mb-3">¿Por qué elegirnos?</h3>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <h5>Rutas cercanas</h5>
+                <p class="mb-0">Itinerarios pensados para disfrutar sin grandes desplazamientos y con una fuerte conexión local.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <h5>Gastronomía regional</h5>
+                <p class="mb-0">Sabor auténtico con productos locales, cafés, vinos y platos tradicionales del territorio.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <h5>Experiencias auténticas</h5>
+                <p class="mb-0">Cada destino combina naturaleza, cultura y descanso con una mirada regional muy cercana.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    {% for zona in zonas %}
+    <div class="col-md-6 col-xl-4">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <span class="badge bg-success mb-2">{{ zona.region }}</span>
+                <h4 class="card-title">{{ zona.nombre }}</h4>
+                <p class="card-text">{{ zona.descripcion }}</p>
+            </div>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item"><strong>Actividad:</strong> {{ zona.actividad }}</li>
+                <li class="list-group-item"><strong>Duración:</strong> {{ zona.duracion }}</li>
+                <li class="list-group-item"><strong>Precio:</strong> {{ zona.precio }}</li>
+                <li class="list-group-item"><strong>Mejor época:</strong> {{ zona.mejor_epoca }}</li>
+                <li class="list-group-item"><strong>Destacado:</strong> {{ zona.destacado }}</li>
+            </ul>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12">
+        <div class="alert alert-info">Todavía no hay experiencias turísticas registradas.</div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
