@@ -1,9 +1,0 @@
-{
-  "name": "sgr-mockup",
-  "version": "1.0.0",
-  "private": true,
-  "description": "Mock-up interactivo del Sistema de Gestión de Resultados",
-  "scripts": {
-    "start": "npx serve ."
-  }
-}

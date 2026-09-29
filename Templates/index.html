@@ -1,5 +1,14 @@
 {% extends "base.html" %}
 
+{% block title %}SGR | Aplicaciones{% endblock %}
+{% block page_title %}Sistema de Gestión de Resultados{% endblock %}
 {% block content %}
-  {% include "app_shell.html" %}
+  <p>Selecciona el espacio de trabajo correspondiente a tu rol.</p>
+  <ul>
+    <li><a href="{% url 'funcionario:home' %}">Funcionario</a></li>
+    <li><a href="{% url 'supervisor:home' %}">Supervisor</a></li>
+    <li><a href="{% url 'delegado:home' %}">Delegado</a></li>
+    <li><a href="{% url 'coordinador:home' %}">Coordinador</a></li>
+    <li><a href="{% url 'administracion:home' %}">Administración</a></li>
+  </ul>
 {% endblock %}
