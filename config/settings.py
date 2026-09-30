@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     'AdminApp',
     'VistaFApp',
 ]
+AUTH_USER_MODEL = 'AdminApp.Usuario'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
