@@ -1,7 +1,16 @@
-{% extends "base.html" %}
-
-{% block title %}SGR | Coordinador{% endblock %}
-{% block page_title %}Espacio de coordinación{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Coordinación | SGR{% endblock %}
+{% block page_title %}Períodos de medición{% endblock %}
 {% block content %}
-	<p>Administración de períodos, metas e indicadores de gestión.</p>
+<div class="metric-grid"><article class="metric"><span>Períodos configurados</span><strong>{{ periodo_count }}</strong></article><article class="metric"><span>Períodos abiertos</span><strong>{{ periodos_abiertos }}</strong></article><article class="metric"><span>Asignaciones de desempeño</span><strong>{{ desempeno_count }}</strong></article></div>
+<section class="content-section split-layout"><div><p class="eyebrow">CONFIGURACIÓN</p><h2>Crear período</h2><p class="section-note">La fecha final debe ser igual o posterior a la fecha inicial. Los períodos cerrados no aceptan nuevas actividades.</p>
+	<form method="post" data-loading novalidate>{% csrf_token %}{% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}<div class="form-grid">
+		{% for field in form %}<div class="mb-3"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}
+	</div><button class="btn btn-primary" type="submit">Guardar período</button></form>
+</div><aside class="side-note"><span class="side-note-mark">i</span><h3>Reglas consistentes</h3><p>Los períodos proveen fechas y estado a registros, agendas y mediciones vinculadas.</p></aside></section>
+<section class="content-section"><div class="section-head"><div><p class="eyebrow">VIGENCIA</p><h2>Períodos registrados</h2></div></div>
+	<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Período</th><th>Inicio</th><th>Término</th><th>Estado</th></tr></thead><tbody>
+		{% for periodo in periodos %}<tr><td><strong>{{ periodo.nombre }}</strong></td><td>{{ periodo.fecha_inicio|date:'d/m/Y' }}</td><td>{{ periodo.fecha_fin|date:'d/m/Y' }}</td><td><span class="tag">{{ periodo.get_estado_display }}</span></td></tr>{% empty %}<tr><td colspan="4" class="empty-state">No hay períodos configurados.</td></tr>{% endfor %}
+	</tbody></table></div>
+</section>
 {% endblock %}

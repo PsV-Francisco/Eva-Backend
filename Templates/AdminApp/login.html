@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block title %}Ingresar | SGR{% endblock %}
+{% block page_title %}Ingreso al sistema{% endblock %}
+{% block content %}
+<section class="login-layout"><div class="login-intro"><p class="eyebrow">ACCESO PERSONAL</p><h2>Continúa tu trabajo en SGR.</h2><p>Usa el correo y la contraseña asociados a tu cuenta.</p></div>
+  <form method="post" class="form-panel" data-loading>{% csrf_token %}{% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+    {% for field in form %}<div class="mb-3"><label class="form-label" for="{{ field.id_for_label }}">{% if field.name == 'username' %}Correo electrónico{% else %}{{ field.label }}{% endif %}</label>{{ field }}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}
+    <input type="hidden" name="next" value="{{ next }}"><button class="btn btn-primary w-100" type="submit">Ingresar</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,7 +1,16 @@
-{% extends "base.html" %}
-
-{% block title %}SGR | Funcionario{% endblock %}
-{% block page_title %}Espacio del funcionario{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Funcionario | SGR{% endblock %}
+{% block page_title %}Registro de actividades{% endblock %}
 {% block content %}
-	<p>Registro y consulta de actividades, evidencias y compromisos personales.</p>
+<div class="metric-grid"><article class="metric"><span>Mis registros</span><strong>{{ registro_count }}</strong></article><article class="metric"><span>Períodos abiertos</span><strong>{{ form.periodo.field.queryset.count }}</strong></article><article class="metric"><span>Últimos registros</span><strong>{{ registros|length }}</strong></article></div>
+<section class="content-section split-layout"><div><p class="eyebrow">NUEVA ACTIVIDAD</p><h2>Registrar gestión</h2><p class="section-note">La actividad queda asociada a tu cuenta y al período e ítem seleccionados.</p>
+	<form method="post" enctype="multipart/form-data" data-loading novalidate>{% csrf_token %}{% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}<div class="form-grid">
+		{% for field in form %}<div class="mb-3 {% if field.name == 'accion' or field.name == 'evidencia' %}field-wide{% endif %}{% if field.name == 'incluir_en_agenda' %}form-check field-wide{% endif %}">{% if field.name == 'incluir_en_agenda' %}{{ field }} <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{% else %}<label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% endif %}{% if field.name == 'evidencia' %}<div class="form-text">JPG, PNG o PDF. Máximo 5 MB.</div>{% endif %}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}
+	</div><button class="btn btn-primary" type="submit">Guardar actividad</button></form>
+</div><aside class="side-note"><span class="side-note-mark">+</span><h3>Identificador único</h3><p>Al guardar, el sistema asigna un código inmutable para consultar y vincular evidencia.</p></aside></section>
+<section class="content-section"><div class="section-head"><div><p class="eyebrow">HISTORIAL PERSONAL</p><h2>Mis actividades recientes</h2></div><span class="count-pill">{{ registro_count }} total</span></div>
+	<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Fecha</th><th>Actividad</th><th>Ítem</th><th>Período</th><th>Código</th><th>Estado</th></tr></thead><tbody>
+		{% for registro in registros %}<tr><td>{{ registro.fecha|date:'d/m/Y' }}</td><td><strong>{{ registro.descripcion }}</strong><small class="d-block text-muted">{{ registro.accion|truncatechars:90 }}</small></td><td>{{ registro.item }}</td><td>{{ registro.periodo }}</td><td><code>{{ registro.codigo|slice:':8' }}</code></td><td><span class="tag">{{ registro.get_estado_display }}</span></td></tr>{% empty %}<tr><td colspan="6" class="empty-state">Todavía no tienes actividades registradas.</td></tr>{% endfor %}
+	</tbody></table></div>
+</section>
 {% endblock %}

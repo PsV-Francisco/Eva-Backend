@@ -1,24 +1,40 @@
+{% load static %}
 <!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}SGR{% endblock %}</title>
+  <meta name="theme-color" content="#102e35">
+  <title>{% block title %}SGR | Gestión de resultados{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'vendor/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'vendor/sweetalert2.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/sgr.css' %}">
+  {% block extra_css %}{% endblock %}
 </head>
 <body>
-  <header>
-    <a href="{% url 'home' %}">SGR</a>
-    <nav aria-label="Aplicaciones">
-      <a href="{% url 'funcionario:home' %}">Funcionario</a>
-      <a href="{% url 'supervisor:home' %}">Supervisor</a>
-      <a href="{% url 'delegado:home' %}">Delegado</a>
-      <a href="{% url 'coordinador:home' %}">Coordinador</a>
-      <a href="{% url 'administracion:home' %}">Administración</a>
-    </nav>
+  <header class="topbar">
+    <div class="container-fluid shell d-flex align-items-center justify-content-between gap-3">
+      <a class="brand" href="{% url 'home' %}"><span class="brand-mark">S</span><span>SGR <small>Gestión de resultados</small></span></a>
+      <nav class="role-nav" aria-label="Espacios de trabajo"><a href="{% url 'funcionario:home' %}">Funcionario</a><a href="{% url 'supervisor:home' %}">Verificación</a><a href="{% url 'delegado:home' %}">Delegación</a><a href="{% url 'coordinador:home' %}">Coordinación</a><a href="{% url 'administracion:home' %}">Administración</a><a href="{% url 'vistaf:home' %}">Consulta</a></nav>
+      <div class="account-area">
+        {% if request.user.is_authenticated %}<span class="account-email">{{ request.user.email }}</span><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="btn btn-sm btn-outline-light" type="submit">Salir</button></form>{% else %}<a class="btn btn-sm btn-outline-light" href="{% url 'login' %}">Ingresar</a>{% endif %}
+      </div>
+      <button class="nav-toggle btn btn-outline-light" type="button" data-bs-toggle="collapse" data-bs-target="#mobileNav" aria-controls="mobileNav" aria-expanded="false" aria-label="Abrir navegación">Menú</button>
+    </div>
+    <div class="collapse mobile-nav" id="mobileNav"><nav class="container-fluid shell" aria-label="Navegación móvil"><a href="{% url 'funcionario:home' %}">Funcionario</a><a href="{% url 'supervisor:home' %}">Verificación</a><a href="{% url 'delegado:home' %}">Delegación</a><a href="{% url 'coordinador:home' %}">Coordinación</a><a href="{% url 'administracion:home' %}">Administración</a><a href="{% url 'vistaf:home' %}">Consulta</a></nav></div>
   </header>
-  <main>
-    <h1>{% block page_title %}Sistema de Gestión de Resultados{% endblock %}</h1>
+  <main class="container-fluid shell page-shell">
+    <div class="page-heading"><div><p class="eyebrow">SISTEMA DE GESTIÓN DE RESULTADOS</p><h1>{% block page_title %}Panel de trabajo{% endblock %}</h1></div><span class="date-chip">{% now 'd/m/Y' %}</span></div>
+    {% if messages %}<div class="d-none" aria-hidden="true">{% for message in messages %}<span data-sgr-message data-kind="{{ message.tags }}" data-text="{{ message|escape }}"></span>{% endfor %}</div>{% endif %}
     {% block content %}{% endblock %}
   </main>
+  <footer class="site-footer"><div class="container-fluid shell">SGR <span>•</span> Entorno académico con datos de prueba</div></footer>
+  <script src="{% static 'vendor/bootstrap.bundle.min.js' %}"></script><script src="{% static 'vendor/sweetalert2.min.js' %}"></script>
+  <script>
+    document.querySelectorAll('[data-sgr-message]').forEach((message) => { const kind = message.dataset.kind || ''; const icon = kind.includes('success') ? 'success' : kind.includes('error') ? 'error' : kind.includes('warning') ? 'warning' : 'info'; Swal.fire({icon, text: message.dataset.text, confirmButtonText: 'Entendido'}); });
+    document.querySelectorAll('form[data-confirm]').forEach((form) => { form.addEventListener('submit', (event) => { event.preventDefault(); Swal.fire({icon: 'question', text: form.dataset.confirm, showCancelButton: true, confirmButtonText: 'Confirmar', cancelButtonText: 'Cancelar'}).then((result) => { if (result.isConfirmed) { Swal.fire({title: 'Guardando', allowOutsideClick: false, didOpen: () => Swal.showLoading()}); form.submit(); } }); }); });
+    document.querySelectorAll('form[data-loading]').forEach((form) => { form.addEventListener('submit', () => Swal.fire({title: 'Guardando', allowOutsideClick: false, didOpen: () => Swal.showLoading()})); });
+  </script>
+  {% block extra_js %}{% endblock %}
 </body>
 </html>

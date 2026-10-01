@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}SGR | Espacios de trabajo{% endblock %}
+{% block page_title %}¿Qué necesitas gestionar?{% endblock %}
+{% block content %}
+  <section class="welcome-band"><div><p class="lead-label">PLATAFORMA OPERATIVA</p><h2>Un lugar para registrar, revisar y dar seguimiento.</h2></div><p>Selecciona el espacio correspondiente a tu función. Para operar se requiere iniciar sesión y tener el rol asignado.</p></section>
+  <section class="role-grid" aria-label="Espacios de trabajo">
+    <a class="role-tile" href="{% url 'funcionario:home' %}"><span class="tile-index">01</span><h2>Funcionario</h2><p>Registrar actividades y consultar el historial propio.</p><span class="tile-link">Abrir espacio <b aria-hidden="true">→</b></span></a>
+    <a class="role-tile" href="{% url 'supervisor:home' %}"><span class="tile-index">02</span><h2>Verificación</h2><p>Revisar evidencias y dejar una decisión trazable.</p><span class="tile-link">Abrir espacio <b aria-hidden="true">→</b></span></a>
+    <a class="role-tile" href="{% url 'delegado:home' %}"><span class="tile-index">03</span><h2>Delegación</h2><p>Crear compromisos y actualizar su estado.</p><span class="tile-link">Abrir espacio <b aria-hidden="true">→</b></span></a>
+    <a class="role-tile" href="{% url 'coordinador:home' %}"><span class="tile-index">04</span><h2>Coordinación</h2><p>Configurar períodos y consultar mediciones.</p><span class="tile-link">Abrir espacio <b aria-hidden="true">→</b></span></a>
+    <a class="role-tile" href="{% url 'administracion:home' %}"><span class="tile-index">05</span><h2>Administración</h2><p>Gestionar cuentas, cargos, delegaciones y roles.</p><span class="tile-link">Abrir espacio <b aria-hidden="true">→</b></span></a>
+    <a class="role-tile" href="{% url 'vistaf:home' %}"><span class="tile-index">06</span><h2>Consulta</h2><p>Revisar indicadores consolidados en modo de solo lectura.</p><span class="tile-link">Abrir espacio <b aria-hidden="true">→</b></span></a>
+  </section>
+{% endblock %}

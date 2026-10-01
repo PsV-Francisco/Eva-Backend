@@ -2,7 +2,8 @@ import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-TEMPLATES_DIR = BASE_DIR / 'Templates'
+TEMPLATES_DIR = BASE_DIR / 'templates'
+LEGACY_TEMPLATES_DIR = BASE_DIR / 'Templates'
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-sgr-demo-only')
 DEBUG = True
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
@@ -22,6 +23,8 @@ INSTALLED_APPS = [
     'VistaFApp',
 ]
 AUTH_USER_MODEL = 'AdminApp.Usuario'
+LOGIN_URL = '/accounts/login/'
+LOGIN_REDIRECT_URL = '/'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -38,7 +41,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [TEMPLATES_DIR],
+        'DIRS': [TEMPLATES_DIR, LEGACY_TEMPLATES_DIR],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -94,6 +97,8 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MAILERS = {

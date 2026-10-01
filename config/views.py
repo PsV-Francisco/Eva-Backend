@@ -16,6 +16,6 @@ def roles(request):
             {'id': 'Delegado', 'label': 'Delegado'},
             {'id': 'Coordinador', 'label': 'Coordinador'},
             {'id': 'Admin', 'label': 'Administrador'},
-            {'id': 'VistaF', 'label': 'Vista pendiente de definición'},
+            {'id': 'VistaF', 'label': 'Usuario de consulta'},
         ]
     })

@@ -1,7 +1,18 @@
-{% extends "base.html" %}
-
-{% block title %}SGR | Delegado{% endblock %}
-{% block page_title %}Espacio del delegado{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Delegación | SGR{% endblock %}
+{% block page_title %}Agenda colectiva{% endblock %}
 {% block content %}
-	<p>Seguimiento de compromisos y resultados de la delegación.</p>
+<div class="metric-grid"><article class="metric"><span>Compromisos de la delegación</span><strong>{{ commitment_count }}</strong></article><article class="metric"><span>Responsables asignados</span><strong>{{ request.user.delegacion.usuarios.count|default:'—' }}</strong></article><article class="metric"><span>Ámbito</span><strong>{{ request.user.delegacion|default:'Sin asignar' }}</strong></article></div>
+{% if not has_delegation %}<div class="alert alert-warning">Tu cuenta aún no tiene una delegación asignada. Solicita que Administración complete ese dato.</div>{% else %}
+<section class="content-section split-layout"><div><p class="eyebrow">NUEVO COMPROMISO</p><h2>Agregar a la agenda</h2>
+	<form method="post" data-loading novalidate>{% csrf_token %}{% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}<div class="form-grid">
+		{% for field in form %}<div class="mb-3 {% if field.name == 'descripcion' or field.name == 'observaciones' or field.name == 'responsables' %}field-wide{% endif %}"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}
+	</div><button class="btn btn-primary" type="submit">Guardar compromiso</button></form>
+</div><aside class="side-note"><span class="side-note-mark">i</span><h3>Seguimiento compartido</h3><p>Los compromisos se muestran solo dentro de tu delegación. El estado puede actualizarse desde esta misma vista.</p></aside></section>
+{% endif %}
+<section class="content-section"><div class="section-head"><div><p class="eyebrow">SEGUIMIENTO</p><h2>Compromisos</h2></div><span class="count-pill">{{ commitment_count }} en agenda</span></div>
+	<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Fecha</th><th>Compromiso</th><th>Responsables</th><th>Estado</th><th>Actualizar</th></tr></thead><tbody>
+		{% for compromiso in commitments %}<tr><td>{{ compromiso.fecha|date:'d/m/Y' }}</td><td><strong>{{ compromiso.descripcion }}</strong><small class="d-block text-muted">{{ compromiso.solicitante|default:'Sin solicitante' }} · {{ compromiso.territorio|default:'Sin territorio' }}</small></td><td>{% for responsable in compromiso.responsables.all %}<span class="tag">{{ responsable.get_full_name|default:responsable.email }}</span>{% empty %}—{% endfor %}</td><td><span class="tag">{{ compromiso.get_estado_display }}</span></td><td><form method="post" class="d-flex gap-2" data-confirm="¿Actualizar el estado de este compromiso?">{% csrf_token %}<input type="hidden" name="action" value="estado"><input type="hidden" name="compromiso_id" value="{{ compromiso.pk }}"><select class="form-select form-select-sm" name="estado" aria-label="Nuevo estado"><option value="ingresado" {% if compromiso.estado == 'ingresado' %}selected{% endif %}>Ingresado</option><option value="pendiente" {% if compromiso.estado == 'pendiente' %}selected{% endif %}>Pendiente</option><option value="en_proceso" {% if compromiso.estado == 'en_proceso' %}selected{% endif %}>En proceso</option><option value="realizado" {% if compromiso.estado == 'realizado' %}selected{% endif %}>Realizado</option></select><button class="btn btn-sm btn-primary" type="submit">Guardar</button></form></td></tr>{% empty %}<tr><td colspan="5" class="empty-state">No hay compromisos registrados para esta delegación.</td></tr>{% endfor %}
+	</tbody></table></div>
+</section>
 {% endblock %}

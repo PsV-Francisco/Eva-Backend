@@ -1,7 +1,17 @@
-{% extends "base.html" %}
-
-{% block title %}SGR | Administración{% endblock %}
-{% block page_title %}Administración del SGR{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Administración | SGR{% endblock %}
+{% block page_title %}Administración de usuarios{% endblock %}
 {% block content %}
-	<p>Gestión de usuarios, roles, catálogos, parámetros y auditoría.</p>
+<div class="metric-grid"><article class="metric"><span>Usuarios</span><strong>{{ user_count }}</strong></article><article class="metric"><span>Delegaciones</span><strong>{{ delegation_count }}</strong></article><article class="metric"><span>Cargos</span><strong>{{ position_count }}</strong></article></div>
+<section class="content-section split-layout"><div><p class="eyebrow">NUEVA CUENTA</p><h2>Crear usuario</h2><p class="section-note">La contraseña se guarda mediante el mecanismo seguro de Django. Asigna el rol y ámbito antes de habilitar el acceso.</p>
+	<form method="post" data-loading novalidate>{% csrf_token %}{% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}<div class="form-grid">
+		{% for field in form %}<div class="mb-3 {% if field.name == 'roles' %}field-wide{% endif %}{% if field.name == 'is_active' %}form-check{% endif %}">{% if field.name == 'is_active' %}{{ field }} <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{% else %}<label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% endif %}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}
+	</div><button class="btn btn-primary" type="submit">Crear cuenta</button></form></div>
+	<aside class="side-note"><span class="side-note-mark">i</span><h3>Acceso por función</h3><p>Las opciones disponibles dependen de los roles y la delegación asignados.</p></aside>
+</section>
+<section class="content-section"><div class="section-head"><div><p class="eyebrow">DIRECTORIO</p><h2>Cuentas recientes</h2></div><span class="count-pill">{{ users|length }} mostrados</span></div>
+	<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Usuario</th><th>Delegación</th><th>Cargo</th><th>Roles</th><th>Estado</th></tr></thead><tbody>
+		{% for user in users %}<tr><td><strong>{{ user.get_full_name|default:user.email }}</strong><small class="d-block text-muted">{{ user.email }}</small></td><td>{{ user.delegacion|default:'—' }}</td><td>{{ user.cargo|default:'—' }}</td><td>{% for role in user.roles.all %}<span class="tag">{{ role.nombre }}</span>{% empty %}<span class="text-muted">Sin rol</span>{% endfor %}</td><td>{% if user.is_active %}<span class="status-dot">Activo</span>{% else %}<span class="status-dot status-off">Inactivo</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="5" class="empty-state">Todavía no hay usuarios registrados.</td></tr>{% endfor %}
+	</tbody></table></div>
+</section>
 {% endblock %}

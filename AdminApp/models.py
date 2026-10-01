@@ -5,7 +5,7 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
-
+#Modelo Usuario
 class UsuarioManager(BaseUserManager):
     use_in_migrations = True
 
@@ -48,7 +48,7 @@ class Delegacion(models.Model):
 class Cargo(models.Model):
     nombre = models.CharField(max_length=120, unique=True)
     funciones = models.ForeignKey(
-        'CoordinadorApp.Funcion', on_delete=models.SET_NULL, null=True, blank=True
+        'CoordinadorApp.Funcion', on_delete=models.PROTECT, null=True, blank=True
     )
 
     class Meta:

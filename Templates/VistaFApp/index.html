@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}Consulta | SGR{% endblock %}
+{% block page_title %}Resumen de gestión{% endblock %}
+{% block content %}
+<div class="section-head"><div><p class="eyebrow">VISTA DE SOLO LECTURA</p><h2>{{ scope_label }}</h2></div><span class="count-pill">Datos consolidados</span></div>
+<div class="metric-grid metric-grid-four"><article class="metric"><span>Actividades</span><strong>{{ registro_count }}</strong></article><article class="metric"><span>Compromisos</span><strong>{{ compromiso_count }}</strong></article><article class="metric"><span>Evidencias pendientes</span><strong>{{ evidencia_count }}</strong></article><article class="metric"><span>Períodos abiertos</span><strong>{{ periodo_count }}</strong></article></div>
+<section class="content-section"><div class="section-head"><div><p class="eyebrow">RESULTADO POR PERÍODO</p><h2>Avance consolidado</h2></div></div>
+  <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Delegación</th><th>Período</th><th>Meta total</th><th>Avance total</th><th>Cumplimiento</th></tr></thead><tbody>
+    {% for row in summary %}<tr><td>{{ row.delegacion|default:'Sin delegación' }}</td><td>{{ row.periodo_nombre }}</td><td>{{ row.meta_total|floatformat:2 }}</td><td>{{ row.avance_total|floatformat:2 }}</td><td>{% if row.meta_total %}{% widthratio row.avance_total row.meta_total 100 %}%{% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="5" class="empty-state">No hay datos de desempeño para este ámbito.</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+{% endblock %}

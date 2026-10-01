@@ -1,7 +1,18 @@
-{% extends "base.html" %}
-
-{% block title %}SGR | Supervisor{% endblock %}
-{% block page_title %}Espacio de supervisión{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Verificación | SGR{% endblock %}
+{% block page_title %}Revisión de evidencias{% endblock %}
 {% block content %}
-	<p>Revisión de evidencias y monitoreo de la actividad del equipo.</p>
+<div class="metric-grid"><article class="metric"><span>Pendientes de revisión</span><strong>{{ pending_count }}</strong></article><article class="metric"><span>Decisiones posibles</span><strong>3</strong></article><article class="metric"><span>Alcance</span><strong>Global</strong></article></div>
+<section class="content-section"><div class="section-head"><div><p class="eyebrow">BANDEJA DE VERIFICACIÓN</p><h2>Evidencias pendientes</h2></div></div>
+	<div class="review-list">{% for evidencia in evidencias %}<article class="review-row"><div class="review-meta"><span class="tag">{{ evidencia.codigo|slice:':8' }}</span><span>{{ evidencia.fecha|date:'d/m/Y H:i' }}</span></div>
+		<h3>{% if evidencia.registro %}{{ evidencia.registro.descripcion }}{% elif evidencia.compromiso %}{{ evidencia.compromiso.descripcion }}{% else %}Evidencia sin referencia{% endif %}</h3>
+		<p>{% if evidencia.registro %}Actividad de {{ evidencia.registro.autor }} · {{ evidencia.registro.fecha|date:'d/m/Y' }}{% elif evidencia.compromiso %}Compromiso · {{ evidencia.compromiso.fecha|date:'d/m/Y' }}{% endif %}</p>
+		{% if evidencia.archivo %}<a class="file-link" href="{{ evidencia.archivo.url }}" target="_blank" rel="noopener">Abrir archivo</a>{% endif %}
+		<form method="post" class="review-form" data-confirm="¿Confirmas esta decisión de revisión?" novalidate>{% csrf_token %}<input type="hidden" name="evidencia_id" value="{{ evidencia.pk }}">
+			<div><label class="form-label" for="decision-{{ evidencia.pk }}">Decisión</label><select class="form-select" id="decision-{{ evidencia.pk }}" name="decision" required><option value="">Seleccionar</option><option value="aprobada">Aprobar</option><option value="rechazada">Rechazar</option><option value="correccion">Solicitar corrección</option></select></div>
+			<div><label class="form-label" for="obs-{{ evidencia.pk }}">Observación</label><textarea class="form-control" id="obs-{{ evidencia.pk }}" name="observaciones" rows="2"></textarea></div>
+			<button class="btn btn-primary" type="submit">Registrar revisión</button>
+		</form>
+	</article>{% empty %}<div class="empty-state">No hay evidencias pendientes. La bandeja se actualizará al ingresar nuevos respaldos.</div>{% endfor %}</div>
+</section>
 {% endblock %}
