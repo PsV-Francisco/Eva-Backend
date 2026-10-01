@@ -24,7 +24,7 @@ class Evidencia(models.Model):
 
 	class Meta:
 		ordering = ['-fecha']
-		db_table = "Evidencia"
+		db_table = "evidencia"
 		verbose_name = 'Evidencia'
 		verbose_name_plural = 'Evidencias'
 		constraints = [models.CheckConstraint(condition=(

@@ -18,7 +18,7 @@ class Agenda(models.Model):
 		constraints = [
 			models.UniqueConstraint(fields=['delegacion', 'periodo'], name='agenda_unica_por_delegacion_periodo'),
 		]
-		db_table = "Agenda"
+		db_table = "agenda"
 		verbose_name = "Agenda"
 		verbose_name_plural = "Agendas"
 		ordering = ['delegacion']
@@ -48,7 +48,7 @@ class Compromiso(models.Model):
 
 	class Meta:
 		ordering = ['-fecha', 'descripcion']
-		db_table = "Compromiso"
+		db_table = "compromiso"
 		verbose_name = "Compromiso"
 		verbose_name_plural = "Compromisos"
 

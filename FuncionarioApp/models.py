@@ -16,17 +16,17 @@ class Registro(models.Model):
 	item = models.ForeignKey('CoordinadorApp.Item', on_delete=models.PROTECT, related_name='registros')
 	periodo = models.ForeignKey('CoordinadorApp.Periodo', on_delete=models.PROTECT, related_name='registros')
 	descripcion = models.CharField(max_length=240)
-	accion = models.TextField()
 	contacto = models.CharField(max_length=160, blank=True)
 	telefono = models.IntegerField(blank=True, null=True)
 	autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='registros')
 	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.PENDIENTE)
 	incluir_en_agenda = models.BooleanField(default=False)
 	creado = models.DateTimeField(auto_now_add=True)
+	catalogo = models.ForeignKey('catalogo',models.CASCADE,related_name='registros_catalogo')
 
 	class Meta:
 		ordering = ['-fecha', '-creado']
-		db_table = "Registro"
+		db_table = "registro"
 		verbose_name = "Registro"
 		verbose_name_plural = "Registros"
 

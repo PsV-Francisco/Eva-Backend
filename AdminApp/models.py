@@ -35,7 +35,7 @@ class Delegacion(models.Model):
     activa = models.BooleanField(default=True)
 
     class Meta:
-        db_table = "Delegación"
+        db_table = "delegación"
         ordering = ['nombre']
         verbose_name = 'delegación'
         verbose_name_plural = 'delegaciones'
@@ -52,7 +52,7 @@ class Cargo(models.Model):
     )
 
     class Meta:
-        db_table = "Cargo"
+        db_table = "cargo"
         ordering = ['nombre']
         verbose_name = "Cargo"
         verbose_name_plural = "Cargos"
@@ -67,7 +67,7 @@ class Rol(models.Model):
     permisos = models.JSONField(default=list, blank=True)
 
     class Meta:
-        db_table = "Rol"
+        db_table = "rol"
         ordering = ['nombre']
         verbose_name = "Rol"
         verbose_name_plural = "Roles"
@@ -89,7 +89,7 @@ class Usuario(AbstractUser):
     REQUIRED_FIELDS = []
 
     class Meta:
-        db_table = "Usuario"
+        db_table = "usuario"
         ordering = ['email']
         verbose_name = "Usuario"
         verbose_name_plural = "Usuarios"
@@ -107,7 +107,7 @@ class Catalogo(models.Model):
 
     class Meta:
         ordering = ['actividad', 'servicio', 'tipo', 'subtipo']
-        db_table = "Catalogo"
+        db_table = "catalogo"
         verbose_name = "Catálogo"
         verbose_name_plural = "Catálogos"
 
@@ -125,7 +125,7 @@ class Historial(models.Model):
     valor_nuevo = models.JSONField(null=True, blank=True)
     object_id = models.CharField(max_length=64)
     periodo = models.ForeignKey(
-        'CoordinadorApp.Periodo', on_delete=models.SET_NULL, related_name='historiales',
+        'CoordinadorApp.Periodo', on_delete=models.CASCADE, related_name='historiales',
         null=True, blank=True,
     )
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
@@ -133,7 +133,7 @@ class Historial(models.Model):
 
     class Meta:
         ordering = ['-fecha_modificacion']
-        db_table = "Historial"
+        db_table = "historial"
         verbose_name = "Historial"
         verbose_name_plural = "Registros_Historial"
 
