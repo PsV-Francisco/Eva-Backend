@@ -3,7 +3,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 
-
+#Modelo del Registro
 class Registro(models.Model):
 	class Estado(models.TextChoices):
 		PENDIENTE = 'pendiente', 'Pendiente'
@@ -18,7 +18,7 @@ class Registro(models.Model):
 	descripcion = models.CharField(max_length=240)
 	accion = models.TextField()
 	contacto = models.CharField(max_length=160, blank=True)
-	telefono = models.CharField(max_length=24, blank=True)
+	telefono = models.IntegerField(max_length=11,blank=True)
 	autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='registros')
 	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.PENDIENTE)
 	incluir_en_agenda = models.BooleanField(default=False)
@@ -26,11 +26,15 @@ class Registro(models.Model):
 
 	class Meta:
 		ordering = ['-fecha', '-creado']
+		db_table = "Registro"
+		verbose_name = "Registro"
+		verbose_name_plural = "Registros"
 
 	def __str__(self):
 		return f'{self.codigo} - {self.descripcion}'
 
 
+#Modelo Atención Social
 class AtencionSocial(models.Model):
 	usuario = models.ForeignKey(
 		settings.AUTH_USER_MODEL,
@@ -45,16 +49,18 @@ class AtencionSocial(models.Model):
 
 	class Meta:
 		ordering = ['-fecha']
+		db_table = "atencion_social"
+		verbose_name = "Atención_Social"
+		verbose_name_plural = "Atenciones_Sociales"
 
 	def __str__(self):
 		return f'Atención {self.pk} - {self.tipo_atencion}'
 
-
+#Modelo Gestion Atención
 class GestionAtencion(models.Model):
 	atencion = models.ForeignKey(AtencionSocial, on_delete=models.CASCADE, related_name='gestiones')
 	numero_gestion = models.PositiveSmallIntegerField()
 	fecha = models.DateField()
-	resultado = models.TextField(blank=True)
 	observaciones = models.TextField(blank=True)
 
 	class Meta:
@@ -69,6 +75,9 @@ class GestionAtencion(models.Model):
 				name='gestion_numero_entre_1_y_3',
 			),
 		]
+		db_table = "gestion_atencion"
+		verbose_name = "Gestión Atención"
+		verbose_name_plural = "Gestión de Atenciones"
 
 	def __str__(self):
-		return f'Gestión {self.numero_gestion} de atención {self.atencion_id}'
+		return f'Gestión {self.numero_gestion} de atención {self.atencion}'

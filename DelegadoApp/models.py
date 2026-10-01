@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 
-
+#Modelo de Agenda
 class Agenda(models.Model):
 	delegacion = models.ForeignKey(
 		'AdminApp.Delegacion',
@@ -13,17 +13,21 @@ class Agenda(models.Model):
 		on_delete=models.PROTECT,
 		related_name='agendas',
 	)
-	nombre = models.CharField(max_length=120, default='Agenda colectiva')
 
 	class Meta:
 		constraints = [
 			models.UniqueConstraint(fields=['delegacion', 'periodo'], name='agenda_unica_por_delegacion_periodo'),
 		]
+		db_table = "Agenda"
+		verbose_name = "Agenda"
+		verbose_name_plural = "Agendas"
+		ordering = ['delegacion']
 
 	def __str__(self):
-		return f'{self.nombre} - {self.delegacion} - {self.periodo}'
+		return f'{self.delegacion} - {self.periodo}'
 
 
+#Modelo de Compromiso
 class Compromiso(models.Model):
 	class Estado(models.TextChoices):
 		INGRESADO = 'ingresado', 'Ingresado'
@@ -43,7 +47,11 @@ class Compromiso(models.Model):
 	creado = models.DateTimeField(auto_now_add=True)
 
 	class Meta:
-		ordering = ['fecha', 'descripcion']
+		ordering = ['-fecha', 'descripcion']
+		db_table = "Compromiso"
+		verbose_name = "Compromiso"
+		verbose_name_plural = "Compromisos"
+
 
 	def __str__(self):
 		return self.descripcion
