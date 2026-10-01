@@ -15,7 +15,10 @@ class Evidencia(models.Model):
 	archivo = models.FileField(upload_to='evidencias/')
 	registro = models.ForeignKey('FuncionarioApp.Registro', on_delete=models.CASCADE, related_name='evidencias_registros', null=True, blank=True)
 	compromiso = models.ForeignKey('DelegadoApp.Compromiso',on_delete=models.CASCADE, related_name='evidencias_compromiso', null=True, blank=True)
-	supervisor = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='evidencias_supervisor')
+	supervisor = models.ForeignKey(
+		settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+		related_name='evidencias_supervisor', null=True, blank=True,
+	)
 	fecha = models.DateTimeField(auto_now_add=True)
 	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.PENDIENTE)
 
@@ -25,8 +28,8 @@ class Evidencia(models.Model):
 		verbose_name = 'Evidencia'
 		verbose_name_plural = 'Evidencias'
 		constraints = [models.CheckConstraint(condition=(
-			models.Q(registro__isnull=False, compromiso__isnull=True),
-            models.Q(registro__isnull=True, compromiso__isnull=False)),
+			models.Q(registro__isnull=False, compromiso__isnull=True)
+			| models.Q(registro__isnull=True, compromiso__isnull=False)),
             name='evidencia_asociada_a_registro_o_compromiso')]
 
 	def __str__(self):

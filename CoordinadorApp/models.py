@@ -90,7 +90,9 @@ class Desempeno(models.Model):
 		on_delete=models.PROTECT,
 		related_name='desempenos',
 	)
-	funcion = models.ForeignKey(Funcion,on_delete=models.PROTECT,related_name='desempenos')
+	funcion = models.ForeignKey(
+		Funcion, on_delete=models.PROTECT, related_name='desempenos', null=True, blank=True
+	)
 	item = models.ForeignKey(Item, on_delete=models.PROTECT, related_name='desempenos')
 	periodo = models.ForeignKey(Periodo, on_delete=models.PROTECT, related_name='desempenos')
 	meta = models.DecimalField(max_digits=12, decimal_places=2)

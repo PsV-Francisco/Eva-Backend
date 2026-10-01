@@ -1,8 +1,32 @@
 from django.conf import settings
+from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
+
+
+class UsuarioManager(BaseUserManager):
+    use_in_migrations = True
+
+    def create_user(self, email, password=None, **extra_fields):
+        if not email:
+            raise ValueError('El correo electrónico es obligatorio.')
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, email, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('is_active', True)
+        if extra_fields.get('is_staff') is not True:
+            raise ValueError('Un superusuario debe tener is_staff=True.')
+        if extra_fields.get('is_superuser') is not True:
+            raise ValueError('Un superusuario debe tener is_superuser=True.')
+        return self.create_user(email, password, **extra_fields)
 
 
 # Modelo Delegación 
@@ -23,7 +47,9 @@ class Delegacion(models.Model):
 #Modelo del Cargo
 class Cargo(models.Model):
     nombre = models.CharField(max_length=120, unique=True)
-    funciones = models.ForeignKey('Funcion',on_delete=models.SET_NULL)
+    funciones = models.ForeignKey(
+        'CoordinadorApp.Funcion', on_delete=models.SET_NULL, null=True, blank=True
+    )
 
     class Meta:
         db_table = "Cargo"
@@ -37,7 +63,7 @@ class Cargo(models.Model):
 
 #Modelo del Rol
 class Rol(models.Model):
-    nombre = models.CharField(max_length=80, unique=True,primary_key=True)
+    nombre = models.CharField(max_length=80, unique=True)
     permisos = models.JSONField(default=list, blank=True)
 
     class Meta:
@@ -53,6 +79,7 @@ class Rol(models.Model):
 class Usuario(AbstractUser):
     username = None
     email = models.EmailField(unique=True)
+    objects = UsuarioManager()
     delegacion = models.ForeignKey(Delegacion, on_delete=models.PROTECT,related_name='usuarios',null=True,blank=True)
     cargo = models.ForeignKey(Cargo, on_delete=models.PROTECT, related_name='usuarios', null=True, blank=True)
     roles = models.ManyToManyField(Rol, related_name='usuarios', blank=True)
@@ -97,7 +124,10 @@ class Historial(models.Model):
     valor_anterior = models.JSONField(null=True, blank=True)
     valor_nuevo = models.JSONField(null=True, blank=True)
     object_id = models.CharField(max_length=64)
-    periodo = models.ForeignKey('Periodo',on_delete=models.CASCADE,related_name="Periodo")
+    periodo = models.ForeignKey(
+        'CoordinadorApp.Periodo', on_delete=models.SET_NULL, related_name='historiales',
+        null=True, blank=True,
+    )
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     entidad_afectada = GenericForeignKey('content_type', 'object_id')
 
