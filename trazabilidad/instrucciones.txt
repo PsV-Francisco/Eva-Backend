@@ -14,3 +14,43 @@ Otras Consideraciones:
 1) Crea en la raiz del proyecto una carpeta donde guardes en un archivo de texto las instrucciones que te voy dando para asegurar la trazabilidad del avance hecho.
 
 Decisión de alcance: los requerimientos asignan validación de evidencias al rol Verificador, pero no existe VerificadorApp en la lista solicitada. Se expone ese flujo desde SupervisorApp y se conserva el perfil Verificador de demostración.
+
+
+--------
+* Contexto : Tengo problemas para crear el superusuario, me dice que no encuentra la tabla usuario, por favor arreglala.
+
+    * Reparé la base SQLite: las migraciones de Django Admin estaban marcadas como aplicadas antes de crear AdminApp.Usuario, lo que bloqueaba nuevas migraciones. Las migraciones ya se aplicaron correctamente y python manage.py check no reporta problemas; confirmé que la tabla Usuario existe.
+
+    * Las tablas heredadas de usuarios y registros de admin estaban vacías. Dejé un respaldo en db.sqlite3.pre-usuario-20261001.bak. Ahora puedes ejecutar python manage.py createsuperuser; no creé la cuenta porque requiere tu correo y contraseña.
+
+* Contexto : Creé un usuario en el django admin y luego lo eliminé y se cayó el sistema, te adjunto imagen.
+    * La causa era una desincronización entre los modelos y las migraciones: Django esperaba Registro, pero la base la tenía como FuncionarioApp_registro. También había tablas relacionadas con nombres antiguos que podían fallar después en el borrado.
+    * Generé y apliqué las migraciones de FuncionarioApp y DelegadoApp. Verifiqué que Registro existe, que manage.py check pasa y que Django puede recorrer las relaciones del usuario 2 sin borrarlo.
+
+    *Reinicia el servidor y vuelve a intentar. Las tablas afectadas estaban vacías antes del cambio.
+
+* Explicame de forma breve la clase UsuarioManager
+    * UsuarioManager personaliza la creación de usuarios para el modelo Usuario, usando el correo electrónico como identificador:
+    * create_user() exige un correo, lo normaliza, guarda la contraseña de forma segura y crea el usuario.
+    * create_superuser() activa por defecto is_staff, is_superuser e is_active; valida que staff y superusuario estén habilitados y luego usa create_user().
+    * use_in_migrations = True permite que Django use este manager al reconstruir el estado de las migraciones.
+
+* ¿y qué significa "**extra_fields" en la clase?
+
+    * **extra_fields recoge en un diccionario los argumentos nombrados que no aparecen explícitamente en la firma, por ejemplo first_name, last_name o delegacion.
+    * Luego **extra_fields los pasa al crear el modelo:
+    * self.model(email=email,**extra_fields)
+    * Y en create_superuser, también se usa para pasar is_staff, is_superuser e is_active.
+
+* Contexto : Ocupa los requerimientos formales adjuntados.
+* Tarea : Genera templates funcionales para cada rol a través de su App comprendiendo una funcionalidad básica.
+* Limitaciones :
+* Ocupa Bootstrap local para el diseño y SwitchAlert para las alertas de confirmación, cargando y error.
+* Utiliza validaciones para los formularios ocupando "csrf token".
+* para los templates ubicalos en la carpeta templates, cada html debe estar en la subcarpeta de la aplicación correspondiente.
+* Ocupa un html base del cual se extiendan todos los demás templates.
+* Arregla el enrutamiento para la correcta visualización de las páginas.
+
+    * Implementé los seis espacios de trabajo con acciones básicas: registro de actividades y evidencia; revisión; agenda de compromisos; períodos de medición; administración de cuentas; y consulta de indicadores. Los formularios usan CSRF y Bootstrap/SweetAlert2 locales. Las vistas exigen autenticación y el rol correspondiente.
+    * Las plantillas por app están en templates, con la base compartida en base.html. También ajusté las rutas e incluí Vista de Consulta en urls.py.
+    * La aplicación está disponible en http://127.0.0.1:8000/. Verifiqué portada e ingreso en el navegador; pasan los 7 tests, manage.py check y la revisión de migraciones sin cambios pendientes.
