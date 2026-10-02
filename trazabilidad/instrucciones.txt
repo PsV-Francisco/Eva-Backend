@@ -54,3 +54,13 @@ Decisión de alcance: los requerimientos asignan validación de evidencias al ro
     * Implementé los seis espacios de trabajo con acciones básicas: registro de actividades y evidencia; revisión; agenda de compromisos; períodos de medición; administración de cuentas; y consulta de indicadores. Los formularios usan CSRF y Bootstrap/SweetAlert2 locales. Las vistas exigen autenticación y el rol correspondiente.
     * Las plantillas por app están en templates, con la base compartida en base.html. También ajusté las rutas e incluí Vista de Consulta en urls.py.
     * La aplicación está disponible en http://127.0.0.1:8000/. Verifiqué portada e ingreso en el navegador; pasan los 7 tests, manage.py check y la revisión de migraciones sin cambios pendientes.
+
+*Tarea : mejora el método asignarEvidencia de la clase Evidencia basándote en el propósito de la función.
+
+*Contexto : La clase Usuario debe tener un método crearResumenEjecutivo(), el cual responde a la Historia de Usuario 18 ubicada en el documento formal de requerimientos que te adjuntaré.
+Tarea : Necesito que generes el método correspondiente.
+Limitaciones:
+
+Crea solo ese método y si leyendo el contexto se te ocurre otro, plantealo primero y después lo incorporamos, toma como prioridad el método indicado.
+
+* 

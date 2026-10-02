@@ -1,7 +1,10 @@
 import uuid
+from typing import Optional
 
 from django.conf import settings
 from django.db import models
+from DelegadoApp.models import Compromiso
+from FuncionarioApp.models import Registro
 
 #Modelo Evidencia
 class Evidencia(models.Model):
@@ -34,6 +37,15 @@ class Evidencia(models.Model):
 
 	def __str__(self):
 		return f'Evidencia {self.codigo} ({self.get_estado_display()})'
+
+	def asignarEvidencia(self,registro: Optional[Registro] = None,compromiso: Optional[Compromiso] = None,) -> None:
+		"""Asigna esta evidencia a un único registro o compromiso, sin guardarla."""
+		if (registro is None) == (compromiso is None):
+			raise ValueError('Indica exactamente un registro o un compromiso.')
+
+		self.registro = registro
+		self.compromiso = compromiso
+	
 
 #Modelo de Revisión de Evidencia
 class RevisionEvidencia(models.Model):

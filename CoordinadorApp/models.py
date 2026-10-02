@@ -94,11 +94,11 @@ class Desempeno(models.Model):
 		Funcion, on_delete=models.PROTECT, related_name='desempenos', null=True, blank=True
 	)
 	item = models.ForeignKey(Item, on_delete=models.PROTECT, related_name='desempenos')
-	periodo = models.ForeignKey(Periodo, on_delete=models.PROTECT, related_name='desempenos')
 	meta = models.DecimalField(max_digits=12, decimal_places=2)
 	avance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 	ponderacion = models.DecimalField(max_digits=5, decimal_places=2)
 	ultimo_registro = models.DateField(null=True, blank=True)
+	periodo = models.ForeignKey(Periodo, on_delete=models.PROTECT, related_name='desempenos')
 
 	class Meta:
 		ordering = ['periodo', 'usuario', 'item','funcion']

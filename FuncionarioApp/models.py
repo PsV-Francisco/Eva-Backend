@@ -18,6 +18,7 @@ class Registro(models.Model):
 	descripcion = models.CharField(max_length=240)
 	contacto = models.CharField(max_length=160, blank=True)
 	telefono = models.IntegerField(blank=True, null=True)
+	accion = models.TextField(blank=True)
 	autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='registros')
 	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.PENDIENTE)
 	incluir_en_agenda = models.BooleanField(default=False)

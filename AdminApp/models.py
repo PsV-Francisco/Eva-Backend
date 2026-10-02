@@ -1,11 +1,9 @@
 from django.conf import settings
 from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser
-from django.contrib.contenttypes.fields import GenericForeignKey
-from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
-#Modelo Usuario
+#Modelo Usuario Abstracto
 class UsuarioManager(BaseUserManager):
     use_in_migrations = True
 
@@ -32,7 +30,7 @@ class UsuarioManager(BaseUserManager):
 # Modelo Delegación 
 class Delegacion(models.Model):
     nombre = models.CharField(max_length=120, unique=True)
-    activa = models.BooleanField(default=True)
+    estado = models.CharField(max_length=20,null=False)
 
     class Meta:
         db_table = "delegación"
@@ -64,7 +62,7 @@ class Cargo(models.Model):
 #Modelo del Rol
 class Rol(models.Model):
     nombre = models.CharField(max_length=80, unique=True)
-    permisos = models.JSONField(default=list, blank=True)
+    permisos = models.CharField(blank=True,max_length=1000)
 
     class Meta:
         db_table = "rol"
@@ -93,6 +91,114 @@ class Usuario(AbstractUser):
         ordering = ['email']
         verbose_name = "Usuario"
         verbose_name_plural = "Usuarios"
+
+    def crearResumenEjecutivo(self, periodo=None):
+        #Importaciones
+        from decimal import Decimal, ROUND_HALF_UP
+        from django.db.models import Count, Q
+        from CoordinadorApp.models import Desempeno, Periodo
+        from DelegadoApp.models import Compromiso
+        from FuncionarioApp.models import Registro
+        from SupervisorApp.models import Evidencia
+
+        if periodo is None:
+            periodo_actual = Periodo.objects.filter(
+                estado=Periodo.Estado.ABIERTO,
+            ).first()
+        else:
+            periodo_actual = Periodo.objects.filter(
+                pk=getattr(periodo, 'pk', periodo),
+            ).first()
+
+        if self.delegacion_id and periodo_actual:
+            registros = Registro.objects.filter(
+                autor__delegacion_id=self.delegacion_id,
+                periodo=periodo_actual,
+            ).select_related('autor', 'item', 'periodo')
+            desempenos = Desempeno.objects.filter(
+                usuario__delegacion_id=self.delegacion_id,
+                periodo=periodo_actual,
+            ).select_related('usuario', 'item', 'periodo')
+            compromisos = Compromiso.objects.filter(
+                agenda__delegacion_id=self.delegacion_id,
+                agenda__periodo=periodo_actual,
+            ).select_related('agenda', 'agenda__periodo').prefetch_related('responsables')
+            evidencias = Evidencia.objects.filter(
+                estado=Evidencia.Estado.PENDIENTE,
+            ).filter(
+                Q(
+                    registro__autor__delegacion_id=self.delegacion_id,
+                    registro__periodo=periodo_actual,
+                )
+                | Q(
+                    compromiso__agenda__delegacion_id=self.delegacion_id,
+                    compromiso__agenda__periodo=periodo_actual,
+                )
+            )
+            funcionarios_activos = self.__class__.objects.filter(
+                delegacion_id=self.delegacion_id,
+                is_active=True,
+            ).count()
+        else:
+            registros = Registro.objects.none()
+            desempenos = Desempeno.objects.none()
+            compromisos = Compromiso.objects.none()
+            evidencias = Evidencia.objects.none()
+            funcionarios_activos = 0
+
+        compromisos_por_estado = dict(Compromiso.Estado.choices)
+        compromisos_por_estado = {estado: 0 for estado in compromisos_por_estado}
+        for resultado in compromisos.values('estado').annotate(total=Count('pk')):
+            compromisos_por_estado[resultado['estado']] = resultado['total']
+
+        compromisos_total = sum(compromisos_por_estado.values())
+        compromisos_realizados = compromisos_por_estado[Compromiso.Estado.REALIZADO]
+        porcentaje_compromisos_realizados = (
+            (Decimal(compromisos_realizados) * Decimal('100') / Decimal(compromisos_total))
+            .quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            if compromisos_total else Decimal('0.00')
+        )
+
+        cumplimiento_por_funcionario = {}
+        for usuario_id, meta, avance, ponderacion in desempenos.values_list(
+            'usuario_id', 'meta', 'avance', 'ponderacion',
+        ):
+            if meta:
+                aporte_ponderado = avance * ponderacion / meta
+                cumplimiento_por_funcionario[usuario_id] = (
+                    cumplimiento_por_funcionario.get(usuario_id, Decimal('0'))
+                    + aporte_ponderado
+                )
+        cumplimiento_ponderado_promedio = (
+            (sum(cumplimiento_por_funcionario.values()) / len(cumplimiento_por_funcionario))
+            .quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            if cumplimiento_por_funcionario else Decimal('0.00')
+        )
+
+        return {
+            'periodo': periodo_actual,
+            'delegacion': self.delegacion,
+            'indicadores': {
+                'funcionarios_activos': funcionarios_activos,
+                'actividades': registros.count(),
+                'actividades_validadas': registros.filter(
+                    estado=Registro.Estado.VALIDADA,
+                ).count(),
+                'compromisos': compromisos_total,
+                'compromisos_realizados': compromisos_realizados,
+                'porcentaje_compromisos_realizados': porcentaje_compromisos_realizados,
+                'compromisos_por_estado': compromisos_por_estado,
+                'evidencias_pendientes': evidencias.count(),
+                'desempenos': desempenos.count(),
+                'cumplimiento_ponderado_promedio': cumplimiento_ponderado_promedio,
+            },
+            'detalle': {
+                'registros': registros,
+                'compromisos': compromisos,
+                'desempenos': desempenos,
+                'evidencias_pendientes': evidencias,
+            },
+        }
 
     def __str__(self):
         return self.get_full_name() or self.email
@@ -123,13 +229,11 @@ class Historial(models.Model):
     accion = models.CharField(max_length=120)
     valor_anterior = models.JSONField(null=True, blank=True)
     valor_nuevo = models.JSONField(null=True, blank=True)
-    object_id = models.CharField(max_length=64)
     periodo = models.ForeignKey(
         'CoordinadorApp.Periodo', on_delete=models.CASCADE, related_name='historiales',
         null=True, blank=True,
     )
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    entidad_afectada = GenericForeignKey('content_type', 'object_id')
+    entidad_afectada = models.CharField(max_length=120)
 
     class Meta:
         ordering = ['-fecha_modificacion']
