@@ -5,7 +5,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from AdminApp.models import Cargo, Delegacion
+from AdminApp.models import Cargo, Catalogo, Delegacion
 from CoordinadorApp.models import Funcion, Item, Periodo
 from DelegadoApp.models import Agenda, Compromiso
 from FuncionarioApp.models import Registro
@@ -28,6 +28,22 @@ class RolePortalTests(TestCase):
 			with self.subTest(route=route):
 				response = self.client.get(reverse(route))
 				self.assertEqual(response.status_code, 200)
+
+	def test_root_shows_login_and_authenticates_demo_user(self):
+		client = Client()
+		response = client.get(reverse('home'))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'name="csrfmiddlewaretoken"')
+		self.assertContains(response, 'Correo electrónico')
+
+		response = client.post(reverse('home'), {
+			'username': self.admin.email,
+			'password': 'Sgr-Test-Password-418!',
+		})
+		self.assertRedirects(response, reverse('home'))
+		response = client.get(reverse('home'))
+		self.assertContains(response, 'Espacios de trabajo')
+		self.assertContains(response, 'Administración')
 
 	def test_role_workspaces_require_authentication(self):
 		client = Client()
@@ -82,6 +98,7 @@ class RolePortalTests(TestCase):
 		)
 		function = Funcion.objects.create(nombre='Atención territorial')
 		item = Item.objects.create(funcion=function, nombre='Atenciones')
+		catalogo = Catalogo.objects.create(actividad='Atención', servicio='Orientación')
 		cargo = Cargo.objects.create(nombre='Cargo territorial', funciones=function)
 		self.admin.cargo = cargo
 		self.admin.save(update_fields=['cargo'])
@@ -90,6 +107,7 @@ class RolePortalTests(TestCase):
 				'fecha': '2026-10-01',
 				'periodo': period.pk,
 				'item': item.pk,
+				'catalogo': catalogo.pk,
 				'descripcion': 'Orientación a usuario',
 				'accion': 'Se entregó orientación y seguimiento.',
 				'contacto': '',
@@ -117,7 +135,7 @@ class RolePortalTests(TestCase):
 			self.assertEqual(RevisionEvidencia.objects.filter(evidencia=evidencia).count(), 1)
 
 	def test_delegate_can_create_commitment_for_their_delegation(self):
-		delegation = Delegacion.objects.create(nombre='Delegación de prueba')
+		delegation = Delegacion.objects.create(nombre='Delegación de prueba', estado='activa')
 		self.admin.delegacion = delegation
 		self.admin.save(update_fields=['delegacion'])
 		period = Periodo.objects.create(

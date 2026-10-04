@@ -65,8 +65,8 @@ class UsuarioAdmin(UserAdmin):
 
 @admin.register(Delegacion)
 class DelegacionAdmin(admin.ModelAdmin):
-	list_display = ('nombre', 'activa')
-	list_filter = ('activa',)
+	list_display = ('nombre', 'estado')
+	list_filter = ('estado',)
 	search_fields = ('nombre',)
 
 

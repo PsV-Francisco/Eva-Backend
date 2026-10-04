@@ -19,7 +19,7 @@ urlpatterns = [
     path('coordinador/', include('CoordinadorApp.urls')),
     path('admin-app/', include('AdminApp.urls')),
     path('consulta/', include('VistaFApp.urls')),
-    path('', TemplateView.as_view(template_name='config/index.html'), name='home'),
+    path('', auth_views.LoginView.as_view(template_name='config/index.html'), name='home'),
 ]
 
 if settings.DEBUG:

@@ -55,12 +55,20 @@ Decisión de alcance: los requerimientos asignan validación de evidencias al ro
     * Las plantillas por app están en templates, con la base compartida en base.html. También ajusté las rutas e incluí Vista de Consulta en urls.py.
     * La aplicación está disponible en http://127.0.0.1:8000/. Verifiqué portada e ingreso en el navegador; pasan los 7 tests, manage.py check y la revisión de migraciones sin cambios pendientes.
 
-*Tarea : mejora el método asignarEvidencia de la clase Evidencia basándote en el propósito de la función.
+|*Tarea : mejora el método asignarEvidencia de la clase Evidencia basándote en el propósito de la función.
 
-*Contexto : La clase Usuario debe tener un método crearResumenEjecutivo(), el cual responde a la Historia de Usuario 18 ubicada en el documento formal de requerimientos que te adjuntaré.
-Tarea : Necesito que generes el método correspondiente.
-Limitaciones:
+|*Contexto : La clase Usuario debe tener un método crearResumenEjecutivo(), el cual responde a la Historia de Usuario 18 ubicada en el documento formal de requerimientos que te adjuntaré.
+|Tarea : Necesito que generes el método correspondiente.
+|Limitaciones:
 
-Crea solo ese método y si leyendo el contexto se te ocurre otro, plantealo primero y después lo incorporamos, toma como prioridad el método indicado.
+|Crea solo ese método y si leyendo el contexto se te ocurre otro, plantealo primero y después lo incorporamos, toma como prioridad el método indicado.
 
-* 
+|* Contexto : Quiero ir mejorando ciertos apartados de los templates.
+|Tarea : Mejora templates en base a especificaciones.
+|Especificaciones :
+
+|Al ingresar a la ruta principal se debe mostrar un login funcional (Los correos y claves inventadas las puedes gurdar en un txt de momento).
+|al acceder a los paneles ocurren errores relacionados con las tablas, realiza las migraciones correspondientes para colocar eso al día.
+
+    Contexto : estoy migrando la base de datos a MYSQL, para eso ajusté ciertas variables en los settings, en este momento tengo WampServer levantado, phpMyAdmin configurado correctamente con la base de datos y la contraseña escrita.
+    Tarea : Necesito que hagas las migraciones y muevas toda la lógica de datos a MYSQL administrado en phpMyAdmin

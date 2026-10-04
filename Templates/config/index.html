@@ -1,7 +1,9 @@
 {% extends 'base.html' %}
-{% block title %}SGR | Espacios de trabajo{% endblock %}
-{% block page_title %}¿Qué necesitas gestionar?{% endblock %}
+{% block title %}{% if request.user.is_authenticated %}SGR | Paneles{% else %}SGR | Ingreso{% endif %}{% endblock %}
+{% block page_title %}{% if request.user.is_authenticated %}Espacios de trabajo{% else %}Ingreso al sistema{% endif %}{% endblock %}
 {% block content %}
+{% if request.user.is_authenticated %}
+  <section class="welcome-band"><div><p class="lead-label">SESIÓN ACTIVA</p><h2>Hola, {{ request.user.get_full_name|default:request.user.email }}.</h2></div><p>Elige el panel correspondiente a tu responsabilidad para continuar.</p></section>
   <section class="welcome-band"><div><p class="lead-label">PLATAFORMA OPERATIVA</p><h2>Un lugar para registrar, revisar y dar seguimiento.</h2></div><p>Selecciona el espacio correspondiente a tu función. Para operar se requiere iniciar sesión y tener el rol asignado.</p></section>
   <section class="role-grid" aria-label="Espacios de trabajo">
     <a class="role-tile" href="{% url 'funcionario:home' %}"><span class="tile-index">01</span><h2>Funcionario</h2><p>Registrar actividades y consultar el historial propio.</p><span class="tile-link">Abrir espacio <b aria-hidden="true">→</b></span></a>
@@ -11,4 +13,12 @@
     <a class="role-tile" href="{% url 'administracion:home' %}"><span class="tile-index">05</span><h2>Administración</h2><p>Gestionar cuentas, cargos, delegaciones y roles.</p><span class="tile-link">Abrir espacio <b aria-hidden="true">→</b></span></a>
     <a class="role-tile" href="{% url 'vistaf:home' %}"><span class="tile-index">06</span><h2>Consulta</h2><p>Revisar indicadores consolidados en modo de solo lectura.</p><span class="tile-link">Abrir espacio <b aria-hidden="true">→</b></span></a>
   </section>
+{% else %}
+  <section class="login-layout"><div class="login-intro"><p class="eyebrow">ACCESO PERSONAL</p><h2>Continúa tu trabajo en SGR.</h2><p>Ingresa con el correo y la contraseña asignados a tu cuenta.</p></div>
+    <form method="post" class="form-panel" data-loading>{% csrf_token %}{% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+      {% for field in form %}<div class="mb-3"><label class="form-label" for="{{ field.id_for_label }}">{% if field.name == 'username' %}Correo electrónico{% else %}{{ field.label }}{% endif %}</label>{{ field }}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}
+      <input type="hidden" name="next" value="{{ next }}"><button class="btn btn-primary w-100" type="submit">Ingresar</button>
+    </form>
+  </section>
+{% endif %}
 {% endblock %}

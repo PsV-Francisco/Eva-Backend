@@ -23,7 +23,10 @@ class Registro(models.Model):
 	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.PENDIENTE)
 	incluir_en_agenda = models.BooleanField(default=False)
 	creado = models.DateTimeField(auto_now_add=True)
-	catalogo = models.ForeignKey('catalogo',models.CASCADE,related_name='registros_catalogo')
+	catalogo = models.ForeignKey(
+		'AdminApp.Catalogo', on_delete=models.CASCADE, related_name='registros_catalogo',
+		null=True,
+	)
 
 	class Meta:
 		ordering = ['-fecha', '-creado']

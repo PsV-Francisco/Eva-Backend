@@ -30,7 +30,7 @@ class UsuarioManager(BaseUserManager):
 # Modelo Delegación 
 class Delegacion(models.Model):
     nombre = models.CharField(max_length=120, unique=True)
-    estado = models.CharField(max_length=20,null=False)
+    estado = models.CharField(max_length=20, default='activa')
 
     class Meta:
         db_table = "delegación"
@@ -233,7 +233,7 @@ class Historial(models.Model):
         'CoordinadorApp.Periodo', on_delete=models.CASCADE, related_name='historiales',
         null=True, blank=True,
     )
-    entidad_afectada = models.CharField(max_length=120)
+    entidad_afectada = models.CharField(max_length=120, default='')
 
     class Meta:
         ordering = ['-fecha_modificacion']
