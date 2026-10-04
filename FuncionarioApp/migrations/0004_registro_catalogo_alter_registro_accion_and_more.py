@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('AdminApp', '0005_remove_delegacion_activa_and_more'),
+        ('AdminApp', '0004_alter_cargo_funciones'),
         ('FuncionarioApp', '0003_alter_registro_telefono'),
     ]
 
