@@ -11,6 +11,7 @@ LEGACY_TEMPLATES_DIR = BASE_DIR / 'Templates'
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-sgr-demo-only')
 DEBUG = os.environ.get('DEBUG','False') == 'True'
 ALLOWED_HOSTS = ['3.228.118.5']
+CSRF_TRUSTED_ORIGINS = ['http://3.228.118.5','https://3.228.118.5',]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
