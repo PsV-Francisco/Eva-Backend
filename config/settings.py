@@ -29,7 +29,7 @@ INSTALLED_APPS = [
 ]
 AUTH_USER_MODEL = 'AdminApp.Usuario'
 LOGIN_URL = '/accounts/login/'
-LOGIN_REDIRECT_URL = '/'
+LOGIN_REDIRECT_URL = 'home'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -121,6 +121,7 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
