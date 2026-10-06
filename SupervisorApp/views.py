@@ -3,13 +3,13 @@ from django.db.models import Q
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 
-from config.decorators import role_required
+from config.decorators import cargo_required
 from FuncionarioApp.models import Registro
 from SupervisorApp.forms import RevisionEvidenciaForm
 from SupervisorApp.models import Evidencia, RevisionEvidencia
 
 
-@role_required('supervisor', 'verificador')
+@cargo_required('supervisor', 'verificador')
 def home(request):
     if request.method == 'POST':
         evidencia = get_object_or_404(Evidencia, pk=request.POST.get('evidencia_id'))

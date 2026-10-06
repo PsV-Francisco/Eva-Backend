@@ -28,8 +28,8 @@ INSTALLED_APPS = [
     'VistaFApp',
 ]
 AUTH_USER_MODEL = 'AdminApp.Usuario'
-LOGIN_URL = '/accounts/login/'
-LOGIN_REDIRECT_URL = 'home'
+LOGIN_URL = '/'
+LOGIN_REDIRECT_URL = '/inicio/'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

@@ -1,13 +1,13 @@
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 
-from config.decorators import role_required
+from config.decorators import cargo_required
 from CoordinadorApp.models import Periodo
 from DelegadoApp.forms import CompromisoEstadoForm, CompromisoForm
 from DelegadoApp.models import Agenda, Compromiso
 
 
-@role_required('delegado')
+@cargo_required('delegado')
 def home(request):
     delegation_id = request.user.delegacion_id
     commitments = Compromiso.objects.none()

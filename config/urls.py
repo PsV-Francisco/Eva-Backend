@@ -9,17 +9,16 @@ from . import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('accounts/login/', auth_views.LoginView.as_view(template_name='AdminApp/login.html'), name='login'),
-    path('accounts/logout/', auth_views.LogoutView.as_view(next_page='home'), name='logout'),
-    path('api/health/', views.health, name='health'),
-    path('api/roles/', views.roles, name='roles'),
+    path('', auth_views.LoginView.as_view(template_name='config/index.html'), name='login'),
+    path('inicio/', views.home_redirect, name='home'),
+    path('accounts/logout/',auth_views.LogoutView.as_view(next_page='/'),name='logout'),
     path('funcionario/', include('FuncionarioApp.urls')),
     path('supervisor/', include('SupervisorApp.urls')),
     path('delegado/', include('DelegadoApp.urls')),
     path('coordinador/', include('CoordinadorApp.urls')),
     path('admin-app/', include('AdminApp.urls')),
     path('consulta/', include('VistaFApp.urls')),
-    path('', views.home_redirect, name='home'),
+
 ]
 
 if settings.DEBUG:

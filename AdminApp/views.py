@@ -3,10 +3,10 @@ from django.shortcuts import redirect, render
 
 from AdminApp.forms import UsuarioCreationForm
 from AdminApp.models import Cargo, Delegacion, Usuario
-from config.decorators import role_required
+from config.decorators import cargo_required
 
 
-@role_required('admin', 'administrador', allow_staff=True)
+@cargo_required('admin', 'administrador')
 def home(request):
     form = UsuarioCreationForm(request.POST or None)
     if request.method == 'POST':

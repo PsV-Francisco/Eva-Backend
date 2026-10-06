@@ -6,10 +6,10 @@ from CoordinadorApp.models import Desempeno, Periodo
 from DelegadoApp.models import Compromiso
 from FuncionarioApp.models import Registro
 from SupervisorApp.models import Evidencia
-from config.decorators import role_required
+from config.decorators import cargo_required
 
 
-@role_required('vistaf', 'consulta', 'usuario de consulta')
+@cargo_required('vistaf', 'consulta', 'usuario de consulta')
 def home(request):
 	registros = Registro.objects.all()
 	compromisos = Compromiso.objects.all()

@@ -2,13 +2,13 @@ from django.contrib import messages
 from django.db import transaction
 from django.shortcuts import redirect, render
 
-from config.decorators import role_required
+from config.decorators import cargo_required
 from FuncionarioApp.forms import RegistroForm
 from FuncionarioApp.models import Registro
 from SupervisorApp.models import Evidencia
 
 
-@role_required('funcionario')
+@cargo_required('funcionario')
 def home(request):
     form = RegistroForm(request.POST or None, request.FILES or None, user=request.user)
     if request.method == 'POST':
