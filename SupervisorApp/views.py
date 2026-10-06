@@ -50,4 +50,13 @@ def home(request):
     return render(request, 'SupervisorApp/index.html', {
         'sgr_role': 'Verificación', 'evidencias': evidencias,
         'pending_count': evidencias.count(), 'review_form': RevisionEvidenciaForm(),
+        'revisiones': RevisionEvidencia.objects.filter(
+            verificador=request.user,
+        ).select_related(
+            'evidencia', 'evidencia__registro', 'evidencia__compromiso',
+        )[:20],
+        'sidebar_modules': (
+            'Revisión de Compromisos', 'Revisión de Actividades',
+            'Funciones e Indicadores',
+        ),
     })

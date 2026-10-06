@@ -39,3 +39,31 @@ class UsuarioCreationForm(BootstrapFormMixin, forms.ModelForm):
             user.save()
             self.save_m2m()
         return user
+
+
+class UsuarioUpdateForm(BootstrapFormMixin, forms.ModelForm):
+    password1 = forms.CharField(label='Nueva contraseña', widget=forms.PasswordInput, required=False)
+    password2 = forms.CharField(label='Confirmar contraseña', widget=forms.PasswordInput, required=False)
+
+    class Meta(UsuarioCreationForm.Meta):
+        pass
+
+    def clean(self):
+        cleaned_data = super().clean()
+        password = cleaned_data.get('password1')
+        password_confirmation = cleaned_data.get('password2')
+        if password != password_confirmation:
+            self.add_error('password2', 'Las contraseñas no coinciden.')
+        elif password:
+            validate_password(password, self.instance)
+        return cleaned_data
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        password = self.cleaned_data.get('password1')
+        if password:
+            user.set_password(password)
+        if commit:
+            user.save()
+            self.save_m2m()
+        return user

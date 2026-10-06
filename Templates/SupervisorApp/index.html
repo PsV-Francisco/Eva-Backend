@@ -2,6 +2,9 @@
 {% block title %}Verificación | SGR{% endblock %}
 {% block page_title %}Revisión de evidencias{% endblock %}
 {% block content %}
+<div class="dashboard-layout">
+{% include 'includes/role_sidebar.html' %}
+<div class="dashboard-main">
 <div class="metric-grid"><article class="metric"><span>Pendientes de revisión</span><strong>{{ pending_count }}</strong></article><article class="metric"><span>Decisiones posibles</span><strong>3</strong></article><article class="metric"><span>Alcance</span><strong>Global</strong></article></div>
 <section class="content-section"><div class="section-head"><div><p class="eyebrow">BANDEJA DE VERIFICACIÓN</p><h2>Evidencias pendientes</h2></div></div>
 	<div class="review-list">{% for evidencia in evidencias %}<article class="review-row"><div class="review-meta"><span class="tag">{{ evidencia.codigo|slice:':8' }}</span><span>{{ evidencia.fecha|date:'d/m/Y H:i' }}</span></div>
@@ -15,4 +18,11 @@
 		</form>
 	</article>{% empty %}<div class="empty-state">No hay evidencias pendientes. La bandeja se actualizará al ingresar nuevos respaldos.</div>{% endfor %}</div>
 </section>
+<section class="content-section"><div class="section-head"><div><p class="eyebrow">TRAZABILIDAD</p><h2>Mis revisiones recientes</h2></div><span class="count-pill">{{ revisiones|length }} mostradas</span></div>
+	<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Fecha</th><th>Referencia</th><th>Decisión</th><th>Observación</th></tr></thead><tbody>
+		{% for revision in revisiones %}<tr><td>{{ revision.fecha|date:'d/m/Y H:i' }}</td><td>{% if revision.evidencia.registro %}{{ revision.evidencia.registro.descripcion }}{% elif revision.evidencia.compromiso %}{{ revision.evidencia.compromiso.descripcion }}{% else %}Evidencia {{ revision.evidencia.codigo|slice:':8' }}{% endif %}</td><td><span class="tag">{{ revision.get_decision_display }}</span></td><td>{{ revision.observaciones|default:'—' }}</td></tr>{% empty %}<tr><td colspan="4" class="empty-state">Todavía no hay decisiones registradas.</td></tr>{% endfor %}
+	</tbody></table></div>
+</section>
+</div>
+</div>
 {% endblock %}

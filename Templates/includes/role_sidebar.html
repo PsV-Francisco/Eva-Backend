@@ -1,0 +1,11 @@
+<aside class="role-sidebar" aria-label="Módulos del cargo">
+  <p class="eyebrow">MÓDULOS</p>
+  <nav>
+    {% for module in sidebar_modules %}
+      <span class="sidebar-link{% if forloop.first %} active{% endif %}">
+        <span class="sidebar-index">{{ forloop.counter|stringformat:'02d' }}</span>
+        {{ module }}
+      </span>
+    {% endfor %}
+  </nav>
+</aside>

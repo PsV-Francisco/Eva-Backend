@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#102e35">
+  <meta name="theme-color" content="#8f1d2c">
   <!--Título-->
   <title>{% block title %}SGR | Gestión de resultados Municipalidad de La Serena{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'vendor/bootstrap.min.css' %}">
@@ -28,9 +28,7 @@
         <a class="btn btn-sm btn-outline-light" href="{% url 'login' %}">Ingresar</a>
         {% endif %}
       </div>
-      <button class="nav-toggle btn btn-outline-light" type="button" data-bs-toggle="collapse" data-bs-target="#mobileNav" aria-controls="mobileNav" aria-expanded="false" aria-label="Abrir navegación">Menú</button>
     </div>
-    <div class="collapse mobile-nav" id="mobileNav"><nav class="container-fluid shell" aria-label="Navegación móvil"><a href="{% url 'funcionario:home' %}">Funcionario</a><a href="{% url 'supervisor:home' %}">Verificación</a><a href="{% url 'delegado:home' %}">Delegación</a><a href="{% url 'coordinador:home' %}">Coordinación</a><a href="{% url 'administracion:home' %}">Administración</a><a href="{% url 'vistaf:home' %}">Consulta</a></nav></div>
   </header>
 <!--Main-->
   <main class="container-fluid shell page-shell">

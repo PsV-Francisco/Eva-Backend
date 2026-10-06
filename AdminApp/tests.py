@@ -23,14 +23,14 @@ class RolePortalTests(TestCase):
 
 	def test_all_role_workspaces_render(self):
 		route_cargos = (
-			('funcionario:home', 'funcionario'),
-			('supervisor:home', 'supervisor'),
-			('delegado:home', 'delegado'),
-			('coordinador:home', 'coordinador'),
-			('administracion:home', 'administrador'),
-			('vistaf:home', 'consulta'),
+			('funcionario:home', 'funcionario', 'Registro de Actividades'),
+			('supervisor:home', 'supervisor', 'Revisión de Compromisos'),
+			('delegado:home', 'delegado', 'Cumplimiento de delegación'),
+			('coordinador:home', 'coordinador', 'Metas e indicadores'),
+			('administracion:home', 'administrador', 'Gestión de la medición'),
+			('vistaf:home', 'consulta', 'Búsqueda de información'),
 		)
-		for index, (route, cargo_name) in enumerate(route_cargos):
+		for index, (route, cargo_name, sidebar_label) in enumerate(route_cargos):
 			with self.subTest(route=route):
 				cargo, _ = Cargo.objects.get_or_create(nombre=cargo_name)
 				user = get_user_model().objects.create_user(
@@ -42,6 +42,7 @@ class RolePortalTests(TestCase):
 				client.force_login(user)
 				response = client.get(reverse(route))
 				self.assertEqual(response.status_code, 200)
+				self.assertContains(response, sidebar_label)
 
 	def test_root_shows_login_and_authenticates_demo_user(self):
 		client = Client()
@@ -107,6 +108,30 @@ class RolePortalTests(TestCase):
 		created = get_user_model().objects.get(email='funcionario@sgr.test')
 		self.assertTrue(created.check_password('Sgr-New-Account-573!'))
 
+	def test_admin_can_update_and_delete_an_unreferenced_user(self):
+		user = get_user_model().objects.create_user(
+			email='antes@sgr.test', password='Sgr-Test-Password-418!',
+		)
+		response = self.client.post(reverse('administracion:home'), {
+			'action': 'guardar',
+			'usuario_id': user.pk,
+			'email': 'despues@sgr.test',
+			'first_name': 'Nombre',
+			'last_name': 'Actualizado',
+			'is_active': 'on',
+			'password1': '',
+			'password2': '',
+		})
+		self.assertEqual(response.status_code, 302)
+		user.refresh_from_db()
+		self.assertEqual(user.email, 'despues@sgr.test')
+
+		response = self.client.post(reverse('administracion:home'), {
+			'action': 'eliminar', 'usuario_id': user.pk,
+		})
+		self.assertEqual(response.status_code, 302)
+		self.assertFalse(get_user_model().objects.filter(pk=user.pk).exists())
+
 	def test_coordinator_can_create_period(self):
 		self.admin.cargo = Cargo.objects.create(nombre='coordinador')
 		self.admin.save(update_fields=['cargo'])
@@ -118,6 +143,31 @@ class RolePortalTests(TestCase):
 		})
 		self.assertEqual(response.status_code, 302)
 		self.assertTrue(Periodo.objects.filter(nombre='Período de prueba').exists())
+
+	def test_coordinator_can_update_and_delete_an_unused_period(self):
+		self.admin.cargo = Cargo.objects.create(nombre='coordinador')
+		self.admin.save(update_fields=['cargo'])
+		period = Periodo.objects.create(
+			nombre='Período inicial', fecha_inicio='2026-10-01',
+			fecha_fin='2026-12-31', estado=Periodo.Estado.CERRADO,
+		)
+		response = self.client.post(reverse('coordinador:home'), {
+			'action': 'guardar',
+			'periodo_id': period.pk,
+			'nombre': 'Período actualizado',
+			'fecha_inicio': '2026-10-02',
+			'fecha_fin': '2026-12-31',
+			'estado': Periodo.Estado.ABIERTO,
+		})
+		self.assertEqual(response.status_code, 302)
+		period.refresh_from_db()
+		self.assertEqual(period.nombre, 'Período actualizado')
+
+		response = self.client.post(reverse('coordinador:home'), {
+			'action': 'eliminar', 'periodo_id': period.pk,
+		})
+		self.assertEqual(response.status_code, 302)
+		self.assertFalse(Periodo.objects.filter(pk=period.pk).exists())
 
 	def test_employee_can_register_activity_with_evidence_and_supervisor_can_approve(self):
 		period = Periodo.objects.create(
@@ -164,6 +214,39 @@ class RolePortalTests(TestCase):
 			self.assertEqual(registro.estado, Registro.Estado.VALIDADA)
 			self.assertEqual(RevisionEvidencia.objects.filter(evidencia=evidencia).count(), 1)
 
+	def test_employee_can_update_and_delete_own_unreviewed_activity(self):
+		period = Periodo.objects.create(
+			nombre='Período CRUD', fecha_inicio='2026-10-01',
+			fecha_fin='2026-12-31', estado=Periodo.Estado.ABIERTO,
+		)
+		function = Funcion.objects.create(nombre='Función CRUD')
+		item = Item.objects.create(funcion=function, nombre='Ítem CRUD')
+		catalogo = Catalogo.objects.create(actividad='Actividad CRUD', servicio='Servicio CRUD')
+		self.admin.cargo = Cargo.objects.create(nombre='funcionario', funciones=function)
+		self.admin.save(update_fields=['cargo'])
+		registro = Registro.objects.create(
+			fecha='2026-10-02', periodo=period, item=item, catalogo=catalogo,
+			descripcion='Descripción original', accion='Acción inicial',
+			autor=self.admin,
+		)
+		payload = {
+			'action': 'guardar', 'registro_id': registro.pk,
+			'fecha': '2026-10-02', 'periodo': period.pk, 'item': item.pk,
+			'catalogo': catalogo.pk, 'descripcion': 'Descripción actualizada',
+			'accion': 'Acción actualizada', 'contacto': '', 'telefono': '',
+			'incluir_en_agenda': '',
+		}
+		response = self.client.post(reverse('funcionario:home'), payload)
+		self.assertEqual(response.status_code, 302)
+		registro.refresh_from_db()
+		self.assertEqual(registro.descripcion, 'Descripción actualizada')
+
+		response = self.client.post(reverse('funcionario:home'), {
+			'action': 'eliminar', 'registro_id': registro.pk,
+		})
+		self.assertEqual(response.status_code, 302)
+		self.assertFalse(Registro.objects.filter(pk=registro.pk).exists())
+
 	def test_delegate_can_create_commitment_for_their_delegation(self):
 		delegation = Delegacion.objects.create(nombre='Delegación de prueba', estado='activa')
 		self.admin.cargo = Cargo.objects.create(nombre='delegado')
@@ -187,3 +270,35 @@ class RolePortalTests(TestCase):
 		agenda = Agenda.objects.get(delegacion=delegation, periodo=period)
 		commitment = Compromiso.objects.get(agenda=agenda)
 		self.assertEqual(commitment.responsables.get(), self.admin)
+
+	def test_delegate_can_update_and_delete_commitments_without_evidence(self):
+		delegation = Delegacion.objects.create(nombre='Delegación CRUD', estado='activa')
+		self.admin.cargo = Cargo.objects.create(nombre='delegado')
+		self.admin.delegacion = delegation
+		self.admin.save(update_fields=['cargo', 'delegacion'])
+		period = Periodo.objects.create(
+			nombre='Agenda CRUD', fecha_inicio='2026-10-01',
+			fecha_fin='2026-12-31', estado=Periodo.Estado.ABIERTO,
+		)
+		agenda = Agenda.objects.create(delegacion=delegation, periodo=period)
+		commitment = Compromiso.objects.create(
+			agenda=agenda, descripcion='Compromiso inicial',
+			fecha='2026-10-20', estado=Compromiso.Estado.INGRESADO,
+		)
+		commitment.responsables.add(self.admin)
+		response = self.client.post(reverse('delegado:home'), {
+			'action': 'guardar', 'compromiso_id': commitment.pk,
+			'periodo': period.pk, 'descripcion': 'Compromiso actualizado',
+			'solicitante': 'Equipo', 'territorio': 'Norte',
+			'fecha': '2026-10-21', 'responsables': [self.admin.pk],
+			'estado': Compromiso.Estado.PENDIENTE, 'observaciones': '',
+		})
+		self.assertEqual(response.status_code, 302)
+		commitment.refresh_from_db()
+		self.assertEqual(commitment.descripcion, 'Compromiso actualizado')
+
+		response = self.client.post(reverse('delegado:home'), {
+			'action': 'eliminar', 'compromiso_id': commitment.pk,
+		})
+		self.assertEqual(response.status_code, 302)
+		self.assertFalse(Compromiso.objects.filter(pk=commitment.pk).exists())

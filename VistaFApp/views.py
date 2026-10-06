@@ -1,4 +1,4 @@
-from django.db.models import F, Sum
+from django.db.models import F, Q, Sum
 from django.shortcuts import render
 
 from AdminApp.models import Usuario
@@ -15,6 +15,7 @@ def home(request):
 	compromisos = Compromiso.objects.all()
 	evidencias = Evidencia.objects.filter(estado=Evidencia.Estado.PENDIENTE)
 	desempenos = Desempeno.objects.all()
+	query = request.GET.get('q', '').strip()
 
 	if request.user.delegacion_id:
 		delegation_id = request.user.delegacion_id
@@ -34,6 +35,15 @@ def home(request):
 		desempenos = desempenos.none()
 		scope_label = 'Sin delegación asignada'
 
+	if query:
+		desempenos = desempenos.filter(
+			Q(usuario__email__icontains=query)
+			| Q(usuario__first_name__icontains=query)
+			| Q(usuario__last_name__icontains=query)
+			| Q(item__nombre__icontains=query)
+			| Q(periodo__nombre__icontains=query)
+		)
+
 	summary = desempenos.values(
 		delegacion=F('usuario__delegacion__nombre'),
 		periodo_nombre=F('periodo__nombre'),
@@ -43,6 +53,8 @@ def home(request):
 	return render(request, 'VistaFApp/index.html', {
 		'sgr_role': 'Consulta',
 		'scope_label': scope_label,
+		'query': query,
+		'sidebar_modules': ('Búsqueda de información',),
 		'registro_count': registros.count(),
 		'compromiso_count': compromisos.count(),
 		'evidencia_count': evidencias.count(),
