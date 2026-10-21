@@ -1,22 +1,116 @@
 {% extends 'base.html' %}
-{% block title %}Administración | SGR{% endblock %}
+{% block title %}Usuarios | SGR{% endblock %}
 {% block page_title %}Administración de usuarios{% endblock %}
+
 {% block content %}
 <div class="dashboard-layout">
-{% include 'includes/role_sidebar.html' %}
-<div class="dashboard-main">
-<div class="metric-grid"><article class="metric"><span>Usuarios</span><strong>{{ user_count }}</strong></article><article class="metric"><span>Delegaciones</span><strong>{{ delegation_count }}</strong></article><article class="metric"><span>Cargos</span><strong>{{ position_count }}</strong></article></div>
-<section class="content-section split-layout"><div><p class="eyebrow">{% if editing_user %}EDICIÓN DE CUENTA{% else %}NUEVA CUENTA{% endif %}</p><h2>{% if editing_user %}Actualizar usuario{% else %}Crear usuario{% endif %}</h2><p class="section-note">La contraseña se guarda mediante el mecanismo seguro de Django. El cargo determina el panel al que puede acceder el usuario.</p>
-	<form method="post" data-loading novalidate>{% csrf_token %}{% if editing_user %}<input type="hidden" name="usuario_id" value="{{ editing_user.pk }}">{% endif %}{% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}<div class="form-grid">
-		{% for field in form %}<div class="mb-3 {% if field.name == 'roles' %}field-wide{% endif %}{% if field.name == 'is_active' %}form-check{% endif %}">{% if field.name == 'is_active' %}{{ field }} <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{% else %}<label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% endif %}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}
-	</div><button class="btn btn-primary" type="submit">{% if editing_user %}Guardar cambios{% else %}Crear cuenta{% endif %}</button>{% if editing_user %} <a class="btn btn-outline-secondary" href="{% url 'administracion:home' %}">Cancelar</a>{% endif %}</form></div>
-	<aside class="side-note"><span class="side-note-mark">i</span><h3>Acceso por cargo</h3><p>El panel disponible depende del cargo y la delegación asignados a cada cuenta.</p></aside>
-</section>
-<section class="content-section"><div class="section-head"><div><p class="eyebrow">DIRECTORIO</p><h2>Cuentas recientes</h2></div><span class="count-pill">{{ users|length }} mostrados</span></div>
-	<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Usuario</th><th>Delegación</th><th>Cargo</th><th>Roles asignados</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
-		{% for user in users %}<tr><td><strong>{{ user.get_full_name|default:user.email }}</strong><small class="d-block text-muted">{{ user.email }}</small></td><td>{{ user.delegacion|default:'—' }}</td><td>{{ user.cargo|default:'—' }}</td><td>{% for role in user.roles.all %}<span class="tag">{{ role.nombre }}</span>{% empty %}<span class="text-muted">Sin rol</span>{% endfor %}</td><td>{% if user.is_active %}<span class="status-dot">Activo</span>{% else %}<span class="status-dot status-off">Inactivo</span>{% endif %}</td><td><div class="d-flex flex-wrap gap-1"><a class="btn btn-sm btn-outline-primary" href="{% url 'administracion:home' %}?editar={{ user.pk }}">Editar</a>{% if user.pk != request.user.pk %}<form method="post" data-confirm="¿Eliminar esta cuenta? Solo se podrá eliminar si no tiene datos asociados.">{% csrf_token %}<input type="hidden" name="action" value="eliminar"><input type="hidden" name="usuario_id" value="{{ user.pk }}"><button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button></form>{% endif %}</div></td></tr>{% empty %}<tr><td colspan="6" class="empty-state">Todavía no hay usuarios registrados.</td></tr>{% endfor %}
-	</tbody></table></div>
-</section>
-</div>
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+    <div class="metric-grid">
+      <article class="metric"><span>Usuarios</span><strong>{{ user_count }}</strong></article>
+      <article class="metric"><span>Delegaciones</span><strong>{{ delegation_count }}</strong></article>
+      <article class="metric"><span>Cargos</span><strong>{{ position_count }}</strong></article>
+    </div>
+
+    <section class="content-section split-layout">
+      <div>
+        <p class="eyebrow">{% if editing_user %}EDICIÓN DE CUENTA{% else %}NUEVA CUENTA{% endif %}</p>
+        <h2>{% if editing_user %}Actualizar usuario{% else %}Crear usuario{% endif %}</h2>
+        <p class="section-note">La contraseña se guarda mediante el mecanismo seguro de Django. Asigna solo las delegaciones autorizadas para esta cuenta.</p>
+        <form method="post" data-loading data-loading-title="Guardando" novalidate>
+          {% csrf_token %}
+          {% if editing_user %}<input type="hidden" name="usuario_id" value="{{ editing_user.pk }}">{% endif %}
+          {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+          <div class="form-grid">
+            {% for field in form %}
+            <div class="mb-3 {% if field.name == 'roles' or field.name == 'delegaciones_autorizadas' %}field-wide{% endif %}{% if field.name == 'is_active' %}form-check{% endif %}">
+              {% if field.name == 'is_active' %}
+              {{ field }} <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {% else %}
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="required-mark" aria-hidden="true">*</span>{% endif %}</label>
+              {{ field }}
+              {% endif %}
+              {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+              {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+            {% endfor %}
+          </div>
+          <button class="btn btn-primary" type="submit">{% if editing_user %}Guardar cambios{% else %}Crear usuario{% endif %}</button>
+          {% if editing_user %}<a class="btn btn-outline-secondary" href="{% url 'administracion:home' %}{% if pagination_query %}?{{ pagination_query }}{% endif %}">Cancelar</a>{% endif %}
+        </form>
+      </div>
+      <aside class="side-note">
+        <span class="side-note-mark">i</span>
+        <h3>Acceso por cargo y delegación</h3>
+        <p>Los módulos se autorizan en el servidor. El usuario puede cambiar su contexto solo entre las delegaciones asignadas.</p>
+      </aside>
+    </section>
+
+    <section class="content-section">
+      <div class="section-head">
+        <div><p class="eyebrow">DIRECTORIO</p><h2>Usuarios</h2></div>
+        <a class="btn btn-outline-primary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}export=excel">Exportar a Excel</a>
+      </div>
+      <form method="get" class="maintainer-filters" data-loading data-loading-title="Buscando">
+        <label class="visually-hidden" for="user-search">Buscar usuarios</label>
+        <input id="user-search" class="form-control" type="search" name="q" value="{{ query }}" placeholder="Buscar por nombre, correo, rol o delegación">
+        <label class="visually-hidden" for="user-status">Filtrar por estado</label>
+        <select id="user-status" class="form-select" name="estado">
+          <option value="">Todos los estados</option>
+          <option value="activo"{% if status == 'activo' %} selected{% endif %}>Activo</option>
+          <option value="inactivo"{% if status == 'inactivo' %} selected{% endif %}>Inactivo</option>
+        </select>
+        <label class="visually-hidden" for="user-delegation">Filtrar por delegación</label>
+        <select id="user-delegation" class="form-select" name="delegacion">
+          <option value="">Todas las delegaciones</option>
+          {% for delegation in delegations %}<option value="{{ delegation.pk }}"{% if delegation_id == delegation.pk|stringformat:'s' %} selected{% endif %}>{{ delegation.codigo }} · {{ delegation.nombre }}</option>{% endfor %}
+        </select>
+        <button class="btn btn-primary" type="submit">Buscar</button>
+        {% if has_filters %}<a class="btn btn-outline-secondary" href="{% url 'administracion:home' %}">Limpiar</a>{% endif %}
+      </form>
+      <p class="results-count">{% if page_obj.paginator.count %}Mostrando {{ page_obj.start_index }} a {{ page_obj.end_index }} de {{ page_obj.paginator.count }}{% else %}Mostrando 0 a 0 de 0{% endif %}</p>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead><tr><th>Usuario</th><th>Delegación principal</th><th>Delegaciones autorizadas</th><th>Cargo</th><th>Roles</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <tbody>
+            {% for user in users %}
+            <tr>
+              <td><strong>{{ user.get_full_name|default:user.email }}</strong><small class="d-block text-muted">{{ user.email }}</small></td>
+              <td>{{ user.delegacion|default:'—' }}</td>
+              <td>{% for delegation in user.delegaciones_autorizadas.all %}<span class="tag">{{ delegation.nombre }}</span>{% empty %}<span class="text-muted">Ninguna</span>{% endfor %}</td>
+              <td>{{ user.cargo|default:'—' }}</td>
+              <td>{% for role in user.roles.all %}<span class="tag">{{ role.nombre }}</span>{% empty %}<span class="text-muted">Sin rol</span>{% endfor %}</td>
+              <td>{% if user.is_active %}<span class="status-dot">Activo</span>{% else %}<span class="status-dot status-off">Inactivo</span>{% endif %}</td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <a class="btn btn-sm btn-outline-primary" href="?editar={{ user.pk }}{% if pagination_query %}&amp;{{ pagination_query }}{% endif %}">Editar</a>
+                  {% if user.pk != request.user.pk and not user.is_superuser %}
+                  <form method="post" data-confirm="¿Cambiar el estado de esta cuenta?">
+                    {% csrf_token %}<input type="hidden" name="action" value="cambiar_estado"><input type="hidden" name="usuario_id" value="{{ user.pk }}">
+                    <button class="btn btn-sm btn-outline-secondary" type="submit">{% if user.is_active %}Desactivar{% else %}Activar{% endif %}</button>
+                  </form>
+                  <form method="post" data-confirm="¿Eliminar esta cuenta? Solo se podrá eliminar si no tiene información asociada.">
+                    {% csrf_token %}<input type="hidden" name="action" value="eliminar"><input type="hidden" name="usuario_id" value="{{ user.pk }}">
+                    <button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="empty-state">{% if has_filters and base_user_count %}No hay coincidencias para los filtros aplicados.{% else %}Todavía no hay usuarios registrados.{% endif %}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if page_obj.paginator.num_pages > 1 %}
+      <nav class="maintainer-pagination" aria-label="Paginación de usuarios">
+        {% if page_obj.has_previous %}<a class="btn btn-sm btn-outline-secondary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Anterior</a>{% endif %}
+        <span>Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}<a class="btn btn-sm btn-outline-secondary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Siguiente</a>{% endif %}
+      </nav>
+      {% endif %}
+    </section>
+  </div>
 </div>
 {% endblock %}

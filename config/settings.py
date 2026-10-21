@@ -20,7 +20,14 @@ ALLOWED_HOSTS = [
     ).split(',')
     if host.strip()
 ]
-CSRF_TRUSTED_ORIGINS = ['http://3.228.118.5','https://3.228.118.5',]
+default_csrf_trusted_origins = 'http://3.228.118.5,https://3.228.118.5'
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        'CSRF_TRUSTED_ORIGINS', default_csrf_trusted_origins,
+    ).split(',')
+    if origin.strip()
+]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -62,6 +69,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'config.context_processors.common_header',
             ],
         },
     },
@@ -152,8 +160,19 @@ DEFAULT_FROM_EMAIL = os.environ.get(
 )
 
 PASSWORD_RESET_TIMEOUT = 3600
-PASSWORD_RESET_RATE_LIMIT = 5
-PASSWORD_RESET_RATE_WINDOW = 3600
+PASSWORD_RESET_RATE_LIMIT = int(os.environ.get('PASSWORD_RESET_RATE_LIMIT', '5'))
+PASSWORD_RESET_RATE_WINDOW = int(
+    os.environ.get('PASSWORD_RESET_RATE_WINDOW', '3600')
+)
+PASSWORD_RESET_CODE_TTL_SECONDS = int(
+    os.environ.get('PASSWORD_RESET_CODE_TTL_SECONDS', '600')
+)
+PASSWORD_RESET_CODE_RESEND_SECONDS = int(
+    os.environ.get('PASSWORD_RESET_CODE_RESEND_SECONDS', '45')
+)
+PASSWORD_RESET_CODE_MAX_ATTEMPTS = int(
+    os.environ.get('PASSWORD_RESET_CODE_MAX_ATTEMPTS', '5')
+)
 PASSWORD_RESET_DOMAIN = os.environ.get(
     'PASSWORD_RESET_DOMAIN', '3.228.118.5'
 )

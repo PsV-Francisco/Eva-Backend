@@ -1,17 +1,28 @@
 from django.contrib import messages
 from django.db import transaction
+from django.db.models import Q
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.views.decorators.http import require_GET
 
 from AdminApp.audit import registrar_historial
-from AdminApp.models import ParametroSistema
+from AdminApp.models import ParametroSistema, SubAtencion
 from config.decorators import cargo_required
+from config.delegations import active_delegation
 from CoordinadorApp.models import Desempeno, Periodo
 from CoordinadorApp.services import resumen_cumplimiento
 from DelegadoApp.models import Agenda, Compromiso
 from DelegadoApp.forms import CompromisoEstadoForm
 from DelegadoApp.services import actualizar_estado_compromiso
 from FuncionarioApp.forms import CasoSocialForm, GestionAtencionForm, RegistroForm
-from FuncionarioApp.models import AtencionSocial, CasoSocial, GestionAtencion, Registro
+from FuncionarioApp.models import (
+    AtencionSocial,
+    CasoSocial,
+    GestionAtencion,
+    Registro,
+    Solicitante,
+)
 from SupervisorApp.models import Evidencia
 
 
@@ -24,6 +35,21 @@ def _registro_snapshot(registro):
         'descripcion': registro.descripcion,
         'estado': registro.estado,
     }
+
+
+def _cases_for_user(user, delegation):
+    cases = CasoSocial.objects.filter(
+        atencion_social__usuario=user,
+    )
+    if delegation is None:
+        return cases.none()
+    return cases.filter(
+        Q(atencion_social__delegacion=delegation)
+        | Q(
+            atencion_social__delegacion__isnull=True,
+            atencion_social__usuario__delegacion=delegation,
+        )
+    )
 
 
 @cargo_required('funcionario')
@@ -148,17 +174,30 @@ def cumplimiento(request):
 
 @cargo_required('funcionario')
 def atencion_social(request):
-    case_form = CasoSocialForm()
+    delegation = active_delegation(request)
+    case_form = CasoSocialForm(delegation=delegation)
     attention_form = GestionAtencionForm()
     selected_case = None
     if request.method == 'POST':
         action = request.POST.get('action')
         if action == 'crear_caso':
-            case_form = CasoSocialForm(request.POST)
-            if case_form.is_valid():
+            case_form = CasoSocialForm(request.POST, delegation=delegation)
+            if delegation is None:
+                messages.error(request, 'Selecciona una delegación autorizada antes de registrar una atención.')
+            elif case_form.is_valid():
                 with transaction.atomic():
                     case_record = case_form.save(commit=False)
                     case_record.usuario = request.user
+                    case_record.solicitante = case_form.resolve_solicitante()
+                    case_record.delegacion = delegation
+                    case_record.tipo_atencion_catalogo = case_form.cleaned_data[
+                        'tipo_atencion_catalogo'
+                    ]
+                    case_record.sub_atencion = case_form.cleaned_data['sub_atencion']
+                    case_record.tipo_atencion = case_record.tipo_atencion_catalogo.nombre
+                    case_record.descripcion = case_form.cleaned_data['descripcion'].strip()
+                    case_record.fecha = timezone.localdate()
+                    case_record.full_clean()
                     case_record.save()
                     case = CasoSocial.objects.create(atencion_social=case_record)
                     registrar_historial(
@@ -168,7 +207,10 @@ def atencion_social(request):
                         after={
                             'codigo': str(case.codigo),
                             'usuario_id': request.user.pk,
-                            'tipo_atencion': case_record.tipo_atencion,
+                            'delegacion_id': delegation.pk,
+                            'solicitante_id': case_record.solicitante_id,
+                            'tipo_atencion_id': case_record.tipo_atencion_catalogo_id,
+                            'sub_atencion_id': case_record.sub_atencion_id,
                         },
                     )
                 messages.success(request, f'Caso social creado: {case.codigo}.')
@@ -176,9 +218,10 @@ def atencion_social(request):
             messages.error(request, 'Revisa los datos del caso social.')
         elif action == 'agregar_atencion':
             case = get_object_or_404(
-                CasoSocial.objects.select_related('atencion_social'),
+                _cases_for_user(request.user, delegation).select_related(
+                    'atencion_social',
+                ),
                 pk=request.POST.get('caso_id'),
-                atencion_social__usuario=request.user,
             )
             selected_case = case
             attention_form = GestionAtencionForm(request.POST, request.FILES)
@@ -223,9 +266,14 @@ def atencion_social(request):
         else:
             messages.error(request, 'La acción solicitada no es válida.')
 
-    cases = CasoSocial.objects.filter(
-        atencion_social__usuario=request.user,
-    ).select_related('atencion_social').prefetch_related(
+    cases = _cases_for_user(request.user, delegation).select_related(
+        'atencion_social',
+        'atencion_social__solicitante',
+        'atencion_social__delegacion',
+        'atencion_social__tipo_atencion_catalogo',
+        'atencion_social__sub_atencion',
+        'atencion_social__usuario',
+    ).prefetch_related(
         'atencion_social__gestiones__evidencias',
     )
     return render(request, 'FuncionarioApp/atencion_social.html', {
@@ -241,18 +289,48 @@ def atencion_social(request):
         'cases': cases,
         'case_count': cases.count(),
         'selected_case': selected_case,
+        'active_delegation': delegation,
     })
 
 
 @cargo_required('funcionario')
+@require_GET
+def buscar_solicitantes(request):
+    delegation = active_delegation(request)
+    query = request.GET.get('q', '').strip()
+    if delegation is None or len(query) < 2:
+        return JsonResponse({'results': []})
+
+    results = Solicitante.objects.filter(delegacion=delegation).filter(
+        Q(identificador__icontains=query) | Q(nombre__icontains=query),
+    ).order_by('nombre', 'identificador').values(
+        'pk', 'identificador', 'nombre',
+    )[:10]
+    return JsonResponse({'results': list(results)})
+
+
+@cargo_required('funcionario')
+@require_GET
+def subatenciones_tipo(request, tipo_id):
+    subattentions = SubAtencion.objects.filter(
+        tipo_atencion_id=tipo_id,
+        tipo_atencion__estado='activo',
+        estado=SubAtencion.Estado.ACTIVO,
+    ).order_by('nombre').values('pk', 'nombre', 'codigo')
+    return JsonResponse({'results': list(subattentions)})
+
+
+@cargo_required('funcionario')
 def agenda_colectiva(request):
+    delegation = active_delegation(request)
+    delegation_id = delegation.pk if delegation else None
     if request.method == 'POST' and request.POST.get('action') == 'estado_compromiso':
-        if not request.user.delegacion_id:
+        if not delegation_id:
             messages.error(request, 'Tu cuenta no tiene una delegación asignada.')
             return redirect('funcionario:agenda_colectiva')
         commitment = get_object_or_404(
             Compromiso.objects.select_related('agenda', 'agenda__periodo').filter(
-                agenda__delegacion_id=request.user.delegacion_id,
+                agenda__delegacion_id=delegation_id,
                 responsables=request.user,
             ),
             pk=request.POST.get('compromiso_id'),
@@ -289,14 +367,15 @@ def agenda_colectiva(request):
         selected_period = periods.first()
     registros = Registro.objects.none()
     commitments = Compromiso.objects.none()
-    if request.user.delegacion_id and selected_period:
+    if delegation_id and selected_period:
         registros = Registro.objects.filter(
-            autor__delegacion_id=request.user.delegacion_id,
+            Q(autor__delegacion_id=delegation_id)
+            | Q(autor__delegaciones_autorizadas__pk=delegation_id),
             periodo=selected_period,
             incluir_en_agenda=True,
-        ).select_related('autor', 'item').order_by('-fecha')
+        ).select_related('autor', 'item').distinct().order_by('-fecha')
         commitments = Compromiso.objects.filter(
-            agenda__delegacion_id=request.user.delegacion_id,
+            agenda__delegacion_id=delegation_id,
             agenda__periodo=selected_period,
         ).select_related('agenda', 'agenda__periodo').prefetch_related('responsables')
     return render(request, 'FuncionarioApp/agenda_colectiva.html', {
@@ -311,5 +390,5 @@ def agenda_colectiva(request):
         'periodo_seleccionado': selected_period,
         'registros': registros,
         'compromisos': commitments,
-        'delegation_assigned': bool(request.user.delegacion_id),
+        'delegation_assigned': bool(delegation_id),
     })

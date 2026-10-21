@@ -1,4 +1,5 @@
 from tempfile import TemporaryDirectory
+from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -34,7 +35,7 @@ class RolePortalTests(TestCase):
 			('supervisor:home', 'supervisor', 'Validar evidencias'),
 			('delegado:home', 'delegado', 'Resumen de la delegación'),
 			('coordinador:home', 'coordinador', 'Metas e indicadores'),
-			('administracion:home', 'administrador', 'Gestión de la medición'),
+			('administracion:home', 'administrador', 'Usuarios'),
 			('vistaf:home', 'consulta', 'Búsqueda de información'),
 		)
 		for index, (route, cargo_name, sidebar_label) in enumerate(route_cargos):
@@ -74,6 +75,94 @@ class RolePortalTests(TestCase):
 				response = client.get(reverse(route))
 				self.assertEqual(response.status_code, 302)
 				self.assertTrue(response.url.startswith('/?next='))
+
+	def test_switching_delegation_uses_only_authorized_options(self):
+		primary = Delegacion.objects.create(nombre='Delegación principal')
+		secondary = Delegacion.objects.create(nombre='Delegación secundaria')
+		unauthorized = Delegacion.objects.create(nombre='Delegación no autorizada')
+		user = get_user_model().objects.create_user(
+			email='multi-delegacion@sgr.test',
+			password='Sgr-Test-Password-418!',
+			cargo=Cargo.objects.get(nombre='administrador'),
+			delegacion=primary,
+		)
+		user.delegaciones_autorizadas.add(secondary)
+		client = Client()
+		client.force_login(user)
+
+		response = client.get(reverse('administracion:home'))
+		self.assertContains(response, f'{primary.codigo}</strong>')
+		self.assertContains(response, primary.nombre)
+		self.assertContains(response, secondary.nombre)
+		header_selector = response.content.decode().split(
+			'<select id="active-delegation"',
+		)[1].split('</select>', 1)[0]
+		self.assertNotIn(unauthorized.nombre, header_selector)
+
+		response = client.post(reverse('select_active_delegation'), {
+			'delegacion': secondary.pk,
+			'next': reverse('administracion:home'),
+		})
+		self.assertRedirects(response, reverse('administracion:home'))
+		response = client.get(reverse('administracion:home'))
+		self.assertContains(response, f'{secondary.codigo}</strong>')
+		self.assertContains(response, secondary.nombre)
+
+		response = client.post(reverse('select_active_delegation'), {
+			'delegacion': unauthorized.pk,
+			'next': reverse('administracion:home'),
+		})
+		self.assertRedirects(response, reverse('administracion:home'))
+		self.assertEqual(
+			client.session['active_delegation_id'],
+			secondary.pk,
+		)
+
+	def test_switching_delegation_changes_delegation_scoped_lists(self):
+		primary = Delegacion.objects.create(nombre='Delegación de origen')
+		secondary = Delegacion.objects.create(nombre='Delegación seleccionada')
+		user = get_user_model().objects.create_user(
+			email='delegado-multiple@sgr.test',
+			password='Sgr-Test-Password-418!',
+			cargo=Cargo.objects.create(nombre='delegado'),
+			delegacion=primary,
+		)
+		user.delegaciones_autorizadas.add(secondary)
+		period = Periodo.objects.create(
+			nombre='Período selector delegación',
+			fecha_inicio=date.today(),
+			fecha_fin=date.today() + timedelta(days=30),
+		)
+		primary_agenda = Agenda.objects.create(
+			delegacion=primary, periodo=period,
+		)
+		secondary_agenda = Agenda.objects.create(
+			delegacion=secondary, periodo=period,
+		)
+		Compromiso.objects.create(
+			agenda=primary_agenda,
+			descripcion='Compromiso delegación origen',
+			fecha=date.today(),
+		)
+		Compromiso.objects.create(
+			agenda=secondary_agenda,
+			descripcion='Compromiso delegación seleccionada',
+			fecha=date.today(),
+		)
+		client = Client()
+		client.force_login(user)
+
+		response = client.get(reverse('delegado:home'))
+		self.assertContains(response, 'Compromiso delegación origen')
+		self.assertNotContains(response, 'Compromiso delegación seleccionada')
+
+		client.post(reverse('select_active_delegation'), {
+			'delegacion': secondary.pk,
+			'next': reverse('delegado:home'),
+		})
+		response = client.get(reverse('delegado:home'))
+		self.assertContains(response, 'Compromiso delegación seleccionada')
+		self.assertNotContains(response, 'Compromiso delegación origen')
 
 	def test_role_does_not_grant_access_without_matching_cargo(self):
 		user = get_user_model().objects.create_user(

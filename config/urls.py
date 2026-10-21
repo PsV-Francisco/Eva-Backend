@@ -2,42 +2,42 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
-from django.urls import include, path, reverse_lazy
-from . import password_reset, views
+from django.urls import include, path
+from . import delegations, password_reset, views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path(
         '',
-        auth_views.LoginView.as_view(template_name='config/index.html'),
+        auth_views.LoginView.as_view(
+            template_name='config/index.html',
+            authentication_form=password_reset.FormularioAcceso,
+        ),
         name='login',
     ),
     path(
         'accounts/password-reset/',
-        password_reset.PasswordResetView.as_view(
-            template_name='auth/password_reset_form.html',
-            email_template_name='auth/password_reset_email.html',
-            subject_template_name='auth/password_reset_subject.txt',
-            form_class=password_reset.SolicitudRecuperacionForm,
-            success_url=reverse_lazy('password_reset_done'),
-            extra_email_context={'domain': settings.PASSWORD_RESET_DOMAIN},
-        ),
+        password_reset.solicitar_recuperacion,
         name='password_reset',
     ),
     path(
+        'accounts/password-reset/code/',
+        password_reset.verificar_codigo,
+        name='password_reset_code',
+    ),
+    path(
+        'accounts/password-reset/new/',
+        password_reset.nueva_contrasena,
+        name='password_reset_new',
+    ),
+    path(
         'accounts/password-reset/done/',
-        auth_views.PasswordResetDoneView.as_view(
-            template_name='auth/password_reset_done.html',
-        ),
+        password_reset.verificar_codigo,
         name='password_reset_done',
     ),
     path(
         'accounts/reset/<uidb64>/<token>/',
-        password_reset.ConfirmacionRecuperacionView.as_view(
-            template_name='auth/password_reset_confirm.html',
-            form_class=password_reset.NuevaContrasenaForm,
-            success_url=reverse_lazy('password_reset_complete'),
-        ),
+        password_reset.enlace_recuperacion_obsoleto,
         name='password_reset_confirm',
     ),
     path(
@@ -48,6 +48,11 @@ urlpatterns = [
         name='password_reset_complete',
     ),
     path('inicio/', views.home_redirect, name='home'),
+    path(
+        'delegacion/activa/',
+        delegations.select_active_delegation,
+        name='select_active_delegation',
+    ),
     path('accounts/logout/',auth_views.LogoutView.as_view(next_page='/'),name='logout'),
     path('funcionario/', include('FuncionarioApp.urls')),
     path('supervisor/', include('SupervisorApp.urls')),

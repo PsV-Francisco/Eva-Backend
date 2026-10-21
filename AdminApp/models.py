@@ -29,8 +29,19 @@ class UsuarioManager(BaseUserManager):
 
 # Modelo Delegación 
 class Delegacion(models.Model):
+    class Estado(models.TextChoices):
+        ACTIVA = 'activa', 'Activa'
+        INACTIVA = 'inactiva', 'Inactiva'
+
+    codigo = models.CharField(max_length=20, unique=True, null=True)
     nombre = models.CharField(max_length=120, unique=True)
-    estado = models.CharField(max_length=20, default='activa')
+    direccion = models.CharField(max_length=255, blank=True)
+    comuna = models.CharField(max_length=120, blank=True)
+    estado = models.CharField(
+        max_length=20,
+        choices=Estado.choices,
+        default=Estado.ACTIVA,
+    )
 
     class Meta:
         db_table = "delegación"
@@ -40,6 +51,14 @@ class Delegacion(models.Model):
 
     def __str__(self):
         return self.nombre
+
+    def save(self, *args, **kwargs):
+        if not self.codigo and self.pk is None:
+            super().save(*args, **kwargs)
+            self.codigo = f'DEL-{self.pk:04d}'
+            super().save(using=kwargs.get('using'), update_fields=['codigo'])
+            return
+        return super().save(*args, **kwargs)
 
 
 #Modelo del Cargo
@@ -61,8 +80,27 @@ class Cargo(models.Model):
 
 #Modelo del Rol
 class Rol(models.Model):
+    class Alcance(models.TextChoices):
+        GLOBAL = 'global', 'Global'
+        DELEGACION = 'delegacion', 'Delegación'
+
+    class Estado(models.TextChoices):
+        ACTIVO = 'activo', 'Activo'
+        INACTIVO = 'inactivo', 'Inactivo'
+
     nombre = models.CharField(max_length=80, unique=True)
     permisos = models.CharField(blank=True,max_length=1000)
+    descripcion = models.TextField(blank=True)
+    alcance = models.CharField(
+        max_length=20,
+        choices=Alcance.choices,
+        default=Alcance.GLOBAL,
+    )
+    estado = models.CharField(
+        max_length=20,
+        choices=Estado.choices,
+        default=Estado.ACTIVO,
+    )
 
     class Meta:
         db_table = "rol"
@@ -79,6 +117,9 @@ class Usuario(AbstractUser):
     email = models.EmailField(unique=True)
     objects = UsuarioManager()
     delegacion = models.ForeignKey(Delegacion, on_delete=models.PROTECT,related_name='usuarios',null=True,blank=True)
+    delegaciones_autorizadas = models.ManyToManyField(
+        Delegacion, related_name='usuarios_autorizados', blank=True,
+    )
     cargo = models.ForeignKey(Cargo, on_delete=models.PROTECT, related_name='usuarios', null=True, blank=True)
     roles = models.ManyToManyField(Rol, related_name='usuarios', blank=True)
 
@@ -222,6 +263,63 @@ class Catalogo(models.Model):
         return ' / '.join(value for value in values if value)
 
 
+class TipoAtencion(models.Model):
+    class Estado(models.TextChoices):
+        ACTIVO = 'activo', 'Activo'
+        INACTIVO = 'inactivo', 'Inactivo'
+
+    codigo = models.CharField(max_length=20, unique=True)
+    nombre = models.CharField(max_length=120, unique=True)
+    descripcion = models.TextField(blank=True)
+    estado = models.CharField(
+        max_length=20,
+        choices=Estado.choices,
+        default=Estado.ACTIVO,
+    )
+
+    class Meta:
+        ordering = ['nombre']
+        verbose_name = 'tipo de atención'
+        verbose_name_plural = 'tipos de atención'
+
+    def __str__(self):
+        return self.nombre
+
+
+class SubAtencion(models.Model):
+    class Estado(models.TextChoices):
+        ACTIVO = 'activo', 'Activo'
+        INACTIVO = 'inactivo', 'Inactivo'
+
+    codigo = models.CharField(max_length=20, unique=True)
+    nombre = models.CharField(max_length=120)
+    descripcion = models.TextField(blank=True)
+    tipo_atencion = models.ForeignKey(
+        TipoAtencion,
+        on_delete=models.PROTECT,
+        related_name='subatenciones',
+    )
+    estado = models.CharField(
+        max_length=20,
+        choices=Estado.choices,
+        default=Estado.ACTIVO,
+    )
+
+    class Meta:
+        ordering = ['tipo_atencion__nombre', 'nombre']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tipo_atencion', 'nombre'],
+                name='sub_atencion_nombre_unico_por_tipo',
+            ),
+        ]
+        verbose_name = 'sub atención'
+        verbose_name_plural = 'sub atenciones'
+
+    def __str__(self):
+        return f'{self.tipo_atencion}: {self.nombre}'
+
+
 #Modelo del Historial
 class Historial(models.Model):
     autor = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT, related_name='historiales')
@@ -248,6 +346,7 @@ class Historial(models.Model):
 class PasswordResetAuditEvent(models.Model):
     class Action(models.TextChoices):
         REQUEST = 'request', 'Solicitud de recuperación'
+        CODE_VALIDATION = 'code_validation', 'Validación de código'
         PASSWORD_CHANGED = 'password_changed', 'Contraseña actualizada'
 
     user = models.ForeignKey(
@@ -281,6 +380,27 @@ class PasswordResetAuditEvent(models.Model):
 
     def __str__(self):
         return f'{self.get_action_display()} ({self.created_at:%Y-%m-%d %H:%M})'
+
+
+class PasswordResetCode(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='password_reset_code',
+    )
+    email_fingerprint = models.CharField(max_length=64, db_index=True)
+    code_hash = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    last_sent_at = models.DateTimeField()
+    failed_attempts = models.PositiveSmallIntegerField(default=0)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'password_reset_code'
+        verbose_name = 'código de recuperación'
+        verbose_name_plural = 'códigos de recuperación'
 
 
 class PasswordResetRateLimitKey(models.Model):

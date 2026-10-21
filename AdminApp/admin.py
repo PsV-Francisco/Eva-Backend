@@ -11,6 +11,8 @@ from .models import (
 	ParametroSistema,
 	PasswordResetAuditEvent,
 	Rol,
+	SubAtencion,
+	TipoAtencion,
 	Usuario,
 )
 
@@ -74,9 +76,9 @@ class UsuarioAdmin(UserAdmin):
 
 @admin.register(Delegacion)
 class DelegacionAdmin(admin.ModelAdmin):
-	list_display = ('nombre', 'estado')
+	list_display = ('codigo', 'nombre', 'comuna', 'estado')
 	list_filter = ('estado',)
-	search_fields = ('nombre',)
+	search_fields = ('codigo', 'nombre', 'direccion', 'comuna')
 
 
 @admin.register(Cargo)
@@ -87,8 +89,23 @@ class CargoAdmin(admin.ModelAdmin):
 
 @admin.register(Rol)
 class RolAdmin(admin.ModelAdmin):
-	list_display = ('nombre',)
-	search_fields = ('nombre',)
+	list_display = ('nombre', 'alcance', 'estado')
+	list_filter = ('alcance', 'estado')
+	search_fields = ('nombre', 'descripcion', 'permisos')
+
+
+@admin.register(TipoAtencion)
+class TipoAtencionAdmin(admin.ModelAdmin):
+	list_display = ('codigo', 'nombre', 'estado')
+	list_filter = ('estado',)
+	search_fields = ('codigo', 'nombre', 'descripcion')
+
+
+@admin.register(SubAtencion)
+class SubAtencionAdmin(admin.ModelAdmin):
+	list_display = ('codigo', 'nombre', 'tipo_atencion', 'estado')
+	list_filter = ('tipo_atencion', 'estado')
+	search_fields = ('codigo', 'nombre', 'tipo_atencion__nombre', 'descripcion')
 
 
 @admin.register(Catalogo)

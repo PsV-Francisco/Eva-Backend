@@ -1,6 +1,6 @@
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import OuterRef, Subquery
+from django.db.models import OuterRef, Q, Subquery
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404, redirect, render
 from decimal import Decimal
@@ -8,6 +8,7 @@ from decimal import Decimal
 from AdminApp.audit import registrar_historial
 from AdminApp.models import ParametroSistema, Usuario
 from config.decorators import cargo_required
+from config.delegations import active_delegation
 from CoordinadorApp.models import Desempeno, Periodo
 from CoordinadorApp.services import cumplimiento_por_usuario
 from DelegadoApp.forms import CompromisoEstadoForm, CompromisoForm
@@ -18,7 +19,8 @@ from FuncionarioApp.models import Registro
 
 @cargo_required('delegado')
 def home(request):
-    delegation_id = request.user.delegacion_id
+    delegation = active_delegation(request)
+    delegation_id = delegation.pk if delegation else None
     commitments = Compromiso.objects.none()
     if delegation_id:
         commitments = Compromiso.objects.filter(
@@ -101,7 +103,8 @@ def home(request):
             return redirect('delegado:home')
 
         form = CompromisoForm(
-            request.POST, user=request.user, instance=commitment,
+            request.POST, user=request.user, delegation=delegation,
+            instance=commitment,
         )
         if form.is_valid():
             period = form.cleaned_data['periodo']
@@ -154,7 +157,9 @@ def home(request):
     else:
         edit_id = request.GET.get('editar')
         commitment = get_object_or_404(commitments, pk=edit_id) if edit_id else None
-        form = CompromisoForm(instance=commitment, user=request.user)
+        form = CompromisoForm(
+            instance=commitment, user=request.user, delegation=delegation,
+        )
 
     return render(request, 'DelegadoApp/index.html', {
         'sgr_role': 'Delegación', 'form': form, 'commitments': commitments[:30],
@@ -169,7 +174,8 @@ def home(request):
 
 @cargo_required('delegado')
 def resumen(request):
-    delegation_id = request.user.delegacion_id
+    delegation = active_delegation(request)
+    delegation_id = delegation.pk if delegation else None
     period_id = request.GET.get('periodo', '')
     selected_period = (
         Periodo.objects.filter(pk=int(period_id)).first()
@@ -205,10 +211,11 @@ def resumen(request):
         periodo=selected_period,
     ).order_by('-fecha', '-creado').values('fecha')[:1]
     users = list(Usuario.objects.filter(
-        delegacion_id=delegation_id,
+        Q(delegacion_id=delegation_id)
+        | Q(delegaciones_autorizadas__pk=delegation_id),
         is_active=True,
         cargo__nombre__iexact='funcionario',
-    ).annotate(
+    ).distinct().annotate(
         ultimo_registro=Subquery(last_description),
         fecha_ultimo_registro=Subquery(last_date),
     ).order_by('last_name', 'first_name', 'email'))

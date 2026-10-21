@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+{% block title %}{{ maintainer_title }} | SGR{% endblock %}
+{% block page_title %}{{ maintainer_title }}{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+    {% if is_meta_maintainer %}
+    <p><a class="auth-link" href="{% url 'administracion:items' %}">Volver a Ítems y metas</a></p>
+    {% endif %}
+    <section class="content-section split-layout">
+      <div>
+        <p class="eyebrow">{% if editing_object %}EDICIÓN{% else %}NUEVO REGISTRO{% endif %}</p>
+        <h2>{% if editing_object %}Editar registro{% else %}Crear registro{% endif %}</h2>
+        <form method="post" data-loading data-loading-title="Guardando">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="guardar">
+          {% if editing_object %}<input type="hidden" name="object_id" value="{{ editing_object.pk }}">{% endif %}
+          {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+          <div class="form-grid">
+            {% for field in form %}
+            <div class="mb-3 {% if field.field.widget.allow_multiple_selected %}field-wide{% endif %}{% if field.field.widget.input_type == 'checkbox' %}form-check{% endif %}">
+              {% if field.field.widget.input_type == 'checkbox' %}
+              {{ field }} <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="required-mark" aria-hidden="true">*</span>{% endif %}</label>
+              {% else %}
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="required-mark" aria-hidden="true">*</span>{% endif %}</label>
+              {{ field }}
+              {% endif %}
+              {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+              {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+            {% endfor %}
+          </div>
+          <button class="btn btn-primary" type="submit">{% if editing_object %}Guardar cambios{% else %}Crear{% endif %}</button>
+          {% if editing_object %}<a class="btn btn-outline-secondary" href="{% url route_name %}{% if pagination_query %}?{{ pagination_query }}{% endif %}">Cancelar</a>{% endif %}
+        </form>
+      </div>
+      <aside class="side-note">
+        <span class="side-note-mark">i</span>
+        <h3>Registros relacionados</h3>
+        {% if is_meta_maintainer %}
+        <p>Las metas corresponden a un usuario, un ítem y un período. No se permite eliminar una meta que ya tenga avance.</p>
+        {% else %}
+        <p>Los registros con información asociada se conservan mediante desactivación. Los cambios se registran en auditoría.</p>
+        {% endif %}
+      </aside>
+    </section>
+
+    <section class="content-section">
+      <div class="section-head">
+        <div><p class="eyebrow">DIRECTORIO</p><h2>Registros</h2></div>
+        <div class="maintainer-actions">
+          {% if is_item_maintainer %}<a class="btn btn-outline-secondary" href="{% url 'administracion:metas' %}">Administrar metas</a>{% endif %}
+          <a class="btn btn-outline-primary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}export=excel">Exportar a Excel</a>
+        </div>
+      </div>
+
+      <form method="get" class="maintainer-filters" data-loading data-loading-title="Buscando">
+        <label class="visually-hidden" for="maintainer-search">Buscar</label>
+        <input id="maintainer-search" class="form-control" type="search" name="q" value="{{ query }}" placeholder="Buscar registros">
+        {% if status_options %}
+        <label class="visually-hidden" for="maintainer-status">Filtrar por estado</label>
+        <select id="maintainer-status" class="form-select" name="estado">
+          <option value="">Todos los estados</option>
+          {% for value, label in status_options %}<option value="{{ value }}"{% if status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        {% endif %}
+        <button class="btn btn-primary" type="submit">Buscar</button>
+        {% if has_filters %}<a class="btn btn-outline-secondary" href="{% url route_name %}">Limpiar</a>{% endif %}
+      </form>
+
+      <p class="results-count">
+        {% if page_obj.paginator.count %}Mostrando {{ page_obj.start_index }} a {{ page_obj.end_index }} de {{ page_obj.paginator.count }}{% else %}Mostrando 0 a 0 de 0{% endif %}
+      </p>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead><tr>{% for column in columns %}<th>{{ column }}</th>{% endfor %}<th>Acciones</th></tr></thead>
+          <tbody>
+            {% for row in rows %}
+            <tr>
+              {% for cell in row.values %}<td>{{ cell|default:'—' }}</td>{% endfor %}
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <a class="btn btn-sm btn-outline-primary" href="?editar={{ row.object.pk }}{% if pagination_query %}&amp;{{ pagination_query }}{% endif %}">Editar</a>
+                  {% if has_status %}
+                  <form method="post" data-loading data-loading-title="Actualizando estado">
+                    {% csrf_token %}<input type="hidden" name="action" value="cambiar_estado"><input type="hidden" name="object_id" value="{{ row.object.pk }}">
+                    <button class="btn btn-sm btn-outline-secondary" type="submit">Activar / desactivar</button>
+                  </form>
+                  {% endif %}
+                  {% if row.can_delete %}
+                  <form method="post" data-confirm="¿Eliminar este registro? La acción se guardará en auditoría.">
+                    {% csrf_token %}<input type="hidden" name="action" value="eliminar"><input type="hidden" name="object_id" value="{{ row.object.pk }}">
+                    <button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="{{ total_columns }}" class="empty-state">{% if has_filters and base_count %}No hay coincidencias para los filtros aplicados.{% else %}Todavía no hay registros.{% endif %}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if page_obj.paginator.num_pages > 1 %}
+      <nav class="maintainer-pagination" aria-label="Paginación de resultados">
+        {% if page_obj.has_previous %}<a class="btn btn-sm btn-outline-secondary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Anterior</a>{% endif %}
+        <span>Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}<a class="btn btn-sm btn-outline-secondary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Siguiente</a>{% endif %}
+      </nav>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

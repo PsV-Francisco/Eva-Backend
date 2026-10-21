@@ -1,6 +1,9 @@
 from django.contrib import messages
+from django.core.paginator import Paginator
 from django.db import transaction
+from django.db.models import Q
 from django.db.models.deletion import ProtectedError
+from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 
 from AdminApp.audit import registrar_historial
@@ -10,6 +13,7 @@ from AdminApp.forms import (
     UsuarioUpdateForm,
 )
 from AdminApp.models import Cargo, Delegacion, ParametroSistema, Usuario
+from AdminApp.maintainers import excel_response, maintainer
 from config.decorators import cargo_required
 
 
@@ -21,12 +25,27 @@ def _user_snapshot(user):
         'delegacion_id': user.delegacion_id,
         'cargo_id': user.cargo_id,
         'roles': list(user.roles.order_by('pk').values_list('pk', flat=True)),
+        'delegaciones_autorizadas': list(
+            user.delegaciones_autorizadas.order_by('pk').values_list('pk', flat=True)
+        ),
         'is_active': user.is_active,
     }
 
 
 @cargo_required('admin', 'administrador')
 def home(request):
+    status_filter = request.GET.get('estado', '')
+    if status_filter not in {'', 'activo', 'inactivo'}:
+        return HttpResponseBadRequest('Filtro de estado no válido.')
+    delegation_filter = request.GET.get('delegacion', '')
+    if delegation_filter and (
+        not delegation_filter.isdecimal()
+        or not Delegacion.objects.filter(pk=delegation_filter).exists()
+    ):
+        return HttpResponseBadRequest('Filtro de delegación no válido.')
+    if request.GET.get('export', '') not in {'', 'excel'}:
+        return HttpResponseBadRequest('Formato de exportación no válido.')
+
     edit_id = request.GET.get('editar')
     editing_user = None
     if edit_id:
@@ -34,6 +53,8 @@ def home(request):
 
     if request.method == 'POST':
         action = request.POST.get('action', 'guardar')
+        if action not in {'guardar', 'eliminar', 'cambiar_estado'}:
+            return HttpResponseBadRequest('Acción no válida.')
         target_id = request.POST.get('usuario_id')
         if action == 'eliminar':
             target = get_object_or_404(Usuario, pk=target_id)
@@ -54,6 +75,25 @@ def home(request):
                     messages.success(request, 'La cuenta se eliminó correctamente.')
                 except ProtectedError:
                     messages.error(request, 'No se puede eliminar esta cuenta porque tiene información asociada.')
+            return redirect('administracion:home')
+
+        if action == 'cambiar_estado':
+            target = get_object_or_404(Usuario, pk=target_id)
+            if target.pk == request.user.pk or target.is_superuser:
+                messages.error(request, 'No puedes desactivar tu propia cuenta ni otra cuenta superadministradora.')
+            else:
+                before = _user_snapshot(target)
+                with transaction.atomic():
+                    target.is_active = not target.is_active
+                    target.save(update_fields=['is_active'])
+                    registrar_historial(
+                        actor=request.user,
+                        action='Cambiar estado de usuario',
+                        entity=f'Usuario:{target.pk}',
+                        before=before,
+                        after=_user_snapshot(target),
+                    )
+                messages.success(request, 'El estado del usuario se actualizó correctamente.')
             return redirect('administracion:home')
 
         if target_id:
@@ -86,16 +126,65 @@ def home(request):
             if editing_user else UsuarioCreationForm()
         )
 
+    users = Usuario.objects.select_related(
+        'delegacion', 'cargo',
+    ).prefetch_related('roles', 'delegaciones_autorizadas')
+    query = request.GET.get('q', '').strip()
+    if query:
+        search = Q()
+        for field in (
+            'email', 'first_name', 'last_name', 'cargo__nombre',
+            'delegacion__nombre', 'roles__nombre',
+            'delegaciones_autorizadas__nombre',
+        ):
+            search |= Q(**{f'{field}__icontains': query})
+        users = users.filter(search)
+    status = status_filter
+    if status == 'activo':
+        users = users.filter(is_active=True)
+    elif status == 'inactivo':
+        users = users.filter(is_active=False)
+    delegation_id = delegation_filter
+    if delegation_id.isdecimal():
+        users = users.filter(
+            Q(delegacion_id=delegation_id)
+            | Q(delegaciones_autorizadas__pk=delegation_id)
+        )
+    users = users.distinct().order_by('email')
+    if request.GET.get('export') == 'excel':
+        return excel_response(
+            users,
+            (
+                ('Correo electrónico', 'email'),
+                ('Nombre', 'first_name'),
+                ('Apellido', 'last_name'),
+                ('Cargo', 'cargo__nombre'),
+                ('Delegación principal', 'delegacion__nombre'),
+                ('Delegaciones autorizadas', 'delegaciones_autorizadas'),
+                ('Roles', 'roles'),
+                ('Estado', 'is_active'),
+            ),
+            'usuarios',
+        )
+    user_page = Paginator(users, 25).get_page(request.GET.get('page'))
+    pagination_parameters = request.GET.copy()
+    for key in ('page', 'export', 'editar'):
+        pagination_parameters.pop(key, None)
+    pagination_query = pagination_parameters.urlencode()
+
     context = {
         'sgr_role': 'Administración',
         'form': form,
         'editing_user': editing_user,
-        'sidebar_modules': (
-            'Gestión de la medición', 'Gestión de las delegaciones',
-            'Gestión de catálogos', 'Consulta del historial',
-            {'label': 'Parámetros del sistema', 'url_name': 'administracion:parametros'},
-        ),
-        'users': Usuario.objects.select_related('delegacion', 'cargo').prefetch_related('roles').order_by('email')[:12],
+        'users': user_page.object_list,
+        'page_obj': user_page,
+        'pagination_query': pagination_query,
+        'query': query,
+        'status': status,
+        'delegation_id': delegation_id,
+        'has_filters': bool(query or status or delegation_id),
+        'base_user_count': Usuario.objects.count(),
+        'delegations': Delegacion.objects.order_by('nombre'),
         'user_count': Usuario.objects.count(),
         'delegation_count': Delegacion.objects.count(),
         'position_count': Cargo.objects.count(),
@@ -141,3 +230,33 @@ def parametros(request):
             {'label': 'Parámetros del sistema', 'url_name': 'administracion:parametros'},
         ),
     })
+
+
+@cargo_required('admin', 'administrador')
+def delegaciones(request):
+    return maintainer(request, 'delegaciones')
+
+
+@cargo_required('admin', 'administrador')
+def roles(request):
+    return maintainer(request, 'roles')
+
+
+@cargo_required('coordinador', 'admin', 'administrador')
+def items(request):
+    return maintainer(request, 'items')
+
+
+@cargo_required('admin', 'administrador')
+def tipos_atencion(request):
+    return maintainer(request, 'tipos-atencion')
+
+
+@cargo_required('admin', 'administrador')
+def subatenciones(request):
+    return maintainer(request, 'subatenciones')
+
+
+@cargo_required('coordinador', 'admin', 'administrador')
+def metas(request):
+    return maintainer(request, 'metas')

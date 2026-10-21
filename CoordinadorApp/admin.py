@@ -11,9 +11,9 @@ class FuncionAdmin(admin.ModelAdmin):
 
 @admin.register(Item)
 class ItemAdmin(admin.ModelAdmin):
-	list_display = ('nombre', 'funcion')
-	list_filter = ('funcion',)
-	search_fields = ('nombre', 'funcion__nombre')
+	list_display = ('codigo', 'nombre', 'funcion', 'estado')
+	list_filter = ('estado', 'funcion')
+	search_fields = ('codigo', 'nombre', 'descripcion', 'funcion__nombre')
 
 
 @admin.register(CargoFuncion)

@@ -6,25 +6,32 @@ from django.shortcuts import get_object_or_404, redirect, render
 from AdminApp.audit import registrar_historial
 from CoordinadorApp.models import Periodo
 from config.decorators import cargo_required
+from config.delegations import active_delegation
 from FuncionarioApp.models import Registro
 from SupervisorApp.forms import RevisionEvidenciaForm
 from SupervisorApp.models import Evidencia, RevisionEvidencia
 
 
-def _evidencias_visibles(user):
+def _evidencias_visibles(request):
+    user = request.user
+    delegation = active_delegation(request)
     evidences = Evidencia.objects.select_related(
         'registro', 'compromiso', 'supervisor',
         'gestion_atencion', 'gestion_atencion__atencion',
     )
-    if user.is_superuser:
+    if delegation:
+        delegation_id = delegation.pk
+    elif user.is_superuser:
         return evidences
-    if not user.delegacion_id:
+    else:
         return evidences.none()
     return evidences.filter(
-        Q(registro__autor__delegacion_id=user.delegacion_id)
-        | Q(compromiso__agenda__delegacion_id=user.delegacion_id)
-        | Q(gestion_atencion__atencion__usuario__delegacion_id=user.delegacion_id)
-    )
+        Q(registro__autor__delegacion_id=delegation_id)
+        | Q(registro__autor__delegaciones_autorizadas__pk=delegation_id)
+        | Q(compromiso__agenda__delegacion_id=delegation_id)
+        | Q(gestion_atencion__atencion__usuario__delegacion_id=delegation_id)
+        | Q(gestion_atencion__atencion__usuario__delegaciones_autorizadas__pk=delegation_id)
+    ).distinct()
 
 
 def _evidence_period(evidencia):
@@ -39,7 +46,7 @@ def _evidence_period(evidencia):
 def home(request):
     if request.method == 'POST':
         evidencia = get_object_or_404(
-            _evidencias_visibles(request.user),
+            _evidencias_visibles(request),
             pk=request.POST.get('evidencia_id'),
         )
         form = RevisionEvidenciaForm(request.POST)
@@ -83,7 +90,7 @@ def home(request):
             messages.error(request, 'Selecciona una decisión válida y revisa la observación.')
         return redirect('supervisor:home')
 
-    evidencias = _evidencias_visibles(request.user).filter(
+    evidencias = _evidencias_visibles(request).filter(
         estado=Evidencia.Estado.PENDIENTE,
     ).filter(
         Q(registro__isnull=True)

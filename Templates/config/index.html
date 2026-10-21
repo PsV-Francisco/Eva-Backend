@@ -17,15 +17,13 @@
     <!--Formulario-->
     {% for field in form %}
     <div class="mb-3">
-      <label class="form-label" for="{{ field.id_for_label }}">
-        {% if field.name == 'username' %}
-          Correo electrónico
-        {% else %}
-          {{ field.label }}
-        {% endif %}
-      </label>
-
-      {{ field }}
+      <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {% if field.name == 'password' %}
+      <div class="password-input">
+        {{ field }}
+        <button class="password-toggle" type="button" data-password-toggle="{{ field.id_for_label }}" aria-label="Mostrar contraseña">Mostrar</button>
+      </div>
+      {% else %}{{ field }}{% endif %}
       <!--Apartado que muestra los errores-->
       {% for error in field.errors %}
       <div class="invalid-feedback d-block">

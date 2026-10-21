@@ -17,9 +17,19 @@ class Funcion(models.Model):
 
 #Modelo Item
 class Item(models.Model):
+	class Estado(models.TextChoices):
+		ACTIVO = 'activo', 'Activo'
+		INACTIVO = 'inactivo', 'Inactivo'
+
+	codigo = models.CharField(max_length=20, unique=True, null=True)
 	funcion = models.ForeignKey(Funcion, on_delete=models.PROTECT, related_name='items')
 	nombre = models.CharField(max_length=120)
 	descripcion = models.TextField(blank=True)
+	estado = models.CharField(
+		max_length=20,
+		choices=Estado.choices,
+		default=Estado.ACTIVO,
+	)
 
 	class Meta:
 		ordering = ['funcion__nombre', 'nombre']
@@ -32,6 +42,14 @@ class Item(models.Model):
 
 	def __str__(self):
 		return self.nombre
+
+	def save(self, *args, **kwargs):
+		if not self.codigo and self.pk is None:
+			super().save(*args, **kwargs)
+			self.codigo = f'ITEM-{self.pk:04d}'
+			super().save(using=kwargs.get('using'), update_fields=['codigo'])
+			return
+		return super().save(*args, **kwargs)
 
 
 #Modelo CargoFuncion

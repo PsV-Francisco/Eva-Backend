@@ -1,4 +1,5 @@
 from django import forms
+from django.db.models import Q
 
 from AdminApp.models import Usuario
 from CoordinadorApp.models import Periodo
@@ -30,12 +31,17 @@ class CompromisoForm(BootstrapFormMixin, forms.ModelForm):
             'responsables': forms.SelectMultiple(attrs={'size': 4}),
         }
 
-    def __init__(self, *args, user, **kwargs):
+    def __init__(self, *args, user, delegation=None, **kwargs):
         super().__init__(*args, **kwargs)
-        if user.delegacion_id:
+        delegation_id = (
+            delegation.pk if delegation else user.delegacion_id
+        )
+        if delegation_id:
             self.fields['responsables'].queryset = Usuario.objects.filter(
-                delegacion_id=user.delegacion_id, is_active=True,
-            ).order_by('email')
+                Q(delegacion_id=delegation_id)
+                | Q(delegaciones_autorizadas__pk=delegation_id),
+                is_active=True,
+            ).distinct().order_by('email')
         else:
             self.fields['responsables'].queryset = Usuario.objects.none()
         self.fields['responsables'].help_text = 'Selecciona al menos un responsable.'

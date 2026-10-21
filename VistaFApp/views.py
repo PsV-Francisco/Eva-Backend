@@ -7,6 +7,7 @@ from DelegadoApp.models import Compromiso
 from FuncionarioApp.models import Registro
 from SupervisorApp.models import Evidencia
 from config.decorators import cargo_required
+from config.delegations import active_delegation
 
 
 @cargo_required('vistaf', 'consulta', 'usuario de consulta')
@@ -16,16 +17,27 @@ def home(request):
 	evidencias = Evidencia.objects.filter(estado=Evidencia.Estado.PENDIENTE)
 	desempenos = Desempeno.objects.all()
 	query = request.GET.get('q', '').strip()
+	delegation = active_delegation(request)
 
-	if request.user.delegacion_id:
-		delegation_id = request.user.delegacion_id
-		registros = registros.filter(autor__delegacion_id=delegation_id)
+	if delegation:
+		delegation_id = delegation.pk
+		registros = registros.filter(
+			Q(autor__delegacion_id=delegation_id)
+			| Q(autor__delegaciones_autorizadas__pk=delegation_id)
+		).distinct()
 		compromisos = compromisos.filter(agenda__delegacion_id=delegation_id)
 		evidencias = evidencias.filter(
-			registro__autor__delegacion_id=delegation_id,
-		) | evidencias.filter(compromiso__agenda__delegacion_id=delegation_id)
-		desempenos = desempenos.filter(usuario__delegacion_id=delegation_id)
-		scope_label = request.user.delegacion.nombre
+			Q(registro__autor__delegacion_id=delegation_id)
+			| Q(registro__autor__delegaciones_autorizadas__pk=delegation_id)
+			| Q(compromiso__agenda__delegacion_id=delegation_id)
+			| Q(gestion_atencion__atencion__usuario__delegacion_id=delegation_id)
+			| Q(gestion_atencion__atencion__usuario__delegaciones_autorizadas__pk=delegation_id)
+		).distinct()
+		desempenos = desempenos.filter(
+			Q(usuario__delegacion_id=delegation_id)
+			| Q(usuario__delegaciones_autorizadas__pk=delegation_id)
+		).distinct()
+		scope_label = delegation.nombre
 	elif request.user.is_superuser:
 		scope_label = 'Visión general'
 	else:
