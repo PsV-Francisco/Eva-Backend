@@ -65,7 +65,7 @@ class Periodo(models.Model):
 	nombre = models.CharField(max_length=120, unique=True)
 	fecha_inicio = models.DateField()
 	fecha_fin = models.DateField()
-	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.CERRADO)
+	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.ABIERTO)
 
 	class Meta:
 		ordering = ['-fecha_inicio']

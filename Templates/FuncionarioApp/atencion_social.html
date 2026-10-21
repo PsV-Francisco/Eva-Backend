@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Atención social | SGR{% endblock %}
+{% block page_title %}Atención social{% endblock %}
+{% block content %}
+<div class="dashboard-layout">
+{% include 'includes/role_sidebar.html' %}
+<div class="dashboard-main">
+<div class="metric-grid"><article class="metric"><span>Mis casos</span><strong>{{ case_count }}</strong></article><article class="metric"><span>Máximo de atenciones</span><strong>3</strong></article><article class="metric"><span>Evidencia</span><strong>Obligatoria</strong></article></div>
+<section class="content-section split-layout">
+  <div><p class="eyebrow">NUEVO CASO</p><h2>Abrir caso social</h2>
+    <form method="post" data-loading novalidate>{% csrf_token %}<input type="hidden" name="action" value="crear_caso">
+      <div class="form-grid">{% for field in case_form %}<div class="mb-3 {% if field.name == 'resultado' or field.name == 'observaciones' %}field-wide{% endif %}"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}</div>
+      <button class="btn btn-primary" type="submit">Crear caso</button>
+    </form>
+  </div>
+  <aside class="side-note"><span class="side-note-mark">i</span><h3>Seguimiento seguro</h3><p>Cada caso admite hasta tres atenciones. Cada atención recibe un código inmutable y debe incluir evidencia JPG, PNG o PDF de hasta 5 MB.</p></aside>
+</section>
+<section class="content-section"><div class="section-head"><div><p class="eyebrow">CASOS SOCIALES</p><h2>Mis casos</h2></div><span class="count-pill">{{ case_count }} casos</span></div>
+{% for caso in cases %}
+<article class="content-section">
+  <div class="section-head"><div><h3>{{ caso.atencion_social.tipo_atencion }}</h3><p class="section-note mb-0">Código {{ caso.codigo }} · Apertura {{ caso.atencion_social.fecha|date:'d/m/Y' }}</p></div><span class="count-pill">{{ caso.atencion_social.gestiones.count }}/3 atenciones</span></div>
+  {% if caso.atencion_social.resultado %}<p>{{ caso.atencion_social.resultado }}</p>{% endif %}
+  {% if caso.atencion_social.gestiones.count < 3 and not selected_case or caso.atencion_social.gestiones.count < 3 and selected_case.pk == caso.pk %}
+  <form method="post" enctype="multipart/form-data" data-loading class="mb-3">{% csrf_token %}<input type="hidden" name="action" value="agregar_atencion"><input type="hidden" name="caso_id" value="{{ caso.pk }}">
+    <div class="form-grid">{% for field in attention_form %}<div class="mb-3 {% if field.name == 'observaciones' or field.name == 'evidencia' %}field-wide{% endif %}"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.name == 'evidencia' %}<div class="form-text">JPG, PNG o PDF; máximo 5 MB.</div>{% endif %}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}</div>
+    <button class="btn btn-primary" type="submit">Registrar atención {{ caso.atencion_social.gestiones.count|add:1 }}</button>
+  </form>
+  {% else %}<div class="alert alert-info">El caso alcanzó el máximo de tres atenciones.</div>{% endif %}
+  <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Código de atención</th><th>N.º</th><th>Fecha</th><th>Detalle</th><th>Evidencia</th><th>Estado</th></tr></thead><tbody>
+    {% for atencion in caso.atencion_social.gestiones.all %}<tr><td><code>{{ atencion.codigo }}</code></td><td>{{ atencion.numero_gestion }}</td><td>{{ atencion.fecha|date:'d/m/Y' }}</td><td>{{ atencion.observaciones|default:'—' }}</td><td>{% for evidencia in atencion.evidencias.all %}<a href="{{ evidencia.archivo.url }}" target="_blank" rel="noopener">{{ evidencia.codigo|slice:':8' }}</a>{% endfor %}</td><td>{% for evidencia in atencion.evidencias.all %}<span class="tag">{{ evidencia.get_estado_display }}</span>{% endfor %}</td></tr>{% empty %}<tr><td colspan="6" class="empty-state">Aún no hay atenciones registradas.</td></tr>{% endfor %}
+  </tbody></table></div>
+</article>
+{% empty %}<div class="empty-state">Todavía no tienes casos sociales.</div>{% endfor %}
+</section>
+</div></div>
+{% endblock %}

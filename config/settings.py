@@ -10,7 +10,16 @@ TEMPLATES_DIR = BASE_DIR / 'templates'
 LEGACY_TEMPLATES_DIR = BASE_DIR / 'Templates'
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-sgr-demo-only')
 DEBUG = os.environ.get('DEBUG','False') == 'True'
-ALLOWED_HOSTS = ['3.228.118.5']
+default_allowed_hosts = (
+    'localhost,127.0.0.1' if DEBUG else '3.228.118.5'
+)
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.environ.get(
+        'ALLOWED_HOSTS', default_allowed_hosts
+    ).split(',')
+    if host.strip()
+]
 CSRF_TRUSTED_ORIGINS = ['http://3.228.118.5','https://3.228.118.5',]
 
 INSTALLED_APPS = [
@@ -127,8 +136,24 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-MAILERS = {
-    'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
-    }
+EMAIL_BACKEND = (
+    'django.core.mail.backends.console.EmailBackend'
+    if DEBUG else 'django.core.mail.backends.smtp.EmailBackend'
+)
+EMAIL_HOST = os.environ.get('EMAIL_HOST', '')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').strip().lower() in {
+    '1', 'true', 'yes', 'on',
 }
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.environ.get(
+    'DEFAULT_FROM_EMAIL', 'SGR <no-reply@localhost>'
+)
+
+PASSWORD_RESET_TIMEOUT = 3600
+PASSWORD_RESET_RATE_LIMIT = 5
+PASSWORD_RESET_RATE_WINDOW = 3600
+PASSWORD_RESET_DOMAIN = os.environ.get(
+    'PASSWORD_RESET_DOMAIN', '3.228.118.5'
+)

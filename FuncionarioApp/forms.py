@@ -1,11 +1,10 @@
 from django import forms
-from pathlib import Path
-
 from AdminApp.models import Catalogo
 from CoordinadorApp.models import Periodo
 from CoordinadorApp.models import Item
-from FuncionarioApp.models import Registro
+from FuncionarioApp.models import AtencionSocial, GestionAtencion, Registro
 from config.forms import BootstrapFormMixin
+from SupervisorApp.files import validate_evidence_file
 
 
 class RegistroForm(BootstrapFormMixin, forms.ModelForm):
@@ -52,9 +51,41 @@ class RegistroForm(BootstrapFormMixin, forms.ModelForm):
     def clean_evidencia(self):
         uploaded_file = self.cleaned_data.get('evidencia')
         if uploaded_file:
-            extension = Path(uploaded_file.name).suffix.lower()
-            if extension not in {'.jpg', '.jpeg', '.png', '.pdf'}:
-                raise forms.ValidationError('Usa una imagen JPG/PNG o un documento PDF.')
-            if uploaded_file.size > 5 * 1024 * 1024:
-                raise forms.ValidationError('El archivo no puede superar los 5 MB.')
+            return validate_evidence_file(uploaded_file)
         return uploaded_file
+
+
+class CasoSocialForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = AtencionSocial
+        fields = ('tipo_atencion', 'fecha', 'resultado', 'observaciones')
+        labels = {
+            'tipo_atencion': 'Nombre o motivo del caso',
+            'fecha': 'Fecha de apertura',
+            'resultado': 'Antecedentes del caso',
+            'observaciones': 'Observaciones',
+        }
+        widgets = {
+            'fecha': forms.DateInput(attrs={'type': 'date'}),
+            'resultado': forms.Textarea(attrs={'rows': 3}),
+            'observaciones': forms.Textarea(attrs={'rows': 2}),
+        }
+
+
+class GestionAtencionForm(BootstrapFormMixin, forms.ModelForm):
+    evidencia = forms.FileField(
+        label='Evidencia de la atención',
+        widget=forms.ClearableFileInput(attrs={'accept': 'image/jpeg,image/png,application/pdf'}),
+    )
+
+    class Meta:
+        model = GestionAtencion
+        fields = ('fecha', 'observaciones')
+        labels = {'fecha': 'Fecha de atención', 'observaciones': 'Detalle de la atención'}
+        widgets = {
+            'fecha': forms.DateInput(attrs={'type': 'date'}),
+            'observaciones': forms.Textarea(attrs={'rows': 2}),
+        }
+
+    def clean_evidencia(self):
+        return validate_evidence_file(self.cleaned_data['evidencia'])

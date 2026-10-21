@@ -4,4 +4,7 @@ from . import views
 
 app_name = 'administracion'
 
-urlpatterns = [path('', views.home, name='home')]
+urlpatterns = [
+    path('', views.home, name='home'),
+    path('parametros/', views.parametros, name='parametros'),
+]

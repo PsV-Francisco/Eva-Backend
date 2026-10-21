@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Cumplimiento | SGR{% endblock %}
+{% block page_title %}Cumplimiento de metas{% endblock %}
+{% block content %}
+<div class="dashboard-layout">
+{% include 'includes/role_sidebar.html' %}
+<div class="dashboard-main">
+<div class="metric-grid metric-grid-four">
+  <article class="metric"><span>Ítems asignados</span><strong>{{ item_count }}</strong></article>
+  <article class="metric"><span>Avance aprobado</span><strong>{{ summary.total_avance|floatformat:0 }}</strong></article>
+  <article class="metric"><span>Avance real</span><strong>{{ summary.avance_real|floatformat:2 }}%</strong></article>
+  <article class="metric"><span>Avance esperado</span><strong>{{ summary.avance_esperado|floatformat:2 }}%</strong></article>
+</div>
+<section class="content-section split-layout">
+  <div>
+    <div class="section-head"><div><p class="eyebrow">MEDICIÓN PERSONAL</p><h2>Detalle por ítem</h2></div></div>
+    <form method="get" class="search-panel mb-3">
+      <div><label class="form-label" for="periodo">Período</label><select class="form-select" id="periodo" name="periodo">{% for periodo in periodos %}<option value="{{ periodo.pk }}" {% if periodo == periodo_seleccionado %}selected{% endif %}>{{ periodo.nombre }}</option>{% endfor %}</select></div>
+      <button class="btn btn-primary" type="submit">Consultar</button>
+    </form>
+    <div class="table-responsive"><table class="table align-middle">
+      <thead><tr><th>Ítem de medición</th><th>Meta</th><th>Aprobado</th><th>Cumplimiento</th><th>Ponderador</th><th>Aporte</th><th>Semáforo</th></tr></thead>
+      <tbody>
+      {% for row in summary.items %}<tr>
+        <td><strong>{{ row.desempeno.item.nombre }}</strong></td>
+        <td>{{ row.meta|floatformat:2 }}</td><td>{{ row.avance|floatformat:0 }}</td>
+        <td>{{ row.cumplimiento|floatformat:2 }}%</td><td>{{ row.ponderacion|floatformat:2 }}%</td>
+        <td>{{ row.aporte|floatformat:2 }}%</td>
+        <td><span class="traffic-light traffic-{{ row.semaforo }}">{{ row.semaforo|title }}</span></td>
+      </tr>{% empty %}<tr><td colspan="7" class="empty-state">No tienes metas asignadas para este período.</td></tr>{% endfor %}
+      </tbody>
+      {% if summary.items %}<tfoot><tr><th>Total</th><th>{{ summary.total_meta|floatformat:2 }}</th><th>{{ summary.total_avance|floatformat:0 }}</th><th>{{ summary.avance_real|floatformat:2 }}%</th><th>—</th><th>{{ summary.total_aporte|floatformat:2 }}%</th><th></th></tr></tfoot>{% endif %}
+    </table></div>
+  </div>
+  <aside class="side-note"><span class="side-note-mark">i</span><h3>Cómo se calcula</h3><p>Solo cuentan actividades con evidencia aprobada, una vez por actividad. El avance esperado se calcula con días hábiles de lunes a viernes. Verde: alcanza lo esperado; ámbar: al menos 60 %; rojo: menos de 60 %.</p></aside>
+</section>
+</div></div>
+{% endblock %}

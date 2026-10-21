@@ -5,12 +5,15 @@
 <div class="dashboard-layout">
 {% include 'includes/role_sidebar.html' %}
 <div class="dashboard-main">
-<div class="metric-grid"><article class="metric"><span>Pendientes de revisión</span><strong>{{ pending_count }}</strong></article><article class="metric"><span>Decisiones posibles</span><strong>3</strong></article><article class="metric"><span>Alcance</span><strong>Global</strong></article></div>
+<div class="metric-grid"><article class="metric"><span>Pendientes de revisión</span><strong>{{ pending_count }}</strong></article><article class="metric"><span>Decisiones posibles</span><strong>3</strong></article><article class="metric"><span>Alcance</span><strong>{% if request.user.is_superuser %}Global{% else %}{{ request.user.delegacion|default:'Sin delegación' }}{% endif %}</strong></article></div>
 <section class="content-section"><div class="section-head"><div><p class="eyebrow">BANDEJA DE VERIFICACIÓN</p><h2>Evidencias pendientes</h2></div></div>
 	<div class="review-list">{% for evidencia in evidencias %}<article class="review-row"><div class="review-meta"><span class="tag">{{ evidencia.codigo|slice:':8' }}</span><span>{{ evidencia.fecha|date:'d/m/Y H:i' }}</span></div>
-		<h3>{% if evidencia.registro %}{{ evidencia.registro.descripcion }}{% elif evidencia.compromiso %}{{ evidencia.compromiso.descripcion }}{% else %}Evidencia sin referencia{% endif %}</h3>
-		<p>{% if evidencia.registro %}Actividad de {{ evidencia.registro.autor }} · {{ evidencia.registro.fecha|date:'d/m/Y' }}{% elif evidencia.compromiso %}Compromiso · {{ evidencia.compromiso.fecha|date:'d/m/Y' }}{% endif %}</p>
-		{% if evidencia.archivo %}<a class="file-link" href="{{ evidencia.archivo.url }}" target="_blank" rel="noopener">Abrir archivo</a>{% endif %}
+		<h3>{% if evidencia.registro %}{{ evidencia.registro.descripcion }}{% elif evidencia.compromiso %}{{ evidencia.compromiso.descripcion }}{% elif evidencia.gestion_atencion %}Atención social del caso {{ evidencia.gestion_atencion.atencion.tipo_atencion }}{% else %}Evidencia sin referencia{% endif %}</h3>
+		<p>{% if evidencia.registro %}Funcionario: {{ evidencia.registro.autor.get_full_name|default:evidencia.registro.autor.email }} · Ítem: {{ evidencia.registro.item }} · {{ evidencia.registro.fecha|date:'d/m/Y' }}{% elif evidencia.compromiso %}Compromiso · {{ evidencia.compromiso.fecha|date:'d/m/Y' }}{% elif evidencia.gestion_atencion %}Funcionario: {{ evidencia.gestion_atencion.atencion.usuario.get_full_name|default:evidencia.gestion_atencion.atencion.usuario.email }} · Código de atención: {{ evidencia.gestion_atencion.codigo }} · {{ evidencia.gestion_atencion.fecha|date:'d/m/Y' }}{% endif %}</p>
+		{% if evidencia.archivo %}
+			{% if '.jpg' in evidencia.archivo.name|lower or '.jpeg' in evidencia.archivo.name|lower or '.png' in evidencia.archivo.name|lower %}<img class="evidence-preview evidence-preview-image" src="{{ evidencia.archivo.url }}" alt="Vista previa de la evidencia">{% elif '.pdf' in evidencia.archivo.name|lower %}<iframe class="evidence-preview" src="{{ evidencia.archivo.url }}" title="Vista previa PDF" loading="lazy"></iframe>{% endif %}
+			<a class="file-link" href="{{ evidencia.archivo.url }}" target="_blank" rel="noopener">Abrir archivo</a>
+		{% endif %}
 		<form method="post" class="review-form" data-confirm="¿Confirmas esta decisión de revisión?" novalidate>{% csrf_token %}<input type="hidden" name="evidencia_id" value="{{ evidencia.pk }}">
 			<div><label class="form-label" for="decision-{{ evidencia.pk }}">Decisión</label><select class="form-select" id="decision-{{ evidencia.pk }}" name="decision" required><option value="">Seleccionar</option><option value="aprobada">Aprobar</option><option value="rechazada">Rechazar</option><option value="correccion">Solicitar corrección</option></select></div>
 			<div><label class="form-label" for="obs-{{ evidencia.pk }}">Observación</label><textarea class="form-control" id="obs-{{ evidencia.pk }}" name="observaciones" rows="2"></textarea></div>
@@ -20,7 +23,7 @@
 </section>
 <section class="content-section"><div class="section-head"><div><p class="eyebrow">TRAZABILIDAD</p><h2>Mis revisiones recientes</h2></div><span class="count-pill">{{ revisiones|length }} mostradas</span></div>
 	<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Fecha</th><th>Referencia</th><th>Decisión</th><th>Observación</th></tr></thead><tbody>
-		{% for revision in revisiones %}<tr><td>{{ revision.fecha|date:'d/m/Y H:i' }}</td><td>{% if revision.evidencia.registro %}{{ revision.evidencia.registro.descripcion }}{% elif revision.evidencia.compromiso %}{{ revision.evidencia.compromiso.descripcion }}{% else %}Evidencia {{ revision.evidencia.codigo|slice:':8' }}{% endif %}</td><td><span class="tag">{{ revision.get_decision_display }}</span></td><td>{{ revision.observaciones|default:'—' }}</td></tr>{% empty %}<tr><td colspan="4" class="empty-state">Todavía no hay decisiones registradas.</td></tr>{% endfor %}
+		{% for revision in revisiones %}<tr><td>{{ revision.fecha|date:'d/m/Y H:i' }}</td><td>{% if revision.evidencia.registro %}{{ revision.evidencia.registro.descripcion }}{% elif revision.evidencia.compromiso %}{{ revision.evidencia.compromiso.descripcion }}{% elif revision.evidencia.gestion_atencion %}Caso social {{ revision.evidencia.gestion_atencion.codigo }}{% else %}Evidencia {{ revision.evidencia.codigo|slice:':8' }}{% endif %}</td><td><span class="tag">{{ revision.get_decision_display }}</span></td><td>{{ revision.observaciones|default:'—' }}</td></tr>{% empty %}<tr><td colspan="4" class="empty-state">Todavía no hay decisiones registradas.</td></tr>{% endfor %}
 	</tbody></table></div>
 </section>
 </div>

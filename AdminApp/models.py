@@ -230,7 +230,7 @@ class Historial(models.Model):
     valor_anterior = models.JSONField(null=True, blank=True)
     valor_nuevo = models.JSONField(null=True, blank=True)
     periodo = models.ForeignKey(
-        'CoordinadorApp.Periodo', on_delete=models.CASCADE, related_name='historiales',
+        'CoordinadorApp.Periodo', on_delete=models.SET_NULL, related_name='historiales',
         null=True, blank=True,
     )
     entidad_afectada = models.CharField(max_length=120, default='')
@@ -244,3 +244,82 @@ class Historial(models.Model):
     def __str__(self):
         return f'{self.accion} ({self.fecha_modificacion:%Y-%m-%d %H:%M})'
 
+
+class PasswordResetAuditEvent(models.Model):
+    class Action(models.TextChoices):
+        REQUEST = 'request', 'Solicitud de recuperación'
+        PASSWORD_CHANGED = 'password_changed', 'Contraseña actualizada'
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name='password_reset_events',
+        null=True,
+        blank=True,
+    )
+    action = models.CharField(max_length=20, choices=Action.choices)
+    email_fingerprint = models.CharField(max_length=64)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    was_rate_limited = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'password_reset_audit'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(
+                fields=['action', 'email_fingerprint', 'created_at'],
+                name='pwd_reset_email_idx',
+            ),
+            models.Index(
+                fields=['action', 'ip_address', 'created_at'],
+                name='pwd_reset_ip_idx',
+            ),
+        ]
+        verbose_name = 'evento de recuperación de contraseña'
+        verbose_name_plural = 'eventos de recuperación de contraseña'
+
+    def __str__(self):
+        return f'{self.get_action_display()} ({self.created_at:%Y-%m-%d %H:%M})'
+
+
+class PasswordResetRateLimitKey(models.Model):
+    key = models.CharField(max_length=64, unique=True)
+
+    class Meta:
+        db_table = 'password_reset_rate_limit_key'
+
+
+class ParametroSistema(models.Model):
+    class Clave(models.TextChoices):
+        TOPE_CUMPLIMIENTO = 'tope_cumplimiento', 'Tope de cumplimiento (%)'
+        UMBRAL_DELEGACION = 'umbral_delegacion', 'Umbral de delegación (%)'
+
+    clave = models.CharField(max_length=40, choices=Clave.choices, unique=True)
+    valor = models.DecimalField(max_digits=6, decimal_places=2)
+
+    class Meta:
+        ordering = ['clave']
+        verbose_name = 'parámetro del sistema'
+        verbose_name_plural = 'parámetros del sistema'
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(clave='tope_cumplimiento', valor__gte=100)
+                    | models.Q(clave='umbral_delegacion', valor__gte=0, valor__lte=100)
+                ),
+                name='parametro_sistema_valor_en_rango',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.get_clave_display()}: {self.valor}%'
+
+    @classmethod
+    def obtener(cls, clave):
+        defaults = {
+            cls.Clave.TOPE_CUMPLIMIENTO: 150,
+            cls.Clave.UMBRAL_DELEGACION: 80,
+        }
+        value = cls.objects.filter(clave=clave).values_list('valor', flat=True).first()
+        return value if value is not None else defaults[clave]

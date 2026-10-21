@@ -2,10 +2,13 @@
   <p class="eyebrow">MÓDULOS</p>
   <nav>
     {% for module in sidebar_modules %}
-      <span class="sidebar-link{% if forloop.first %} active{% endif %}">
+      {% if module.url_name %}<a class="sidebar-link{% if request.resolver_match.view_name == module.url_name %} active{% endif %}" href="{% url module.url_name %}">
+        <span class="sidebar-index">{{ forloop.counter|stringformat:'02d' }}</span>
+        {{ module.label }}
+      </a>{% else %}<span class="sidebar-link{% if forloop.first %} active{% endif %}">
         <span class="sidebar-index">{{ forloop.counter|stringformat:'02d' }}</span>
         {{ module }}
-      </span>
+      </span>{% endif %}
     {% endfor %}
   </nav>
 </aside>

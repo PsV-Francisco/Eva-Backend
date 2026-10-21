@@ -55,3 +55,24 @@ class Compromiso(models.Model):
 
 	def __str__(self):
 		return self.descripcion
+
+
+class HistorialEstadoCompromiso(models.Model):
+	compromiso = models.ForeignKey(
+		Compromiso,
+		on_delete=models.CASCADE,
+		related_name='historial_estados',
+	)
+	estado_anterior = models.CharField(max_length=16, blank=True)
+	estado_nuevo = models.CharField(max_length=16, choices=Compromiso.Estado.choices)
+	autor = models.ForeignKey(
+		settings.AUTH_USER_MODEL,
+		on_delete=models.PROTECT,
+		related_name='cambios_estado_compromiso',
+	)
+	fecha = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		ordering = ['-fecha']
+		verbose_name = 'historial de estado de compromiso'
+		verbose_name_plural = 'historiales de estado de compromiso'

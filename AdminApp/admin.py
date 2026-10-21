@@ -3,7 +3,16 @@ from django import forms
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 
-from .models import Cargo, Catalogo, Delegacion, Historial, Rol, Usuario
+from .models import (
+	Cargo,
+	Catalogo,
+	Delegacion,
+	Historial,
+	ParametroSistema,
+	PasswordResetAuditEvent,
+	Rol,
+	Usuario,
+)
 
 
 class UsuarioCreationForm(forms.ModelForm):
@@ -95,3 +104,33 @@ class HistorialAdmin(admin.ModelAdmin):
 	list_filter = ('accion', 'periodo', 'fecha_modificacion')
 	search_fields = ('accion', 'autor__email', 'object_id')
 	readonly_fields = ('fecha_modificacion', 'valor_anterior', 'valor_nuevo')
+
+
+@admin.register(ParametroSistema)
+class ParametroSistemaAdmin(admin.ModelAdmin):
+	list_display = ('clave', 'valor')
+	readonly_fields = ('clave',)
+
+
+@admin.register(PasswordResetAuditEvent)
+class PasswordResetAuditEventAdmin(admin.ModelAdmin):
+	list_display = ('action', 'user', 'ip_address', 'was_rate_limited', 'created_at')
+	list_filter = ('action', 'was_rate_limited', 'created_at')
+	search_fields = ('user__email', 'email_fingerprint', 'ip_address')
+	readonly_fields = (
+		'user',
+		'action',
+		'email_fingerprint',
+		'ip_address',
+		'was_rate_limited',
+		'created_at',
+	)
+
+	def has_add_permission(self, request):
+		return False
+
+	def has_change_permission(self, request, obj=None):
+		return False
+
+	def has_delete_permission(self, request, obj=None):
+		return False

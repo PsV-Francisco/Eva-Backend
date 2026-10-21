@@ -56,6 +56,12 @@ h1, h2, h3 { font-family: Georgia, "Times New Roman", serif; letter-spacing: 0; 
 .table thead th { color: var(--muted); font-size: .7rem; text-transform: uppercase; }
 .table td { vertical-align: middle; }
 .tag { display: inline-block; margin: .1rem; padding: .2rem .45rem; background: #f6e8ea; color: var(--teal-dark); font-size: .72rem; }
+.traffic-light { display: inline-block; min-width: 4.5rem; padding: .25rem .5rem; border-radius: 999px; text-align: center; font-size: .72rem; font-weight: 800; }
+.traffic-verde { background: #d8f1e5; color: #176641; }
+.traffic-ambar { background: #fff0c2; color: #795600; }
+.traffic-rojo { background: #f9dadd; color: #8d1f2b; }
+.evidence-preview { display: block; max-width: min(100%, 640px); max-height: 420px; margin: .75rem 0; border: 1px solid var(--line); background: white; }
+.evidence-preview-image { width: auto; height: auto; object-fit: contain; }
 .status-dot { display: inline-flex; align-items: center; gap: .4rem; font-size: .8rem; }
 .status-dot::before { width: 7px; height: 7px; border-radius: 50%; background: #16815b; content: ""; }
 .status-off::before { background: var(--coral); }
@@ -72,6 +78,14 @@ h1, h2, h3 { font-family: Georgia, "Times New Roman", serif; letter-spacing: 0; 
 .login-intro > p:last-child { margin-top: 1rem; }
 .form-panel { padding: 1.5rem; background: white; border: 1px solid var(--line); border-top: 4px solid var(--teal); }
 .form-panel input { width: 100%; padding: .45rem .7rem; border: 1px solid #dec9cd; border-radius: 3px; }
+.auth-card-wrap { display: flex; justify-content: center; margin: 3rem auto; }
+.auth-card { width: min(100%, 520px); }
+.auth-card > p:not(.eyebrow) { color: var(--muted); line-height: 1.6; }
+.auth-card .form-label { color: var(--ink); }
+.auth-card .form-control { margin-bottom: .75rem; }
+.auth-link { color: var(--institution-red); font-weight: 700; text-decoration: none; }
+.auth-link:hover { color: var(--institution-red-dark); text-decoration: underline; }
+.login-recovery-link { margin: 1rem 0 0; text-align: center; }
 .site-footer { padding: 1rem 0; background: var(--ink); color: #b6cfcb; font-size: .75rem; }
 .site-footer span { padding: 0 .4rem; color: var(--gold); }
 .dashboard-layout { display: grid; grid-template-columns: 245px minmax(0, 1fr); gap: 1.4rem; align-items: start; }

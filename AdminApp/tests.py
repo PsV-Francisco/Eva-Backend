@@ -5,7 +5,14 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from AdminApp.models import Cargo, Catalogo, Delegacion, Rol
+from AdminApp.models import (
+	Cargo,
+	Catalogo,
+	Delegacion,
+	Historial,
+	ParametroSistema,
+	Rol,
+)
 from CoordinadorApp.models import Funcion, Item, Periodo
 from DelegadoApp.models import Agenda, Compromiso
 from FuncionarioApp.models import Registro
@@ -24,8 +31,8 @@ class RolePortalTests(TestCase):
 	def test_all_role_workspaces_render(self):
 		route_cargos = (
 			('funcionario:home', 'funcionario', 'Registro de Actividades'),
-			('supervisor:home', 'supervisor', 'Revisión de Compromisos'),
-			('delegado:home', 'delegado', 'Cumplimiento de delegación'),
+			('supervisor:home', 'supervisor', 'Validar evidencias'),
+			('delegado:home', 'delegado', 'Resumen de la delegación'),
 			('coordinador:home', 'coordinador', 'Metas e indicadores'),
 			('administracion:home', 'administrador', 'Gestión de la medición'),
 			('vistaf:home', 'consulta', 'Búsqueda de información'),
@@ -92,6 +99,7 @@ class RolePortalTests(TestCase):
 	def test_admin_form_requires_csrf_and_creates_hashed_password(self):
 		client = Client(enforce_csrf_checks=True)
 		client.force_login(self.admin)
+		role = Rol.objects.create(nombre='Gestor de medición')
 		response = client.get(reverse('administracion:home'))
 		self.assertEqual(response.status_code, 200)
 		token = client.cookies['csrftoken'].value
@@ -102,13 +110,22 @@ class RolePortalTests(TestCase):
 			'password1': 'Sgr-New-Account-573!',
 			'password2': 'Sgr-New-Account-573!',
 			'is_active': 'on',
+			'roles': [role.pk],
 			'csrfmiddlewaretoken': token,
 		})
 		self.assertEqual(response.status_code, 302)
 		created = get_user_model().objects.get(email='funcionario@sgr.test')
 		self.assertTrue(created.check_password('Sgr-New-Account-573!'))
+		self.assertQuerySetEqual(created.roles.all(), [role], transform=lambda item: item)
+		self.assertTrue(Historial.objects.filter(
+			accion='Crear usuario',
+			entidad_afectada=f'Usuario:{created.pk}',
+			autor=self.admin,
+		).exists())
+		self.assertContains(client.get(reverse('administracion:home')), 'Gestor de medición')
 
 	def test_admin_can_update_and_delete_an_unreferenced_user(self):
+		role = Rol.objects.create(nombre='Verificador')
 		user = get_user_model().objects.create_user(
 			email='antes@sgr.test', password='Sgr-Test-Password-418!',
 		)
@@ -121,16 +138,63 @@ class RolePortalTests(TestCase):
 			'is_active': 'on',
 			'password1': '',
 			'password2': '',
+			'roles': [role.pk],
 		})
 		self.assertEqual(response.status_code, 302)
 		user.refresh_from_db()
 		self.assertEqual(user.email, 'despues@sgr.test')
+		self.assertEqual(list(user.roles.all()), [role])
+		update_audit = Historial.objects.get(
+			accion='Editar usuario',
+			entidad_afectada=f'Usuario:{user.pk}',
+		)
+		self.assertEqual(update_audit.valor_anterior['email'], 'antes@sgr.test')
+		self.assertEqual(update_audit.valor_nuevo['roles'], [role.pk])
 
 		response = self.client.post(reverse('administracion:home'), {
 			'action': 'eliminar', 'usuario_id': user.pk,
 		})
 		self.assertEqual(response.status_code, 302)
 		self.assertFalse(get_user_model().objects.filter(pk=user.pk).exists())
+		self.assertTrue(Historial.objects.filter(
+			accion='Eliminar usuario',
+			entidad_afectada=f'Usuario:{user.pk}',
+		).exists())
+
+	def test_admin_parameter_changes_are_validated_and_audited(self):
+		response = self.client.post(reverse('administracion:parametros'), {
+			'tope_cumplimiento': '175.00',
+			'umbral_delegacion': '75.00',
+		})
+
+		self.assertEqual(response.status_code, 302)
+		self.assertEqual(
+			ParametroSistema.obtener(ParametroSistema.Clave.TOPE_CUMPLIMIENTO),
+			175,
+		)
+		self.assertEqual(
+			ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_DELEGACION),
+			75,
+		)
+		audit = Historial.objects.get(
+			accion='Cambiar parámetro del sistema',
+			entidad_afectada='ParametroSistema:tope_cumplimiento',
+		)
+		self.assertEqual(audit.autor, self.admin)
+		self.assertEqual(audit.valor_anterior['valor'], '150')
+		self.assertEqual(audit.valor_nuevo['valor'], '175.00')
+
+	def test_parameter_changes_require_administrator_cargo(self):
+		self.admin.cargo = Cargo.objects.create(nombre='funcionario')
+		self.admin.save(update_fields=['cargo'])
+
+		response = self.client.post(reverse('administracion:parametros'), {
+			'tope_cumplimiento': '175',
+			'umbral_delegacion': '75',
+		})
+
+		self.assertEqual(response.status_code, 403)
+		self.assertFalse(ParametroSistema.objects.exists())
 
 	def test_coordinator_can_create_period(self):
 		self.admin.cargo = Cargo.objects.create(nombre='coordinador')
@@ -149,7 +213,7 @@ class RolePortalTests(TestCase):
 		self.admin.save(update_fields=['cargo'])
 		period = Periodo.objects.create(
 			nombre='Período inicial', fecha_inicio='2026-10-01',
-			fecha_fin='2026-12-31', estado=Periodo.Estado.CERRADO,
+			fecha_fin='2026-12-31', estado=Periodo.Estado.ABIERTO,
 		)
 		response = self.client.post(reverse('coordinador:home'), {
 			'action': 'guardar',
@@ -192,7 +256,8 @@ class RolePortalTests(TestCase):
 				'telefono': '',
 				'incluir_en_agenda': '',
 				'evidencia': SimpleUploadedFile(
-					'respaldo.pdf', b'contenido ficticio', content_type='application/pdf',
+					'respaldo.pdf', b'%PDF-1.4\ncontenido ficticio',
+					content_type='application/pdf',
 				),
 			})
 			self.assertEqual(response.status_code, 302)

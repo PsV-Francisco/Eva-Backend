@@ -37,6 +37,15 @@ class Registro(models.Model):
 	def __str__(self):
 		return f'{self.codigo} - {self.descripcion}'
 
+	def save(self, *args, **kwargs):
+		if self.pk:
+			original_code = type(self).objects.filter(pk=self.pk).values_list(
+				'codigo', flat=True,
+			).first()
+			if original_code and original_code != self.codigo:
+				raise ValueError('El código de registro es inmutable.')
+		return super().save(*args, **kwargs)
+
 
 #Modelo Atención Social
 class AtencionSocial(models.Model):
@@ -60,8 +69,36 @@ class AtencionSocial(models.Model):
 	def __str__(self):
 		return f'Atención {self.pk} - {self.tipo_atencion}'
 
+
+class CasoSocial(models.Model):
+	codigo = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+	atencion_social = models.OneToOneField(
+		AtencionSocial,
+		on_delete=models.CASCADE,
+		related_name='caso_social',
+	)
+
+	class Meta:
+		ordering = ['-atencion_social__fecha', '-pk']
+		verbose_name = 'caso social'
+		verbose_name_plural = 'casos sociales'
+
+	def __str__(self):
+		return f'Caso {self.codigo} - {self.atencion_social.tipo_atencion}'
+
+	def save(self, *args, **kwargs):
+		if self.pk:
+			original_code = type(self).objects.filter(pk=self.pk).values_list(
+				'codigo', flat=True,
+			).first()
+			if original_code and original_code != self.codigo:
+				raise ValueError('El código de caso social es inmutable.')
+		return super().save(*args, **kwargs)
+
+
 #Modelo Gestion Atención
 class GestionAtencion(models.Model):
+	codigo = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
 	atencion = models.ForeignKey(AtencionSocial, on_delete=models.CASCADE, related_name='gestiones')
 	numero_gestion = models.PositiveSmallIntegerField()
 	fecha = models.DateField()
@@ -85,3 +122,12 @@ class GestionAtencion(models.Model):
 
 	def __str__(self):
 		return f'Gestión {self.numero_gestion} de atención {self.atencion}'
+
+	def save(self, *args, **kwargs):
+		if self.pk:
+			original_code = type(self).objects.filter(pk=self.pk).values_list(
+				'codigo', flat=True,
+			).first()
+			if original_code and original_code != self.codigo:
+				raise ValueError('El código de atención es inmutable.')
+		return super().save(*args, **kwargs)

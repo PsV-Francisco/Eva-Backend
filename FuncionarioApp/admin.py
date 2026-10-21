@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import AtencionSocial, GestionAtencion, Registro
+from .models import AtencionSocial, CasoSocial, GestionAtencion, Registro
 
 
 @admin.register(Registro)
@@ -23,4 +23,11 @@ class AtencionSocialAdmin(admin.ModelAdmin):
 class GestionAtencionAdmin(admin.ModelAdmin):
 	list_display = ('atencion', 'numero_gestion', 'fecha')
 	list_filter = ('numero_gestion', 'fecha')
-	search_fields = ('atencion__usuario__email', 'resultado')
+	search_fields = ('atencion__usuario__email', 'observaciones')
+	readonly_fields = ('codigo',)
+
+
+@admin.register(CasoSocial)
+class CasoSocialAdmin(admin.ModelAdmin):
+	list_display = ('codigo', 'atencion_social')
+	readonly_fields = ('codigo',)

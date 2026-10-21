@@ -25,4 +25,16 @@ class PeriodoForm(BootstrapFormMixin, forms.ModelForm):
         end = cleaned_data.get('fecha_fin')
         if start and end and end < start:
             self.add_error('fecha_fin', 'La fecha de término debe ser igual o posterior al inicio.')
+        elif start and end:
+            overlapping_periods = Periodo.objects.filter(
+                fecha_inicio__lte=end,
+                fecha_fin__gte=start,
+            )
+            if self.instance.pk:
+                overlapping_periods = overlapping_periods.exclude(pk=self.instance.pk)
+            if overlapping_periods.exists():
+                self.add_error(
+                    'fecha_inicio',
+                    'Las fechas se superponen con otro período configurado.',
+                )
         return cleaned_data
