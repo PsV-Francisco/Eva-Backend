@@ -96,6 +96,16 @@ python manage.py collectstatic --noinput
 
 La suite de esta rama cubre los flujos de acceso, mantenedores, permisos y atención. No ejecutes migraciones contra una base de producción como parte de estas comprobaciones.
 
+### Vista previa del correo de recuperación
+
+Con `DEBUG=True`, Django imprime los correos en la consola en lugar de enviarlos. Para previsualizar el HTML en el navegador, guarda una vista previa temporal. En este archivo local se reemplaza el CID por una ruta de archivo para que el navegador también pueda mostrar el logo:
+
+```powershell
+python manage.py shell -c "import tempfile; from pathlib import Path; from django.template.loader import render_to_string; html = render_to_string('emails/recuperar_codigo.html', {'nombre': 'Nombre de prueba', 'codigo': '123456', 'minutos': 10}); html = html.replace('cid:logo_serena', (Path('static/img/logo.png').resolve()).as_uri()); output = Path(tempfile.gettempdir()) / 'recuperar_codigo_preview.html'; output.write_text(html, encoding='utf-8'); print(output)"
+```
+
+Abre la ruta impresa en un navegador. El correo real conserva la imagen CID. Este comando solo renderiza la plantilla y guarda un HTML temporal: no envía ningún correo.
+
 ## Despliegue en EC2
 
 1. Prepara una instancia Linux con Python 3.12, Nginx, herramientas de compilación y dependencias de MySQL (`default-libmysqlclient-dev` en Ubuntu). Limita SSH en el grupo de seguridad a las IP administrativas y habilita HTTP/HTTPS según la configuración del proxy.

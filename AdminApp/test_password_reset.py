@@ -110,6 +110,27 @@ class PasswordResetTests(TestCase):
         )
         self.assertRegex(mail.outbox[0].body, r'\b\d{6}\b')
         self.assertNotIn('/accounts/reset/', mail.outbox[0].body)
+        self.assertEqual(len(mail.outbox[0].alternatives), 1)
+        html_body, content_type = mail.outbox[0].alternatives[0]
+        self.assertEqual(content_type, 'text/html')
+        code = re.search(r'(\d{6})', mail.outbox[0].body).group(1)
+        minutes = (600 + 59) // 60
+        self.assertIn(code, html_body)
+        self.assertIn(f'{minutes} minutos', html_body)
+        self.assertIn('cid:logo_serena', html_body)
+        self.assertNotRegex(html_body, r'<a\b|href\s*=')
+        self.assertNotIn(code, mail.outbox[0].subject)
+        logo_attachments = [
+            attachment
+            for attachment in mail.outbox[0].attachments
+            if not isinstance(attachment, tuple)
+        ]
+        self.assertTrue(
+            any(
+                attachment['Content-ID'] == '<logo_serena>'
+                for attachment in logo_attachments
+            )
+        )
         self.assertEqual(
             PasswordResetAuditEvent.objects.filter(
                 action=PasswordResetAuditEvent.Action.REQUEST,

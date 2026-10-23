@@ -5,6 +5,7 @@ import logging
 import secrets
 import smtplib
 from datetime import timedelta
+from email.mime.image import MIMEImage
 from math import ceil
 
 from django import forms
@@ -14,9 +15,10 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import AuthenticationForm, SetPasswordForm
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import password_validators_help_text_html
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.shortcuts import redirect, render
+from django.template.loader import render_to_string
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
@@ -206,23 +208,39 @@ def _request_code(request, email_fingerprint, *, email=None, force_limited=False
 
 
 def _send_recovery_code(user, code):
+    minutes = ceil(settings.PASSWORD_RESET_CODE_TTL_SECONDS / 60)
     body = (
         f'Hola {user.get_full_name() or user.email},\n\n'
         f'Tu código de recuperación de SGR es: {code}\n'
-        f'El código vence en {ceil(settings.PASSWORD_RESET_CODE_TTL_SECONDS / 60)} '
+        f'El código vence en {minutes} '
         'minutos y solo puede utilizarse una vez.\n\n'
         'Si no solicitaste este cambio, puedes ignorar este mensaje.\n\n'
         'Sistema de Gestión de Resultados\n'
         'Ilustre Municipalidad de La Serena'
     )
+    html_body = render_to_string(
+        'emails/recuperar_codigo.html',
+        {
+            'nombre': user.get_full_name() or user.email,
+            'codigo': code,
+            'minutos': minutes,
+        },
+    )
     try:
-        sent = send_mail(
+        email = EmailMultiAlternatives(
             subject='Código de recuperación de contraseña - SGR',
-            message=body,
+            body=body,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            fail_silently=False,
+            to=[user.email],
         )
+        email.attach_alternative(html_body, 'text/html')
+        logo_path = settings.BASE_DIR / 'static' / 'img' / 'logo.png'
+        with logo_path.open('rb') as logo_file:
+            logo = MIMEImage(logo_file.read(), _subtype='png')
+        logo.add_header('Content-ID', '<logo_serena>')
+        logo.add_header('Content-Disposition', 'inline', filename='logo.png')
+        email.attach(logo)
+        sent = email.send(fail_silently=False)
     except (smtplib.SMTPException, OSError):
         logger.exception(
             'No se pudo enviar el código de recuperación al usuario id=%s.',
