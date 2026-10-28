@@ -1,6 +1,9 @@
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from AdminApp.models import Cargo, Delegacion
 from CoordinadorApp.models import Periodo
@@ -108,3 +111,66 @@ class DelegationWorkflowTests(TestCase):
             [row['usuario'] for row in response.context['funcionarios']],
             [own_employee],
         )
+
+    def test_public_tracking_page_access_without_login_and_hides_sensitive_data(self):
+        self.commitment.seguimiento_token = 'token-publico-123'
+        self.commitment.seguimiento_activo = True
+        self.commitment.seguimiento_expira = None
+        self.commitment.descripcion = 'Compromiso público de ejemplo'
+        self.commitment.solicitante = 'Ana Solicitante'
+        self.commitment.observaciones = 'Observación interna no visible'
+        self.commitment.save(update_fields=['seguimiento_token', 'seguimiento_activo', 'seguimiento_expira', 'descripcion', 'solicitante', 'observaciones'])
+
+        response = self.client.get(reverse('seguimiento_publico', args=['token-publico-123']))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Código de gestión')
+        self.assertContains(response, 'Compromiso público de ejemplo')
+        self.assertNotContains(response, 'Ana Solicitante')
+        self.assertNotContains(response, 'Observación interna no visible')
+        self.assertContains(response, 'noindex')
+
+    def test_public_tracking_rejects_invalid_regenerated_deactivated_and_expired_tokens(self):
+        self.commitment.seguimiento_token = 'token-activo'
+        self.commitment.seguimiento_activo = True
+        self.commitment.save(update_fields=['seguimiento_token', 'seguimiento_activo'])
+
+        response = self.client.get(reverse('seguimiento_publico', args=['token-activo']))
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get(reverse('seguimiento_publico', args=['token-invalido']))
+        self.assertEqual(response.status_code, 404)
+
+        self.commitment.seguimiento_token = 'token-nuevo'
+        self.commitment.seguimiento_activo = True
+        self.commitment.save(update_fields=['seguimiento_token', 'seguimiento_activo'])
+        response = self.client.get(reverse('seguimiento_publico', args=['token-activo']))
+        self.assertEqual(response.status_code, 404)
+
+        self.commitment.seguimiento_token = 'token-desactivado'
+        self.commitment.seguimiento_activo = False
+        self.commitment.save(update_fields=['seguimiento_token', 'seguimiento_activo'])
+        response = self.client.get(reverse('seguimiento_publico', args=['token-desactivado']))
+        self.assertEqual(response.status_code, 404)
+
+        self.commitment.seguimiento_token = 'token-vencido'
+        self.commitment.seguimiento_activo = True
+        self.commitment.seguimiento_expira = timezone.now() - timedelta(minutes=5)
+        self.commitment.save(update_fields=['seguimiento_token', 'seguimiento_activo', 'seguimiento_expira'])
+        response = self.client.get(reverse('seguimiento_publico', args=['token-vencido']))
+        self.assertEqual(response.status_code, 410)
+
+    def test_unauthorized_user_cannot_manage_public_tracking_link(self):
+        other_delegate = get_user_model().objects.create_user(
+            email='delegado-otro@sgr.test',
+            password='Sgr-Test-Password-418!',
+            cargo=Cargo.objects.get_or_create(nombre='delegado')[0],
+            delegacion=self.other_delegation,
+        )
+        other_client = self.client_class()
+        other_client.force_login(other_delegate)
+        response = other_client.post(reverse('delegado:home'), {
+            'action': 'seguimiento_regenerar',
+            'compromiso_id': self.commitment.pk,
+        })
+        self.assertEqual(response.status_code, 404)

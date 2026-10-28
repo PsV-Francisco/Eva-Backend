@@ -4,6 +4,8 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import include, path
 from django.views.generic import TemplateView
+
+from DelegadoApp import views as delegado_views
 from . import delegations, password_reset, views
 
 urlpatterns = [
@@ -53,6 +55,7 @@ urlpatterns = [
     path('inicio/', views.home_redirect, name='home'),
     path('manual/', views.manual, name='manual'),
     path('manual/<slug:role>/', views.manual, name='manual_role'),
+    path('seguimiento/<str:token>/', delegado_views.seguimiento_publico, name='seguimiento_publico'),
     path(
         'delegacion/activa/',
         delegations.select_active_delegation,

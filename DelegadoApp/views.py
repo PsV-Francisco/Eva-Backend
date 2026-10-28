@@ -1,9 +1,15 @@
+import secrets
+from datetime import datetime
+from decimal import Decimal
+
 from django.contrib import messages
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import OuterRef, Q, Subquery
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404, redirect, render
-from decimal import Decimal
+from django.utils import timezone
+from django.views.decorators.http import require_GET
 
 from AdminApp.audit import registrar_historial
 from AdminApp.models import ParametroSistema, Usuario
@@ -12,9 +18,125 @@ from config.delegations import active_delegation
 from CoordinadorApp.models import Desempeno, Periodo
 from CoordinadorApp.services import cumplimiento_por_usuario
 from DelegadoApp.forms import CompromisoEstadoForm, CompromisoForm
-from DelegadoApp.models import Agenda, Compromiso, HistorialEstadoCompromiso
+from DelegadoApp.models import Agenda, Compromiso, HistorialEstadoCompromiso, SeguimientoAcceso
 from DelegadoApp.services import actualizar_estado_compromiso
 from FuncionarioApp.models import Registro
+
+
+def _tracking_ip_key(ip_address):
+    return f'seguimiento_publico:{ip_address}:attempts'
+
+
+def _log_tracking_access(*, compromiso, token, request, success, reason):
+    ip_address = request.META.get('REMOTE_ADDR') or None
+    user_agent = (request.META.get('HTTP_USER_AGENT') or '')[:255]
+    SeguimientoAcceso.objects.create(
+        compromiso=compromiso,
+        token=(token or '')[:64],
+        ip_address=ip_address,
+        user_agent=user_agent,
+        exito=success,
+        motivo=reason,
+    )
+
+
+@require_GET
+def seguimiento_publico(request, token):
+    ip_address = request.META.get('REMOTE_ADDR') or 'unknown'
+    rate_key = _tracking_ip_key(ip_address)
+    attempts = cache.get(rate_key, 0)
+    if attempts >= 10:
+        _log_tracking_access(
+            compromiso=None,
+            token=token,
+            request=request,
+            success=False,
+            reason='limitado',
+        )
+        return render(
+            request,
+            'DelegadoApp/seguimiento_publico.html',
+            {
+                'public_error': 'El seguimiento solicitado no está disponible en este momento.',
+                'public_access_denied': True,
+            },
+            status=429,
+        )
+
+    cache.set(rate_key, attempts + 1, timeout=300)
+    compromiso = Compromiso.objects.filter(seguimiento_token=token).select_related(
+        'agenda', 'agenda__periodo', 'agenda__delegacion',
+    ).prefetch_related('historial_estados').first()
+
+    if not compromiso or not compromiso.seguimiento_activo:
+        _log_tracking_access(
+            compromiso=compromiso,
+            token=token,
+            request=request,
+            success=False,
+            reason='desactivado' if compromiso and not compromiso.seguimiento_activo else 'invalido',
+        )
+        return render(
+            request,
+            'DelegadoApp/seguimiento_publico.html',
+            {
+                'public_error': 'El seguimiento solicitado no está disponible en este momento.',
+                'public_access_denied': True,
+            },
+            status=404,
+        )
+
+    if compromiso.seguimiento_expira and timezone.now() > compromiso.seguimiento_expira:
+        _log_tracking_access(
+            compromiso=compromiso,
+            token=token,
+            request=request,
+            success=False,
+            reason='vencido',
+        )
+        return render(
+            request,
+            'DelegadoApp/seguimiento_publico.html',
+            {
+                'public_error': 'El seguimiento solicitado no está disponible en este momento.',
+                'public_access_denied': True,
+            },
+            status=410,
+        )
+
+    compromiso.seguimiento_ultima_vista = timezone.now()
+    compromiso.save(update_fields=['seguimiento_ultima_vista'])
+    _log_tracking_access(
+        compromiso=compromiso,
+        token=token,
+        request=request,
+        success=True,
+        reason='valido',
+    )
+
+    estados = [
+        {'key': Compromiso.Estado.INGRESADO, 'label': 'Ingresado'},
+        {'key': Compromiso.Estado.PENDIENTE, 'label': 'Pendiente'},
+        {'key': Compromiso.Estado.EN_PROCESO, 'label': 'En proceso'},
+        {'key': Compromiso.Estado.REALIZADO, 'label': 'Realizado'},
+    ]
+    current_index = estados.index(next(item for item in estados if item['key'] == compromiso.estado))
+    timeline = []
+    for index, estado in enumerate(estados):
+        timeline.append({
+            'label': estado['label'],
+            'active': index <= current_index,
+            'current': index == current_index,
+            'done': index < current_index,
+        })
+
+    return render(request, 'DelegadoApp/seguimiento_publico.html', {
+        'compromiso': compromiso,
+        'timeline': timeline,
+        'public_access_denied': False,
+        'public_code': compromiso.codigo_publico,
+        'historial': compromiso.historial_estados.select_related('autor').all(),
+    })
 
 
 @cargo_required('delegado')
@@ -59,6 +181,49 @@ def home(request):
             commitment = get_object_or_404(commitments, pk=compromiso_id)
         else:
             commitment = None
+
+        if action == 'seguimiento_regenerar':
+            if commitment is None:
+                messages.error(request, 'No se encontró el compromiso que intentas actualizar.')
+            else:
+                commitment.seguimiento_token = secrets.token_urlsafe(32)
+                commitment.seguimiento_activo = True
+                commitment.seguimiento_expira = None
+                commitment.save(update_fields=['seguimiento_token', 'seguimiento_activo', 'seguimiento_expira'])
+                messages.success(request, 'El enlace de seguimiento se regeneró correctamente. El enlace anterior dejó de funcionar.')
+            return redirect('delegado:home')
+
+        if action == 'seguimiento_toggle':
+            if commitment is None:
+                messages.error(request, 'No se encontró el compromiso que intentas actualizar.')
+            else:
+                commitment.seguimiento_activo = request.POST.get('seguimiento_activo') == '1'
+                if not commitment.seguimiento_activo and not commitment.seguimiento_token:
+                    commitment.seguimiento_token = secrets.token_urlsafe(32)
+                commitment.save(update_fields=['seguimiento_activo', 'seguimiento_token'])
+                messages.success(
+                    request,
+                    'El enlace de seguimiento se activó.' if commitment.seguimiento_activo else 'El enlace de seguimiento se desactivó.',
+                )
+            return redirect('delegado:home')
+
+        if action == 'seguimiento_expiracion':
+            if commitment is None:
+                messages.error(request, 'No se encontró el compromiso que intentas actualizar.')
+            else:
+                fecha_input = request.POST.get('seguimiento_expira')
+                if fecha_input:
+                    commitment.seguimiento_expira = datetime.strptime(fecha_input, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                    if not commitment.seguimiento_token:
+                        commitment.seguimiento_token = secrets.token_urlsafe(32)
+                    commitment.seguimiento_activo = True
+                    commitment.save(update_fields=['seguimiento_expira', 'seguimiento_activo', 'seguimiento_token'])
+                    messages.success(request, 'Se configuró la fecha de vencimiento del enlace de seguimiento.')
+                else:
+                    commitment.seguimiento_expira = None
+                    commitment.save(update_fields=['seguimiento_expira'])
+                    messages.success(request, 'El enlace de seguimiento quedó sin fecha de vencimiento.')
+            return redirect('delegado:home')
 
         if action == 'eliminar':
             if commitment is None:

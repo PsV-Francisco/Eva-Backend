@@ -1,3 +1,5 @@
+import secrets
+
 from django.conf import settings
 from django.db import models
 
@@ -35,6 +37,12 @@ class Compromiso(models.Model):
 		EN_PROCESO = 'en_proceso', 'En proceso'
 		REALIZADO = 'realizado', 'Realizado'
 
+	# Identificador público y no secuencial para seguimiento sin login.
+	seguimiento_token = models.CharField(max_length=64, unique=True, null=True, blank=True, db_index=True)
+	seguimiento_activo = models.BooleanField(default=True)
+	seguimiento_expira = models.DateTimeField(null=True, blank=True)
+	seguimiento_ultima_vista = models.DateTimeField(null=True, blank=True)
+
 	agenda = models.ForeignKey(Agenda, on_delete=models.PROTECT, related_name='compromisos')
 	descripcion = models.CharField(max_length=240)
 	solicitante = models.CharField(max_length=160, blank=True)
@@ -45,6 +53,7 @@ class Compromiso(models.Model):
 	observaciones = models.TextField(blank=True)
 	umbral_minimo = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
 	creado = models.DateTimeField(auto_now_add=True)
+	actualizado = models.DateTimeField(auto_now=True)
 
 	class Meta:
 		ordering = ['-fecha', 'descripcion']
@@ -52,6 +61,30 @@ class Compromiso(models.Model):
 		verbose_name = "Compromiso"
 		verbose_name_plural = "Compromisos"
 
+	@property
+	def codigo_publico(self):
+		return f'COM-{self.pk:06d}'
+
+	def generar_token_seguimiento(self):
+		if self.seguimiento_token and self.seguimiento_activo:
+			return self.seguimiento_token
+		while True:
+			token = secrets.token_urlsafe(32)
+			if not Compromiso.objects.filter(seguimiento_token=token).exclude(pk=self.pk).exists():
+				self.seguimiento_token = token
+				self.seguimiento_activo = True
+				self.seguimiento_expira = None
+				return token
+
+	def activar_seguimiento(self):
+		if not self.seguimiento_token:
+			self.generar_token_seguimiento()
+		self.seguimiento_activo = True
+		return self.seguimiento_token
+
+	def desactivar_seguimiento(self):
+		self.seguimiento_activo = False
+		return self.seguimiento_token
 
 	def __str__(self):
 		return self.descripcion
@@ -76,3 +109,30 @@ class HistorialEstadoCompromiso(models.Model):
 		ordering = ['-fecha']
 		verbose_name = 'historial de estado de compromiso'
 		verbose_name_plural = 'historiales de estado de compromiso'
+
+
+class SeguimientoAcceso(models.Model):
+	compromiso = models.ForeignKey(
+		Compromiso,
+		on_delete=models.SET_NULL,
+		related_name='seguimiento_accesos',
+		null=True,
+		blank=True,
+	)
+	token = models.CharField(max_length=64, blank=True, db_index=True)
+	ip_address = models.GenericIPAddressField(null=True, blank=True)
+	user_agent = models.CharField(max_length=255, blank=True)
+	exito = models.BooleanField(default=False)
+	motivo = models.CharField(max_length=32, choices=(
+		('valido', 'Válido'),
+		('invalido', 'Inválido'),
+		('desactivado', 'Desactivado'),
+		('vencido', 'Vencido'),
+		('limitado', 'Limitado por IP'),
+	), default='valido')
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		ordering = ['-created_at']
+		verbose_name = 'acceso a seguimiento público'
+		verbose_name_plural = 'accesos a seguimiento público'
