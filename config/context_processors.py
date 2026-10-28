@@ -17,6 +17,7 @@ NAVIGATION_BY_CARGO = {
         ('Atenciones', None),
         ('Historial', 'administracion:historial'),
         ('Auditoría de recuperación', 'administracion:auditoria-recuperacion'),
+        ('Manual / Ayuda', 'manual'),
     ),
     'administrador': (
         ('Inicio', 'home'),
@@ -33,32 +34,41 @@ NAVIGATION_BY_CARGO = {
         ('Atenciones', None),
         ('Historial', 'administracion:historial'),
         ('Auditoría de recuperación', 'administracion:auditoria-recuperacion'),
+        ('Manual / Ayuda', 'manual'),
     ),
     'funcionario': (
         ('Inicio', 'home'),
         ('Atenciones', 'funcionario:atencion_social'),
+        ('Manual / Ayuda', 'manual'),
     ),
     'coordinador': (
         ('Inicio', 'home'),
         ('Ítems y metas', 'administracion:items'),
+        ('Manual / Ayuda', 'manual'),
     ),
     'delegado': (
         ('Inicio', 'home'),
+        ('Manual / Ayuda', 'manual'),
     ),
     'supervisor': (
         ('Inicio', 'home'),
+        ('Manual / Ayuda', 'manual'),
     ),
     'verificador': (
         ('Inicio', 'home'),
+        ('Manual / Ayuda', 'manual'),
     ),
     'vistaf': (
         ('Inicio', 'home'),
+        ('Manual / Ayuda', 'manual'),
     ),
     'consulta': (
         ('Inicio', 'home'),
+        ('Manual / Ayuda', 'manual'),
     ),
     'usuario de consulta': (
         ('Inicio', 'home'),
+        ('Manual / Ayuda', 'manual'),
     ),
 }
 

@@ -51,6 +51,8 @@ urlpatterns = [
         name='password_reset_complete',
     ),
     path('inicio/', views.home_redirect, name='home'),
+    path('manual/', views.manual, name='manual'),
+    path('manual/<slug:role>/', views.manual, name='manual_role'),
     path(
         'delegacion/activa/',
         delegations.select_active_delegation,

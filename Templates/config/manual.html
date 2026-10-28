@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+{% block title %}{{ manual.label }} | Manual / Ayuda{% endblock %}
+{% block page_title %}Manual / Ayuda{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+    <section class="content-section">
+      <div class="section-head align-items-center">
+        <div>
+          <p class="eyebrow">PERFIL</p>
+          <h2>{{ manual.label }}</h2>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          {% if is_admin %}<a class="btn btn-outline-secondary" href="{% url 'manual' %}">Volver a manual general</a>{% endif %}
+          <button class="btn btn-primary" type="button" onclick="window.print()">Imprimir / PDF</button>
+        </div>
+      </div>
+
+      <div class="alert alert-light border mb-4">
+        <strong>Descripción general:</strong> {{ manual.summary }}
+      </div>
+
+      <div class="row g-4">
+        <div class="col-lg-8">
+          <article class="card mb-4 shadow-sm border-0">
+            <div class="card-body">
+              <h3 class="h5">¿Para qué sirve este perfil?</h3>
+              <p>{{ manual.summary }}</p>
+            </div>
+          </article>
+
+          <article class="card mb-4 shadow-sm border-0">
+            <div class="card-body">
+              <h3 class="h5">1. Inicio de sesión y recuperación de contraseña</h3>
+              <ol>
+                <li>Ingresa a la pantalla de inicio del sistema y usa tu correo electrónico.</li>
+                <li>Completa la contraseña asignada para la cuenta o solicita recuperación de acceso desde la opción de “Recuperar contraseña”.</li>
+                <li>Si el sistema emitió un código o enlace de recuperación, sigue el flujo vigente de recuperación y confirma la nueva contraseña.</li>
+              </ol>
+            </div>
+          </article>
+
+          <article class="card mb-4 shadow-sm border-0">
+            <div class="card-body">
+              <h3 class="h5">2. Pantallas a las que tiene acceso</h3>
+              <ul>
+                {% for item in manual.screens %}
+                <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </article>
+
+          <article class="card mb-4 shadow-sm border-0">
+            <div class="card-body">
+              <h3 class="h5">3. Tareas principales</h3>
+              <ol>
+                {% for step in manual.steps %}
+                <li>{{ step|slice:'3:' }}</li>
+                {% endfor %}
+              </ol>
+            </div>
+          </article>
+
+          <article class="card mb-4 shadow-sm border-0">
+            <div class="card-body">
+              <h3 class="h5">4. Reglas importantes</h3>
+              <ul>
+                {% for rule in manual.rules %}
+                <li>{{ rule }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </article>
+
+          <article class="card mb-4 shadow-sm border-0">
+            <div class="card-body">
+              <h3 class="h5">5. Preguntas frecuentes</h3>
+              <ul>
+                {% for item in manual.faq %}
+                <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </article>
+        </div>
+
+        <div class="col-lg-4">
+          <div class="card shadow-sm border-0 sticky-top" style="top: 1rem;">
+            <div class="card-body">
+              <h3 class="h5">Resumen del perfil</h3>
+              <p class="mb-2"><strong>Perfil:</strong> {{ manual.label }}</p>
+              <p class="mb-2"><strong>Tipo de acceso:</strong> {% if is_admin %}Administrador general{% else %}Usuario del sistema{% endif %}</p>
+              <p class="mb-3"><strong>Nota:</strong> Este manual está basado en las pantallas y reglas implementadas en el código vigente.</p>
+              <div class="border rounded p-3 bg-light">
+                <small class="text-muted">{{ manual.screenshot }}</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<style>
+@media print {
+  body { background: #fff; }
+  .topbar, .role-sidebar, .btn, .date-chip, .site-footer, .navbar, form, .alert, .pagination { display: none !important; }
+  .dashboard-layout, .dashboard-main { display: block !important; }
+  .content-section { box-shadow: none !important; border: 0 !important; }
+  .card { border: 1px solid #ddd !important; box-shadow: none !important; }
+}
+</style>
+{% endblock %}

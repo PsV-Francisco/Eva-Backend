@@ -176,6 +176,36 @@ class RolePortalTests(TestCase):
 		response = client.get(reverse('funcionario:home'))
 		self.assertEqual(response.status_code, 403)
 
+	def test_manual_access_by_profile_and_403_for_unauthorized_role(self):
+		role_names = (
+			('administrador', 'Administrador'),
+			('coordinador', 'Coordinador'),
+			('delegado', 'Delegado'),
+			('funcionario', 'Funcionario'),
+			('supervisor', 'Verificador / Supervisor'),
+		)
+		for cargo_name, label in role_names:
+			with self.subTest(cargo=cargo_name):
+				cargo, _ = Cargo.objects.get_or_create(nombre=cargo_name)
+				user = get_user_model().objects.create_user(
+					email=f'{cargo_name}@sgr.test',
+					password='Sgr-Test-Password-418!',
+					cargo=cargo,
+				)
+				client = Client()
+				client.force_login(user)
+				response = client.get(reverse('manual'))
+				self.assertEqual(response.status_code, 200)
+				self.assertContains(response, label)
+				for other_cargo, _ in role_names:
+					if cargo_name == other_cargo:
+						continue
+					response = client.get(reverse('manual_role', args=[other_cargo]))
+					if cargo_name == 'administrador':
+						self.assertEqual(response.status_code, 200)
+					else:
+						self.assertEqual(response.status_code, 403)
+
 	def test_superuser_without_cargo_cannot_access_dashboard(self):
 		user = get_user_model().objects.create_superuser(
 			email='admin-sin-cargo@sgr.test', password='Sgr-Test-Password-418!'
