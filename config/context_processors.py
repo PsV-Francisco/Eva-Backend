@@ -4,6 +4,10 @@ from config.delegations import active_delegation, authorized_delegations
 NAVIGATION_BY_CARGO = {
     'admin': (
         ('Inicio', 'home'),
+        ('Cargos', 'administracion:cargos'),
+        ('Funciones', 'administracion:funciones'),
+        ('Cargos por función', 'administracion:cargos-funciones'),
+        ('Catálogo de actividades', 'administracion:catalogo'),
         ('Delegaciones', 'administracion:delegaciones'),
         ('Roles', 'administracion:roles'),
         ('Usuarios', 'administracion:home'),
@@ -11,9 +15,15 @@ NAVIGATION_BY_CARGO = {
         ('Tipo de Atención', 'administracion:tipos-atencion'),
         ('Sub Atención', 'administracion:subatenciones'),
         ('Atenciones', None),
+        ('Historial', 'administracion:historial'),
+        ('Auditoría de recuperación', 'administracion:auditoria-recuperacion'),
     ),
     'administrador': (
         ('Inicio', 'home'),
+        ('Cargos', 'administracion:cargos'),
+        ('Funciones', 'administracion:funciones'),
+        ('Cargos por función', 'administracion:cargos-funciones'),
+        ('Catálogo de actividades', 'administracion:catalogo'),
         ('Delegaciones', 'administracion:delegaciones'),
         ('Roles', 'administracion:roles'),
         ('Usuarios', 'administracion:home'),
@@ -21,6 +31,8 @@ NAVIGATION_BY_CARGO = {
         ('Tipo de Atención', 'administracion:tipos-atencion'),
         ('Sub Atención', 'administracion:subatenciones'),
         ('Atenciones', None),
+        ('Historial', 'administracion:historial'),
+        ('Auditoría de recuperación', 'administracion:auditoria-recuperacion'),
     ),
     'funcionario': (
         ('Inicio', 'home'),

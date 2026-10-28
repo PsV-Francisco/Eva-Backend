@@ -13,6 +13,7 @@ Prototipo académico en Django para registrar actividades, metas, atenciones y e
 - Python 3.12.
 - Django 5.2.17 y dependencias fijadas en `requirements.txt`.
 - SQLite para desarrollo; MySQL/InnoDB para una instalación compartida.
+- `DJANGO_SECRET_KEY` es obligatoria para iniciar la aplicación, también en desarrollo.
 
 En PowerShell:
 
@@ -21,6 +22,8 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+$env:DJANGO_SECRET_KEY = (python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())")
 $env:DB_ENGINE = 'sqlite'
 $env:DEBUG = 'True'
 python manage.py migrate
@@ -30,13 +33,21 @@ python manage.py runserver
 
 Abrir `http://127.0.0.1:8000/`. La configuración local también puede leerse desde `.env`; no guardes credenciales ni claves reales en Git.
 
+Para dejar la clave solo en el archivo local ignorado por Git, genera una con:
+
+```powershell
+python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+```
+
+Copia el resultado en `DJANGO_SECRET_KEY` dentro de `.env`. No uses una clave de ejemplo, no la compartas ni la subas al repositorio.
+
 ## Configuración
 
 La aplicación carga variables del entorno y del archivo `.env` en el directorio raíz. Variables principales:
 
 | Variable | Uso |
 | --- | --- |
-| `DJANGO_SECRET_KEY` | Clave secreta Django; obligatoria y única en producción. |
+| `DJANGO_SECRET_KEY` | Clave secreta Django; obligatoria para iniciar la aplicación y única por entorno. |
 | `DEBUG` | `True` solo en desarrollo; `False` en producción. |
 | `ALLOWED_HOSTS` | Hosts HTTP permitidos, separados por coma. |
 | `CSRF_TRUSTED_ORIGINS` | Orígenes completos (incluye `https://`), separados por coma; necesario si se usa un dominio distinto al predeterminado. |
@@ -44,12 +55,14 @@ La aplicación carga variables del entorno y del archivo `.env` en el directorio
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | Conexión MySQL; usa una cuenta de base de datos con permisos mínimos. |
 | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL` | SMTP para correo de recuperación. |
 | `PASSWORD_RESET_DOMAIN` | Host público de los enlaces de recuperación, sin esquema. |
+| `PASSWORD_RESET_PROTOCOL` | Protocolo del enlace de recuperación (`http` o `https`); por defecto `http`. En producción con HTTPS, usa `https`. |
+| `PASSWORD_RESET_TIMEOUT` | Vigencia del token de enlace en segundos; actualmente 3600 (una hora). |
 | `PASSWORD_RESET_RATE_LIMIT`, `PASSWORD_RESET_RATE_WINDOW` | Máximo de solicitudes y ventana en segundos; por defecto 5 y 3600. |
 | `PASSWORD_RESET_CODE_TTL_SECONDS` | Vigencia del código; por defecto 600 segundos. |
 | `PASSWORD_RESET_CODE_RESEND_SECONDS` | Espera entre reenvíos; por defecto 45 segundos. |
 | `PASSWORD_RESET_CODE_MAX_ATTEMPTS` | Intentos de validación permitidos; por defecto 5. |
 
-En desarrollo, los correos se muestran en la consola. En producción, la aplicación usa SMTP. El código de recuperación es de seis dígitos, se guarda como hash, vence según `PASSWORD_RESET_CODE_TTL_SECONDS` y se invalida después de un uso.
+En desarrollo, los correos se muestran en la consola. En producción, la aplicación usa SMTP. La recuperación principal envía un enlace con `uidb64` y token firmado, válido durante una hora y de uso único. El código de recuperación de seis dígitos sigue disponible como alternativa; se guarda como hash, vence según `PASSWORD_RESET_CODE_TTL_SECONDS` y se invalida después de un uso. Ambos flujos mantienen respuesta genérica, límite de solicitudes y auditoría.
 
 Los accesos se validan en el servidor según el cargo existente. El campo descriptivo `Rol.permisos` no concede permisos efectivos. La delegación activa se limita a las delegaciones autorizadas del usuario.
 
@@ -62,8 +75,10 @@ Los estados describen el código de esta rama; «operativo» no significa que ya
 | Cabecera, navegación y contexto de delegación | Operativo | Plantilla común, logo institucional, selector restringido a delegaciones autorizadas y navegación por cargo. |
 | Acceso y recuperación | Operativo | Inicio de sesión por correo; recuperación por código y auditoría. Requiere SMTP configurado para enviar correo real. |
 | Delegaciones, roles y usuarios | Operativo | CRUD, filtros, paginación y exportación XLSX; los permisos continúan basados en cargo. |
+| Cargos, funciones, asignaciones y catálogo | Operativo | Mantenedores propios con CRUD, búsqueda y desactivación segura; cargos de control de acceso no se pueden renombrar ni eliminar. |
 | Ítems y metas | Operativo | Mantenedor de ítems y asignaciones existentes de metas por usuario, ítem y período. |
 | Tipos y Sub Atenciones | Operativo | Catálogos normalizados alimentados con valores históricos; las atenciones históricas conservan sus textos originales. |
+| Historial y auditoría de recuperación | Operativo | Vistas de consulta con filtros y paginación; son solo lectura. |
 | Registro de actividades y cumplimiento | Operativo | Registro de actividades, evidencias y seguimiento de metas. |
 | Ingreso y seguimiento de atenciones | Operativo | Solicitantes locales por delegación, tipo/Sub Atención activa, responsable y fecha automáticos, código de caso y hasta tres seguimientos con evidencia. No consulta padrones externos. |
 | Agenda y compromisos | Operativo | Agenda por delegación y actualización de compromisos asignados. |
@@ -78,7 +93,7 @@ Los estados describen el código de esta rama; «operativo» no significa que ya
 - `SupervisorApp`: `/supervisor/` para revisar evidencias.
 - `DelegadoApp`: `/delegado/` y `/delegado/resumen/`.
 - `CoordinadorApp`: `/coordinador/`.
-- `AdminApp`: `/admin-app/`, `/admin-app/parametros/` y los mantenedores de `/admin-app/delegaciones/`, `/admin-app/roles/`, `/admin-app/items/`, `/admin-app/tipos-atencion/` y `/admin-app/subatenciones/`.
+- `AdminApp`: `/admin-app/`, `/admin-app/parametros/` y mantenedores de `/admin-app/cargos/`, `/admin-app/funciones/`, `/admin-app/cargos-funciones/`, `/admin-app/catalogo/`, `/admin-app/delegaciones/`, `/admin-app/roles/`, `/admin-app/items/`, `/admin-app/tipos-atencion/` y `/admin-app/subatenciones/`. Las consultas de historial y recuperación están en `/admin-app/historial/` y `/admin-app/auditoria-recuperacion/`.
 - `VistaFApp`: `/consulta/`.
 
 Los cargos `Supervisor` y `Verificador` son distintos; ambos pueden ingresar al portal de supervisión sin que el sistema convierta o asigne automáticamente un cargo al otro. `Templates/base.html` es la plantilla compartida; los recursos estáticos se publican desde `static/`.
@@ -118,7 +133,7 @@ Abre la ruta impresa en un navegador. El correo real conserva la imagen CID. Est
    pip install -r requirements.txt
    ```
 
-3. Crea un archivo de entorno protegido para el servicio (por ejemplo, `/etc/sgr/sgr.env`, permisos `600`). Define `DJANGO_SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DB_ENGINE=mysql`, las variables `DB_*`, SMTP y `PASSWORD_RESET_DOMAIN`. No copies secretos al repositorio ni a los logs. Para un dominio, por ejemplo, usa `ALLOWED_HOSTS=sgr.ejemplo.cl` y `CSRF_TRUSTED_ORIGINS=https://sgr.ejemplo.cl`.
+3. **Antes de desplegar o iniciar el servicio**, crea un archivo de entorno protegido (por ejemplo, `/etc/sgr/sgr.env`, permisos `600`) y agrega `DJANGO_SECRET_KEY` con una clave nueva. Puedes generarla en el servidor con `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"` y guardarla en ese archivo; no la escribas en el repositorio ni en logs. La aplicación ahora falla al arrancar si falta la variable. Define también `DEBUG=False`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DB_ENGINE=mysql`, las variables `DB_*`, SMTP, `PASSWORD_RESET_DOMAIN=sgr.ejemplo.cl` y `PASSWORD_RESET_PROTOCOL=https`. Configura el protocolo como `https` solo cuando el dominio ya esté publicado detrás de HTTPS.
 4. Configura MySQL o RDS con InnoDB, crea una base y una cuenta de servicio de privilegios mínimos. Permite conexiones solo desde el grupo de seguridad de EC2 y respalda la base de destino antes de actualizarla.
 5. Desde el directorio de la aplicación, activa el entorno virtual y verifica la configuración antes de tocar la base:
 
@@ -141,5 +156,5 @@ Abre la ruta impresa en un navegador. El correo real conserva la imagen CID. Est
    ```
 
    Configura Nginx como proxy inverso hacia `127.0.0.1:8000` y sirve `/static/` desde `/opt/sgr/staticfiles/`. Mantén el proceso bajo un usuario del sistema sin privilegios y habilita HTTPS con un certificado válido antes de usar el sitio públicamente.
-7. Reinicia el servicio, verifica `systemctl status <servicio>` y los logs, y prueba en el sitio: login, recuperación SMTP, cambio de delegación autorizada, CRUD/exportación, alta de atención, relación tipo/Sub Atención y acceso denegado a rutas no autorizadas.
+7. Reinicia el servicio, verifica `systemctl status <servicio>` y los logs, y prueba en el sitio: login, recepción del enlace de recuperación por SMTP y su vencimiento/uso único, recuperación por código alternativa, cambio de delegación autorizada, CRUD/exportación, alta de atención, relación tipo/Sub Atención y acceso denegado a rutas no autorizadas.
 8. Mantén respaldos y monitoreo de base y medios. No uses `runserver` como servidor de producción.

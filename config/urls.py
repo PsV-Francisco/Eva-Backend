@@ -3,6 +3,7 @@ from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import include, path
+from django.views.generic import TemplateView
 from . import delegations, password_reset, views
 
 urlpatterns = [
@@ -32,12 +33,14 @@ urlpatterns = [
     ),
     path(
         'accounts/password-reset/done/',
-        password_reset.verificar_codigo,
+        TemplateView.as_view(
+            template_name='auth/password_reset_done.html',
+        ),
         name='password_reset_done',
     ),
     path(
         'accounts/reset/<uidb64>/<token>/',
-        password_reset.enlace_recuperacion_obsoleto,
+        password_reset.confirmar_enlace_recuperacion,
         name='password_reset_confirm',
     ),
     path(

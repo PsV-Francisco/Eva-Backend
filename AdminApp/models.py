@@ -1,7 +1,45 @@
 from django.conf import settings
 from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models.deletion import ProtectedError
+
+
+CRITICAL_CARGO_NAMES = frozenset({
+    'admin',
+    'administrador',
+    'coordinador',
+    'delegado',
+    'funcionario',
+    'supervisor',
+    'verificador',
+    'vistaf',
+    'consulta',
+    'usuario de consulta',
+})
+
+
+def is_critical_cargo_name(name):
+    return (name or '').strip().casefold() in CRITICAL_CARGO_NAMES
+
+
+class CargoQuerySet(models.QuerySet):
+    def delete(self):
+        protected_cargos = [
+            cargo for cargo in self
+            if is_critical_cargo_name(cargo.nombre)
+        ]
+        if protected_cargos:
+            raise ProtectedError(
+                'Los cargos usados por los controles de acceso no se pueden eliminar.',
+                protected_cargos,
+            )
+        return super().delete()
+
+
+class CargoManager(models.Manager.from_queryset(CargoQuerySet)):
+    pass
 
 #Modelo Usuario Abstracto
 class UsuarioManager(BaseUserManager):
@@ -63,10 +101,20 @@ class Delegacion(models.Model):
 
 #Modelo del Cargo
 class Cargo(models.Model):
+    class Estado(models.TextChoices):
+        ACTIVO = 'activo', 'Activo'
+        INACTIVO = 'inactivo', 'Inactivo'
+
     nombre = models.CharField(max_length=120, unique=True)
     funciones = models.ForeignKey(
         'CoordinadorApp.Funcion', on_delete=models.PROTECT, null=True, blank=True
     )
+    estado = models.CharField(
+        max_length=20,
+        choices=Estado.choices,
+        default=Estado.ACTIVO,
+    )
+    objects = CargoManager()
 
     class Meta:
         db_table = "cargo"
@@ -76,6 +124,45 @@ class Cargo(models.Model):
 
     def __str__(self):
         return self.nombre
+
+    def clean(self):
+        super().clean()
+        if not self.pk:
+            return
+        previous_name = type(self).objects.filter(pk=self.pk).values_list(
+            'nombre', flat=True,
+        ).first()
+        if (
+            previous_name
+            and is_critical_cargo_name(previous_name)
+            and self.nombre != previous_name
+        ):
+            raise ValidationError({
+                'nombre': 'No se puede renombrar un cargo usado por el control de acceso.',
+            })
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            previous_name = type(self).objects.filter(pk=self.pk).values_list(
+                'nombre', flat=True,
+            ).first()
+            if (
+                previous_name
+                and is_critical_cargo_name(previous_name)
+                and self.nombre != previous_name
+            ):
+                raise ValidationError(
+                    'No se puede renombrar un cargo usado por el control de acceso.'
+                )
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if is_critical_cargo_name(self.nombre):
+            raise ProtectedError(
+                'Los cargos usados por los controles de acceso no se pueden eliminar.',
+                [self],
+            )
+        return super().delete(*args, **kwargs)
 
 
 #Modelo del Rol
@@ -247,10 +334,19 @@ class Usuario(AbstractUser):
 
 #Modelo del Catálogo
 class Catalogo(models.Model):
+    class Estado(models.TextChoices):
+        ACTIVO = 'activo', 'Activo'
+        INACTIVO = 'inactivo', 'Inactivo'
+
     actividad = models.CharField(max_length=120, blank=True)
     servicio = models.CharField(max_length=120, blank=True)
     tipo = models.CharField(max_length=120, blank=True)
     subtipo = models.CharField(max_length=120, blank=True)
+    estado = models.CharField(
+        max_length=20,
+        choices=Estado.choices,
+        default=Estado.ACTIVO,
+    )
 
     class Meta:
         ordering = ['actividad', 'servicio', 'tipo', 'subtipo']

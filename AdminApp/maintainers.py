@@ -11,8 +11,12 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from AdminApp.audit import registrar_historial
 from AdminApp.forms import (
+    CatalogoForm,
+    CargoForm,
+    CargoFuncionForm,
     DelegacionForm,
     DesempenoForm,
+    FuncionForm,
     ItemForm,
     RolForm,
     SubAtencionForm,
@@ -20,12 +24,14 @@ from AdminApp.forms import (
 )
 from AdminApp.models import (
     Catalogo,
+    Cargo,
     Delegacion,
     Rol,
     SubAtencion,
     TipoAtencion,
+    is_critical_cargo_name,
 )
-from CoordinadorApp.models import Desempeno, Item
+from CoordinadorApp.models import CargoFuncion, Desempeno, Funcion, Item
 from config.delegations import active_delegation
 from FuncionarioApp.models import AtencionSocial
 
@@ -90,7 +96,113 @@ def _meta_delete_block(record):
     return ''
 
 
+def _cargo_delete_block(cargo):
+    if is_critical_cargo_name(cargo.nombre):
+        return 'Este cargo se usa en el control de acceso y no se puede eliminar.'
+    if cargo.usuarios.exists() or cargo.asignaciones_funciones.exists():
+        return 'El cargo tiene usuarios o asignaciones asociadas. Desactívalo para conservarlas.'
+    return ''
+
+
+def _function_delete_block(function):
+    if (
+        function.items.exists()
+        or function.asignaciones_cargos.exists()
+        or Cargo.objects.filter(funciones=function).exists()
+    ):
+        return 'La función tiene ítems o cargos asociados. Desactívala para conservarlos.'
+    return ''
+
+
+def _catalog_delete_block(catalog):
+    if catalog.registros_catalogo.exists():
+        return 'El catálogo tiene actividades asociadas. Desactívalo para conservarlas.'
+    return ''
+
+
 SPECS = {
+    'cargos': MaintainerSpec(
+        key='cargos',
+        title='Cargos',
+        model=Cargo,
+        form_class=CargoForm,
+        search_fields=('nombre', 'funciones__nombre'),
+        display_fields=(
+            ('Cargo', 'nombre'),
+            ('Función asociada', 'funciones__nombre'),
+            ('Estado', 'estado'),
+        ),
+        export_fields=(
+            ('Cargo', 'nombre'),
+            ('Función asociada', 'funciones__nombre'),
+            ('Estado', 'estado'),
+        ),
+        ordering=('nombre',),
+        active_value=Cargo.Estado.ACTIVO,
+        inactive_value=Cargo.Estado.INACTIVO,
+    ),
+    'funciones': MaintainerSpec(
+        key='funciones',
+        title='Funciones',
+        model=Funcion,
+        form_class=FuncionForm,
+        search_fields=('nombre', 'descripcion'),
+        display_fields=(
+            ('Función', 'nombre'),
+            ('Descripción', 'descripcion'),
+            ('Estado', 'estado'),
+        ),
+        export_fields=(
+            ('Función', 'nombre'),
+            ('Descripción', 'descripcion'),
+            ('Estado', 'estado'),
+        ),
+        ordering=('nombre',),
+        active_value=Funcion.Estado.ACTIVO,
+        inactive_value=Funcion.Estado.INACTIVO,
+    ),
+    'cargos-funciones': MaintainerSpec(
+        key='cargos-funciones',
+        title='Funciones por cargo',
+        model=CargoFuncion,
+        form_class=CargoFuncionForm,
+        search_fields=('cargo__nombre', 'funcion__nombre'),
+        display_fields=(
+            ('Cargo', 'cargo__nombre'),
+            ('Función', 'funcion__nombre'),
+        ),
+        export_fields=(
+            ('Cargo', 'cargo__nombre'),
+            ('Función', 'funcion__nombre'),
+        ),
+        ordering=('cargo__nombre', 'funcion__nombre'),
+        status_field=None,
+        status_filter_field=None,
+    ),
+    'catalogo': MaintainerSpec(
+        key='catalogo',
+        title='Catálogo de actividades',
+        model=Catalogo,
+        form_class=CatalogoForm,
+        search_fields=('actividad', 'servicio', 'tipo', 'subtipo'),
+        display_fields=(
+            ('Actividad', 'actividad'),
+            ('Servicio', 'servicio'),
+            ('Tipo', 'tipo'),
+            ('Subtipo', 'subtipo'),
+            ('Estado', 'estado'),
+        ),
+        export_fields=(
+            ('Actividad', 'actividad'),
+            ('Servicio', 'servicio'),
+            ('Tipo', 'tipo'),
+            ('Subtipo', 'subtipo'),
+            ('Estado', 'estado'),
+        ),
+        ordering=('actividad', 'servicio', 'tipo', 'subtipo'),
+        active_value=Catalogo.Estado.ACTIVO,
+        inactive_value=Catalogo.Estado.INACTIVO,
+    ),
     'delegaciones': MaintainerSpec(
         key='delegaciones',
         title='Delegaciones',
@@ -373,6 +485,12 @@ def _authorized_queryset(spec, request):
 
 
 def _delete_block(spec, record):
+    if spec.key == 'cargos':
+        return _cargo_delete_block(record)
+    if spec.key == 'funciones':
+        return _function_delete_block(record)
+    if spec.key == 'catalogo':
+        return _catalog_delete_block(record)
     if spec.key == 'delegaciones':
         return _delegation_delete_block(record)
     if spec.key == 'roles':

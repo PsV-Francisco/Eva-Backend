@@ -8,7 +8,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 TEMPLATES_DIR = BASE_DIR / 'templates'
 LEGACY_TEMPLATES_DIR = BASE_DIR / 'Templates'
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-sgr-demo-only')
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    raise ImproperlyConfigured(
+        'La variable DJANGO_SECRET_KEY es obligatoria. '
+        'Configúrala en el entorno o en el archivo .env antes de iniciar SGR.'
+    )
 DEBUG = os.environ.get('DEBUG','False') == 'True'
 default_allowed_hosts = (
     'localhost,127.0.0.1' if DEBUG else '3.228.118.5'
@@ -159,7 +164,7 @@ DEFAULT_FROM_EMAIL = os.environ.get(
     'DEFAULT_FROM_EMAIL', 'SGR <no-reply@localhost>'
 )
 
-PASSWORD_RESET_TIMEOUT = 3600
+PASSWORD_RESET_TIMEOUT = int(os.environ.get('PASSWORD_RESET_TIMEOUT', '3600'))
 PASSWORD_RESET_RATE_LIMIT = int(os.environ.get('PASSWORD_RESET_RATE_LIMIT', '5'))
 PASSWORD_RESET_RATE_WINDOW = int(
     os.environ.get('PASSWORD_RESET_RATE_WINDOW', '3600')
@@ -175,4 +180,15 @@ PASSWORD_RESET_CODE_MAX_ATTEMPTS = int(
 )
 PASSWORD_RESET_DOMAIN = os.environ.get(
     'PASSWORD_RESET_DOMAIN', '3.228.118.5'
-)
+).strip()
+PASSWORD_RESET_PROTOCOL = os.environ.get(
+    'PASSWORD_RESET_PROTOCOL', 'http'
+).strip().lower()
+if PASSWORD_RESET_PROTOCOL not in {'http', 'https'}:
+    raise ImproperlyConfigured(
+        'PASSWORD_RESET_PROTOCOL debe ser http o https.'
+    )
+if not PASSWORD_RESET_DOMAIN or '://' in PASSWORD_RESET_DOMAIN:
+    raise ImproperlyConfigured(
+        'PASSWORD_RESET_DOMAIN debe contener solo el dominio público, sin protocolo.'
+    )

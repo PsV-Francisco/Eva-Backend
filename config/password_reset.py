@@ -13,12 +13,16 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import AuthenticationForm, SetPasswordForm
+from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import password_validators_help_text_html
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
+from django.urls import reverse
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
@@ -226,9 +230,19 @@ def _send_recovery_code(user, code):
             'minutos': minutes,
         },
     )
+    _send_recovery_email(
+        user,
+        subject='Código de recuperación de contraseña - SGR',
+        body=body,
+        html_body=html_body,
+        email_kind='código',
+    )
+
+
+def _send_recovery_email(user, *, subject, body, html_body, email_kind):
     try:
         email = EmailMultiAlternatives(
-            subject='Código de recuperación de contraseña - SGR',
+            subject=subject,
             body=body,
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[user.email],
@@ -243,15 +257,88 @@ def _send_recovery_code(user, code):
         sent = email.send(fail_silently=False)
     except (smtplib.SMTPException, OSError):
         logger.exception(
-            'No se pudo enviar el código de recuperación al usuario id=%s.',
+            'No se pudo enviar el correo de recuperación (%s) al usuario id=%s.',
+            email_kind,
             user.pk,
         )
         return
     if sent != 1:
         logger.error(
-            'El backend de correo no confirmó el envío del código al usuario id=%s.',
+            'El backend de correo no confirmó el envío de recuperación (%s) '
+            'al usuario id=%s.',
+            email_kind,
             user.pk,
         )
+
+
+def _request_link(request, email):
+    now = timezone.now()
+    email_fingerprint = _email_fingerprint(email)
+    with transaction.atomic():
+        User = get_user_model()
+        user = User._default_manager.select_for_update().filter(
+            email__iexact=email,
+            is_active=True,
+        ).first()
+        limited = _record_request_event(
+            request,
+            email_fingerprint,
+            user,
+            now,
+        )
+    return user, limited
+
+
+def _send_recovery_link(user):
+    uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    path = reverse(
+        'password_reset_confirm',
+        kwargs={'uidb64': uidb64, 'token': token},
+    )
+    reset_url = (
+        f'{settings.PASSWORD_RESET_PROTOCOL}://'
+        f'{settings.PASSWORD_RESET_DOMAIN}{path}'
+    )
+    minutes = ceil(settings.PASSWORD_RESET_TIMEOUT / 60)
+    context = {
+        'nombre': user.get_full_name() or user.email,
+        'reset_url': reset_url,
+        'minutos': minutes,
+    }
+    body = render_to_string('auth/password_reset_email.html', context)
+    html_body = render_to_string(
+        'emails/recuperar_enlace.html',
+        context,
+    )
+    _send_recovery_email(
+        user,
+        subject='Enlace de recuperación de contraseña - SGR',
+        body=body,
+        html_body=html_body,
+        email_kind='enlace',
+    )
+
+
+def _active_user_from_uid(uidb64):
+    try:
+        user_id = force_str(urlsafe_base64_decode(uidb64))
+    except (TypeError, ValueError, OverflowError, UnicodeDecodeError):
+        return None
+    User = get_user_model()
+    return User._default_manager.filter(
+        pk=user_id,
+        is_active=True,
+    ).first()
+
+
+def _token_form_context(form, *, validlink):
+    return {
+        'form': form,
+        'validlink': validlink,
+        'current_step': 2,
+        'password_requirements': password_validators_help_text_html(),
+    }
 
 
 def _resend_seconds_remaining(request, now=None):
@@ -322,29 +409,48 @@ def _validate_code(request, email_fingerprint, submitted_code):
 @require_http_methods(['GET', 'POST'])
 def solicitar_recuperacion(request):
     form = SolicitudRecuperacionForm(request.POST or None)
+    recovery_method = request.POST.get(
+        'method',
+        request.GET.get('method', 'link'),
+    )
+    if recovery_method not in {'link', 'code'}:
+        recovery_method = 'link'
+
     if request.method == 'POST' and form.is_valid():
         email = form.cleaned_data['email']
         email_fingerprint = _email_fingerprint(email)
-        user, code, _, now = _request_code(
-            request,
-            email_fingerprint,
-            email=email,
-        )
-        request.session[SESSION_EMAIL_FINGERPRINT] = email_fingerprint
-        request.session[SESSION_LAST_SENT_AT] = now.timestamp()
         request.session.pop(SESSION_VERIFIED_FINGERPRINT, None)
-        if user and code:
-            _send_recovery_code(user, code)
+        if recovery_method == 'code':
+            user, code, _, now = _request_code(
+                request,
+                email_fingerprint,
+                email=email,
+            )
+            request.session[SESSION_EMAIL_FINGERPRINT] = email_fingerprint
+            request.session[SESSION_LAST_SENT_AT] = now.timestamp()
+            if user and code:
+                _send_recovery_code(user, code)
+            messages.info(
+                request,
+                'Si existe una cuenta activa con ese correo, enviaremos un '
+                'código. Ingresa el código recibido para continuar.',
+            )
+            return redirect('password_reset_code')
+
+        user, limited = _request_link(request, email)
+        if user and not limited:
+            _send_recovery_link(user)
         messages.info(
             request,
-            'Si existe una cuenta activa con ese correo, enviaremos un código. '
-            'Ingresa el código recibido para continuar.',
+            'Si existe una cuenta activa con ese correo, enviaremos un enlace '
+            'para recuperar la contraseña.',
         )
-        return redirect('password_reset_code')
+        return redirect('password_reset_done')
 
     return render(request, 'auth/password_reset_form.html', {
         'form': form,
         'current_step': 1,
+        'recovery_method': recovery_method,
     })
 
 
@@ -465,10 +571,57 @@ def nueva_contrasena(request):
     })
 
 
-def enlace_recuperacion_obsoleto(request, uidb64, token):
-    messages.info(
+@require_http_methods(['GET', 'POST'])
+def confirmar_enlace_recuperacion(request, uidb64, token):
+    user = _active_user_from_uid(uidb64)
+    if user is None or not default_token_generator.check_token(user, token):
+        return render(
+            request,
+            'auth/password_reset_confirm.html',
+            _token_form_context(None, validlink=False),
+        )
+
+    form = NuevaContrasenaForm(user=user)
+    if request.method == 'POST':
+        form = NuevaContrasenaForm(user=user, data=request.POST)
+        if form.is_valid():
+            with transaction.atomic():
+                locked_user = get_user_model()._default_manager.select_for_update().filter(
+                    pk=user.pk,
+                    is_active=True,
+                ).first()
+                if (
+                    locked_user is None
+                    or not default_token_generator.check_token(locked_user, token)
+                ):
+                    return render(
+                        request,
+                        'auth/password_reset_confirm.html',
+                        _token_form_context(None, validlink=False),
+                    )
+
+                form = NuevaContrasenaForm(
+                    user=locked_user,
+                    data=request.POST,
+                )
+                if not form.is_valid():
+                    return render(
+                        request,
+                        'auth/password_reset_confirm.html',
+                        _token_form_context(form, validlink=True),
+                    )
+                changed_user = form.save()
+                PasswordResetAuditEvent.objects.create(
+                    user=changed_user,
+                    action=PasswordResetAuditEvent.Action.PASSWORD_CHANGED,
+                    email_fingerprint=_email_fingerprint(changed_user.email),
+                    ip_address=_request_ip(request),
+                )
+            messages.success(request, 'Tu contraseña se actualizó correctamente.')
+            return redirect('password_reset_complete')
+
+    return render(
         request,
-        'La recuperación ahora se confirma con un código de seis dígitos. '
-        'Solicita uno nuevo para continuar.',
+        'auth/password_reset_confirm.html',
+        _token_form_context(form, validlink=True),
     )
-    return redirect('password_reset')

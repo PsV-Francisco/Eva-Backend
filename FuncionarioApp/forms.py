@@ -1,7 +1,8 @@
 from django import forms
+from django.db.models import Q
 from AdminApp.models import Catalogo, SubAtencion, TipoAtencion
 from CoordinadorApp.models import Periodo
-from CoordinadorApp.models import Item
+from CoordinadorApp.models import Funcion, Item
 from FuncionarioApp.models import (
     AtencionSocial,
     GestionAtencion,
@@ -45,13 +46,22 @@ class RegistroForm(BootstrapFormMixin, forms.ModelForm):
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['periodo'].queryset = Periodo.objects.filter(estado=Periodo.Estado.ABIERTO)
-        self.fields['catalogo'].queryset = Catalogo.objects.order_by(
+        catalogs = Catalogo.objects.filter(
+            estado=Catalogo.Estado.ACTIVO,
+        )
+        if self.instance.pk and self.instance.catalogo_id:
+            catalogs = Catalogo.objects.filter(
+                Q(estado=Catalogo.Estado.ACTIVO)
+                | Q(pk=self.instance.catalogo_id),
+            )
+        self.fields['catalogo'].queryset = catalogs.order_by(
             'actividad', 'servicio', 'tipo', 'subtipo',
         )
         if user and user.cargo_id and user.cargo.funciones_id:
             items = Item.objects.filter(
                 funcion_id=user.cargo.funciones_id,
                 estado=Item.Estado.ACTIVO,
+                funcion__estado=Funcion.Estado.ACTIVO,
             )
             if self.instance.pk and self.instance.item_id:
                 items = (items | Item.objects.filter(

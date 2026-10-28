@@ -1,9 +1,11 @@
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import patch
+from urllib.parse import urlsplit
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password
+from django.contrib.auth.tokens import default_token_generator
 from django.core import mail
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
@@ -20,6 +22,7 @@ from AdminApp.models import (
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
     DEFAULT_FROM_EMAIL='sgr@sgr.test',
     PASSWORD_RESET_DOMAIN='3.228.118.5',
+    PASSWORD_RESET_PROTOCOL='https',
 )
 class PasswordResetTests(TestCase):
     def setUp(self):
@@ -31,21 +34,34 @@ class PasswordResetTests(TestCase):
         self.code_url = reverse('password_reset_code')
         self.new_password_url = reverse('password_reset_new')
 
-    def _request_reset(self, email=None, client=None, **extra):
+    def _request_reset(self, email=None, client=None, method='link', **extra):
         client = client or self.client
         return client.post(
             self.request_url,
-            {'email': email or self.user.email},
+            {'email': email or self.user.email, 'method': method},
             **extra,
         )
 
     def _request_code(self, client=None):
-        response = self._request_reset(client=client, HTTP_HOST='localhost')
+        response = self._request_reset(
+            client=client,
+            method='code',
+            HTTP_HOST='localhost',
+        )
         self.assertRedirects(response, self.code_url)
         self.assertEqual(len(mail.outbox), 1)
         code_match = re.search(r'(\d{6})', mail.outbox[0].body)
         self.assertIsNotNone(code_match)
         return code_match.group(1)
+
+    def _request_link(self):
+        response = self._request_reset(HTTP_HOST='localhost')
+        self.assertRedirects(response, reverse('password_reset_done'))
+        self.assertEqual(len(mail.outbox), 1)
+        link_match = re.search(r'https://3\.228\.118\.5/accounts/reset/\S+', mail.outbox[0].body)
+        self.assertIsNotNone(link_match)
+        parsed_link = urlsplit(link_match.group(0))
+        return parsed_link.path
 
     def _verify_code(self, code, client=None):
         client = client or self.client
@@ -62,6 +78,11 @@ class PasswordResetTests(TestCase):
 
         response = self.client.get(self.request_url)
         self.assertContains(response, 'name="csrfmiddlewaretoken"')
+        self.assertContains(response, 'Prefiero usar un código')
+        self.assertContains(
+            self.client.get(f'{self.request_url}?method=code'),
+            'Prefiero usar un enlace',
+        )
 
         csrf_client = Client(enforce_csrf_checks=True)
         csrf_client.get(self.request_url)
@@ -106,20 +127,18 @@ class PasswordResetTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(
             mail.outbox[0].subject,
-            'Código de recuperación de contraseña - SGR',
+            'Enlace de recuperación de contraseña - SGR',
         )
-        self.assertRegex(mail.outbox[0].body, r'\b\d{6}\b')
-        self.assertNotIn('/accounts/reset/', mail.outbox[0].body)
+        self.assertIn('https://3.228.118.5/accounts/reset/', mail.outbox[0].body)
+        self.assertIn('60 minutos', mail.outbox[0].body)
         self.assertEqual(len(mail.outbox[0].alternatives), 1)
         html_body, content_type = mail.outbox[0].alternatives[0]
         self.assertEqual(content_type, 'text/html')
-        code = re.search(r'(\d{6})', mail.outbox[0].body).group(1)
-        minutes = (600 + 59) // 60
-        self.assertIn(code, html_body)
-        self.assertIn(f'{minutes} minutos', html_body)
+        self.assertIn('https://3.228.118.5/accounts/reset/', html_body)
+        self.assertIn('Crear nueva contraseña', html_body)
+        self.assertIn('60 minutos', html_body)
         self.assertIn('cid:logo_serena', html_body)
-        self.assertNotRegex(html_body, r'<a\b|href\s*=')
-        self.assertNotIn(code, mail.outbox[0].subject)
+        self.assertRegex(html_body, r'<a\b[^>]+href=')
         logo_attachments = [
             attachment
             for attachment in mail.outbox[0].attachments
@@ -151,13 +170,13 @@ class PasswordResetTests(TestCase):
             ).exists()
         )
 
-    def test_inactive_account_does_not_receive_code(self):
+    def test_inactive_account_does_not_receive_reset_email(self):
         self.user.is_active = False
         self.user.save(update_fields=['is_active'])
 
         response = self._request_reset(HTTP_HOST='localhost')
 
-        self.assertRedirects(response, self.code_url)
+        self.assertRedirects(response, reverse('password_reset_done'))
         self.assertEqual(len(mail.outbox), 0)
         event = PasswordResetAuditEvent.objects.get(
             action=PasswordResetAuditEvent.Action.REQUEST,
@@ -309,6 +328,107 @@ class PasswordResetTests(TestCase):
         )
         self.assertEqual(self._verify_code(code).status_code, 302)
 
+    def test_valid_token_changes_password_invalidates_token_and_allows_login(self):
+        confirm_url = self._request_link()
+        form_page = self.client.get(confirm_url)
+        self.assertContains(form_page, 'El enlace es válido')
+        self.assertContains(form_page, 'Requisitos de contraseña')
+        self.assertContains(form_page, 'Confirmar nueva contraseña')
+
+        response = self.client.post(confirm_url, {
+            'new_password1': 'Sgr-Changed-Password-572!',
+            'new_password2': 'Sgr-Changed-Password-572!',
+        })
+
+        self.assertRedirects(response, reverse('password_reset_complete'))
+        self.assertTrue(
+            self.client.login(
+                username=self.user.email,
+                password='Sgr-Changed-Password-572!',
+            )
+        )
+        self.client.logout()
+        self.assertFalse(
+            self.client.login(
+                username=self.user.email,
+                password='Sgr-Initial-Password-483!',
+            )
+        )
+
+        reused_response = self.client.get(confirm_url)
+        self.assertContains(
+            reused_response,
+            'Este enlace de recuperación no es válido',
+        )
+        self.assertTrue(
+            PasswordResetAuditEvent.objects.filter(
+                user=self.user,
+                action=PasswordResetAuditEvent.Action.PASSWORD_CHANGED,
+                ip_address='127.0.0.1',
+            ).exists()
+        )
+
+    def test_valid_uid_with_invalid_token_is_rejected(self):
+        confirm_url = self._request_link()
+        invalid_url = re.sub(r'([^/]+)/$', r'\1invalid/', confirm_url)
+
+        response = self.client.get(invalid_url)
+
+        self.assertContains(
+            response,
+            'Este enlace de recuperación no es válido',
+        )
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('Sgr-Initial-Password-483!'))
+
+    def test_link_token_expires_after_configured_timeout(self):
+        confirm_url = self._request_link()
+
+        with patch.object(
+            default_token_generator,
+            '_now',
+            return_value=datetime.now() + timedelta(hours=2),
+        ):
+            response = self.client.get(confirm_url)
+
+        self.assertContains(
+            response,
+            'Este enlace de recuperación no es válido',
+        )
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('Sgr-Initial-Password-483!'))
+
+    def test_link_rejects_weak_password(self):
+        confirm_url = self._request_link()
+
+        response = self.client.post(confirm_url, {
+            'new_password1': 'password',
+            'new_password2': 'password',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['form'].errors)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('Sgr-Initial-Password-483!'))
+        self.assertFalse(
+            PasswordResetAuditEvent.objects.filter(
+                action=PasswordResetAuditEvent.Action.PASSWORD_CHANGED,
+            ).exists()
+        )
+
+    def test_link_requires_password_confirmation_to_match(self):
+        confirm_url = self._request_link()
+
+        response = self.client.post(confirm_url, {
+            'new_password1': 'Sgr-Changed-Password-572!',
+            'new_password2': 'Sgr-Different-Password-573!',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['form'].errors)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('Sgr-Initial-Password-483!'))
+
     def test_weak_password_is_rejected_by_configured_validators(self):
         code = self._request_code()
         self._verify_code(code)
@@ -361,11 +481,12 @@ class PasswordResetTests(TestCase):
             ).exists()
         )
 
-    def test_legacy_reset_link_only_redirects_to_code_request(self):
+    def test_invalid_reset_link_is_rejected(self):
         response = self.client.get(reverse(
             'password_reset_confirm',
-            kwargs={'uidb64': 'legacy', 'token': 'legacy'},
+            kwargs={'uidb64': 'not-valid', 'token': 'not-valid'},
         ))
 
-        self.assertRedirects(response, self.request_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Este enlace de recuperación no es válido')
         self.assertEqual(len(mail.outbox), 0)

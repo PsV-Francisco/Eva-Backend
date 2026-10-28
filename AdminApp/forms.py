@@ -4,14 +4,17 @@ from decimal import Decimal
 from django.db.models import Q
 
 from AdminApp.models import (
+    Catalogo,
+    Cargo,
     Delegacion,
     ParametroSistema,
+    PasswordResetAuditEvent,
     Rol,
     SubAtencion,
     TipoAtencion,
     Usuario,
 )
-from CoordinadorApp.models import Desempeno, Item, Periodo
+from CoordinadorApp.models import CargoFuncion, Desempeno, Funcion, Item, Periodo
 from config.forms import BootstrapFormMixin
 
 
@@ -50,6 +53,12 @@ class UsuarioCreationForm(BootstrapFormMixin, forms.ModelForm):
         delegations = delegations.order_by('nombre')
         self.fields['delegacion'].queryset = delegations
         self.fields['delegaciones_autorizadas'].queryset = delegations
+        cargos = Cargo.objects.filter(estado=Cargo.Estado.ACTIVO)
+        if self.instance.pk and self.instance.cargo_id:
+            cargos = Cargo.objects.filter(
+                Q(estado=Cargo.Estado.ACTIVO) | Q(pk=self.instance.cargo_id),
+            )
+        self.fields['cargo'].queryset = cargos.order_by('nombre')
         roles = Rol.objects.filter(estado=Rol.Estado.ACTIVO)
         if self.instance.pk:
             roles = Rol.objects.filter(
@@ -180,6 +189,76 @@ class RolForm(BootstrapFormMixin, forms.ModelForm):
         }
 
 
+class CargoForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = Cargo
+        fields = ('nombre', 'funciones', 'estado')
+        labels = {
+            'nombre': 'Cargo',
+            'funciones': 'Función asociada',
+            'estado': 'Estado',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        functions = Funcion.objects.filter(estado=Funcion.Estado.ACTIVO)
+        if self.instance.pk and self.instance.funciones_id:
+            functions = Funcion.objects.filter(
+                Q(estado=Funcion.Estado.ACTIVO)
+                | Q(pk=self.instance.funciones_id),
+            )
+        self.fields['funciones'].queryset = functions.order_by('nombre')
+
+
+class FuncionForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = Funcion
+        fields = ('nombre', 'descripcion', 'estado')
+        labels = {
+            'nombre': 'Función',
+            'descripcion': 'Descripción',
+            'estado': 'Estado',
+        }
+        widgets = {'descripcion': forms.Textarea(attrs={'rows': 3})}
+
+
+class CargoFuncionForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = CargoFuncion
+        fields = ('cargo', 'funcion')
+        labels = {'cargo': 'Cargo', 'funcion': 'Función'}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        cargos = Cargo.objects.filter(estado=Cargo.Estado.ACTIVO)
+        if self.instance.pk:
+            cargos = Cargo.objects.filter(
+                Q(estado=Cargo.Estado.ACTIVO)
+                | Q(pk=self.instance.cargo_id),
+            )
+        functions = Funcion.objects.filter(estado=Funcion.Estado.ACTIVO)
+        if self.instance.pk:
+            functions = Funcion.objects.filter(
+                Q(estado=Funcion.Estado.ACTIVO)
+                | Q(pk=self.instance.funcion_id),
+            )
+        self.fields['cargo'].queryset = cargos.order_by('nombre')
+        self.fields['funcion'].queryset = functions.order_by('nombre')
+
+
+class CatalogoForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = Catalogo
+        fields = ('actividad', 'servicio', 'tipo', 'subtipo', 'estado')
+        labels = {
+            'actividad': 'Actividad',
+            'servicio': 'Servicio',
+            'tipo': 'Tipo',
+            'subtipo': 'Subtipo',
+            'estado': 'Estado',
+        }
+
+
 class ItemForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Item
@@ -192,6 +271,16 @@ class ItemForm(BootstrapFormMixin, forms.ModelForm):
             'estado': 'Estado',
         }
         widgets = {'descripcion': forms.Textarea(attrs={'rows': 3})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        functions = Funcion.objects.filter(estado=Funcion.Estado.ACTIVO)
+        if self.instance.pk and self.instance.funcion_id:
+            functions = Funcion.objects.filter(
+                Q(estado=Funcion.Estado.ACTIVO)
+                | Q(pk=self.instance.funcion_id),
+            )
+        self.fields['funcion'].queryset = functions.order_by('nombre')
 
 
 class TipoAtencionForm(BootstrapFormMixin, forms.ModelForm):
@@ -278,7 +367,10 @@ class DesempenoForm(BootstrapFormMixin, forms.ModelForm):
             'last_name', 'first_name', 'email',
         )
 
-        items = Item.objects.filter(estado=Item.Estado.ACTIVO)
+        items = Item.objects.filter(
+            estado=Item.Estado.ACTIVO,
+            funcion__estado=Funcion.Estado.ACTIVO,
+        )
         if self.instance.pk and self.instance.item_id:
             items = (items | Item.objects.filter(pk=self.instance.item_id)).distinct()
         self.fields['item'].queryset = items.order_by('nombre')
@@ -325,3 +417,64 @@ class DesempenoForm(BootstrapFormMixin, forms.ModelForm):
             record.save()
             self.save_m2m()
         return record
+
+
+class HistorialFilterForm(BootstrapFormMixin, forms.Form):
+    q = forms.CharField(label='Buscar', required=False, max_length=120)
+    accion = forms.ChoiceField(label='Acción', required=False)
+    desde = forms.DateField(
+        label='Desde',
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date'}),
+    )
+    hasta = forms.DateField(
+        label='Hasta',
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date'}),
+    )
+
+    def __init__(self, *args, actions=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['accion'].choices = [('', 'Todas')] + [
+            (action, action) for action in actions
+        ]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        start = cleaned_data.get('desde')
+        end = cleaned_data.get('hasta')
+        if start and end and end < start:
+            self.add_error('hasta', 'La fecha final debe ser igual o posterior a la inicial.')
+        return cleaned_data
+
+
+class PasswordResetAuditFilterForm(BootstrapFormMixin, forms.Form):
+    q = forms.CharField(label='Buscar', required=False, max_length=120)
+    accion = forms.ChoiceField(
+        label='Tipo de evento',
+        required=False,
+        choices=(('', 'Todos'), *PasswordResetAuditEvent.Action.choices),
+    )
+    limitada = forms.ChoiceField(
+        label='Límite aplicado',
+        required=False,
+        choices=(('', 'Todos'), ('si', 'Sí'), ('no', 'No')),
+    )
+    desde = forms.DateField(
+        label='Desde',
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date'}),
+    )
+    hasta = forms.DateField(
+        label='Hasta',
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date'}),
+    )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        start = cleaned_data.get('desde')
+        end = cleaned_data.get('hasta')
+        if start and end and end < start:
+            self.add_error('hasta', 'La fecha final debe ser igual o posterior a la inicial.')
+        return cleaned_data

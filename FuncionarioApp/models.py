@@ -25,7 +25,7 @@ class Registro(models.Model):
 	incluir_en_agenda = models.BooleanField(default=False)
 	creado = models.DateTimeField(auto_now_add=True)
 	catalogo = models.ForeignKey(
-		'AdminApp.Catalogo', on_delete=models.CASCADE, related_name='registros_catalogo',
+		'AdminApp.Catalogo', on_delete=models.PROTECT, related_name='registros_catalogo',
 		null=True,
 	)
 

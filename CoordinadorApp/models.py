@@ -3,8 +3,17 @@ from django.db import models
 
 #Modelo Funcion
 class Funcion(models.Model):
+	class Estado(models.TextChoices):
+		ACTIVO = 'activo', 'Activo'
+		INACTIVO = 'inactivo', 'Inactivo'
+
 	nombre = models.CharField(max_length=120, unique=True)
 	descripcion = models.TextField(blank=True)
+	estado = models.CharField(
+		max_length=20,
+		choices=Estado.choices,
+		default=Estado.ACTIVO,
+	)
 
 	class Meta:
 		ordering = ['nombre']

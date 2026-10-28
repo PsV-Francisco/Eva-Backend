@@ -1,3 +1,5 @@
+import json
+
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db import transaction
@@ -5,14 +7,24 @@ from django.db.models import Q
 from django.db.models.deletion import ProtectedError
 from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_GET
 
 from AdminApp.audit import registrar_historial
 from AdminApp.forms import (
+    HistorialFilterForm,
     ParametroSistemaForm,
+    PasswordResetAuditFilterForm,
     UsuarioCreationForm,
     UsuarioUpdateForm,
 )
-from AdminApp.models import Cargo, Delegacion, ParametroSistema, Usuario
+from AdminApp.models import (
+    Cargo,
+    Delegacion,
+    Historial,
+    ParametroSistema,
+    PasswordResetAuditEvent,
+    Usuario,
+)
 from AdminApp.maintainers import excel_response, maintainer
 from config.decorators import cargo_required
 
@@ -238,6 +250,26 @@ def delegaciones(request):
 
 
 @cargo_required('admin', 'administrador')
+def cargos(request):
+    return maintainer(request, 'cargos')
+
+
+@cargo_required('admin', 'administrador')
+def funciones(request):
+    return maintainer(request, 'funciones')
+
+
+@cargo_required('admin', 'administrador')
+def cargos_funciones(request):
+    return maintainer(request, 'cargos-funciones')
+
+
+@cargo_required('admin', 'administrador')
+def catalogo(request):
+    return maintainer(request, 'catalogo')
+
+
+@cargo_required('admin', 'administrador')
 def roles(request):
     return maintainer(request, 'roles')
 
@@ -260,3 +292,119 @@ def subatenciones(request):
 @cargo_required('coordinador', 'admin', 'administrador')
 def metas(request):
     return maintainer(request, 'metas')
+
+
+@cargo_required('admin', 'administrador')
+@require_GET
+def historial(request):
+    actions = Historial.objects.order_by().values_list(
+        'accion', flat=True,
+    ).distinct()
+    form = HistorialFilterForm(request.GET or None, actions=actions)
+    if not form.is_valid():
+        return HttpResponseBadRequest('Revisa los filtros del historial.')
+
+    entries = Historial.objects.select_related(
+        'autor', 'periodo',
+    ).order_by('-fecha_modificacion')
+    query = form.cleaned_data['q']
+    if query:
+        entries = entries.filter(
+            Q(accion__icontains=query)
+            | Q(entidad_afectada__icontains=query)
+            | Q(autor__email__icontains=query)
+            | Q(periodo__nombre__icontains=query)
+        )
+    if form.cleaned_data['accion']:
+        entries = entries.filter(accion=form.cleaned_data['accion'])
+    if form.cleaned_data['desde']:
+        entries = entries.filter(
+            fecha_modificacion__date__gte=form.cleaned_data['desde'],
+        )
+    if form.cleaned_data['hasta']:
+        entries = entries.filter(
+            fecha_modificacion__date__lte=form.cleaned_data['hasta'],
+        )
+
+    page_obj = Paginator(entries, 25).get_page(request.GET.get('page'))
+    rows = [{
+        'values': (
+            entry.fecha_modificacion,
+            entry.accion,
+            entry.entidad_afectada,
+            entry.autor.email,
+            entry.periodo.nombre if entry.periodo_id else '',
+            json.dumps(entry.valor_anterior, ensure_ascii=False),
+            json.dumps(entry.valor_nuevo, ensure_ascii=False),
+        ),
+    } for entry in page_obj.object_list]
+    return render(request, 'AdminApp/audit_viewer.html', {
+        'sgr_role': 'Administración',
+        'page_title': 'Historial del sistema',
+        'columns': (
+            'Fecha', 'Acción', 'Entidad', 'Autor', 'Período',
+            'Valor anterior', 'Valor nuevo',
+        ),
+        'rows': rows,
+        'filter_form': form,
+        'page_obj': page_obj,
+        'pagination_query': _audit_pagination_query(request),
+        'result_count': entries.count(),
+        'route_name': 'administracion:historial',
+    })
+
+
+@cargo_required('admin', 'administrador')
+@require_GET
+def password_reset_audit(request):
+    form = PasswordResetAuditFilterForm(request.GET or None)
+    if not form.is_valid():
+        return HttpResponseBadRequest('Revisa los filtros de auditoría.')
+
+    entries = PasswordResetAuditEvent.objects.select_related(
+        'user',
+    ).order_by('-created_at')
+    query = form.cleaned_data['q']
+    if query:
+        entries = entries.filter(
+            Q(user__email__icontains=query)
+            | Q(email_fingerprint__icontains=query)
+            | Q(ip_address__icontains=query)
+        )
+    if form.cleaned_data['accion']:
+        entries = entries.filter(action=form.cleaned_data['accion'])
+    limited = form.cleaned_data['limitada']
+    if limited:
+        entries = entries.filter(was_rate_limited=(limited == 'si'))
+    if form.cleaned_data['desde']:
+        entries = entries.filter(created_at__date__gte=form.cleaned_data['desde'])
+    if form.cleaned_data['hasta']:
+        entries = entries.filter(created_at__date__lte=form.cleaned_data['hasta'])
+
+    page_obj = Paginator(entries, 25).get_page(request.GET.get('page'))
+    rows = [{
+        'values': (
+            entry.created_at,
+            entry.get_action_display(),
+            entry.user.email if entry.user_id else '',
+            entry.ip_address or '',
+            'Sí' if entry.was_rate_limited else 'No',
+        ),
+    } for entry in page_obj.object_list]
+    return render(request, 'AdminApp/audit_viewer.html', {
+        'sgr_role': 'Administración',
+        'page_title': 'Auditoría de recuperación de contraseña',
+        'columns': ('Fecha', 'Evento', 'Usuario', 'Dirección IP', 'Límite aplicado'),
+        'rows': rows,
+        'filter_form': form,
+        'page_obj': page_obj,
+        'pagination_query': _audit_pagination_query(request),
+        'result_count': entries.count(),
+        'route_name': 'administracion:auditoria-recuperacion',
+    })
+
+
+def _audit_pagination_query(request):
+    parameters = request.GET.copy()
+    parameters.pop('page', None)
+    return parameters.urlencode()
