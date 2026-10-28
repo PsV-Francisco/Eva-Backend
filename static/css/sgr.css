@@ -145,6 +145,43 @@ h1, h2, h3 { font-family: Arial, Helvetica, sans-serif; letter-spacing: 0; }
 .search-panel .form-label { margin-bottom: .3rem; }
 .table form { margin: 0; }
 .table td form[data-confirm] { display: inline-flex; }
+.permission-fieldset { min-width: 0; }
+.permission-fieldset legend { float: none; width: auto; margin-bottom: .55rem; }
+.permission-selector { display: grid; gap: 1rem; }
+.permission-selector-toolbar { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: .8rem; padding: 1rem; background: #f7f7f7; border: 1px solid var(--line); border-radius: .4rem; }
+.permission-search { flex: 1 1 280px; min-width: min(100%, 240px); }
+.permission-search .form-label { margin-bottom: .3rem; }
+.permission-search .form-text { display: block; min-height: 1.2em; }
+.permission-selector-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; }
+.permission-selected-toggle { display: inline-flex; align-items: center; gap: .45rem; color: #333; font-size: .85rem; }
+.permission-selected-toggle input, .permission-option-label input { width: 1.1rem; height: 1.1rem; flex: 0 0 auto; margin: 0; accent-color: var(--accent); }
+.permission-selected-summary { padding: .8rem 1rem; background: #fff; border: 1px solid var(--line); border-radius: .4rem; }
+.permission-selected-summary h3 { margin: 0 0 .55rem; font-size: .9rem; font-weight: 750; }
+.permission-chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+.permission-chip { display: inline-flex; align-items: center; gap: .45rem; max-width: 100%; padding: .28rem .4rem .28rem .65rem; background: #f4e5e5; border: 1px solid #e6c6c6; border-radius: 2rem; color: #5b0000; font-size: .78rem; }
+.permission-chip > span { overflow-wrap: anywhere; }
+.permission-chip button { display: grid; width: 1.25rem; height: 1.25rem; flex: 0 0 auto; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #5b0000; font-size: 1.05rem; line-height: 1; }
+.permission-chip button:hover, .permission-chip button:focus-visible { background: #AD0000; color: #fff; }
+.permission-empty-selection, .permission-no-results { margin: .2rem 0 0; color: var(--muted); font-size: .84rem; }
+.permission-modules { display: grid; gap: .55rem; }
+.permission-module { overflow: hidden; background: #fff; border: 1px solid var(--line); border-radius: .4rem; }
+.permission-module > summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem .8rem; padding: .85rem 1rem; color: #222; font-weight: 750; cursor: pointer; list-style: none; }
+.permission-module > summary::-webkit-details-marker { display: none; }
+.permission-module > summary::after { content: "⌄"; order: 2; margin-left: auto; color: var(--accent); font-size: 1.15rem; }
+.permission-module[open] > summary::after { content: "⌃"; }
+.permission-module-title { order: 0; }
+.permission-module-count { order: 1; color: var(--muted); font-size: .78rem; font-weight: 500; }
+.permission-module-actions { display: flex; flex-wrap: wrap; gap: .4rem; padding: 0 1rem .7rem; }
+.permission-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; padding: 0 1rem 1rem; }
+.permission-option[hidden], .permission-module[hidden], [data-permission-no-results][hidden], [data-permission-empty][hidden] { display: none !important; }
+.permission-option-label { display: flex; min-height: 100%; align-items: flex-start; gap: .65rem; padding: .75rem; background: #fafafa; border: 1px solid #e6e6e6; border-radius: .35rem; cursor: pointer; }
+.permission-option-label:hover { background: #fff7f7; border-color: #d7aaaa; }
+.permission-option-label:focus-within { outline: 2px solid #AD0000; outline-offset: 2px; }
+.permission-option-copy { display: grid; gap: .18rem; }
+.permission-option-name { color: #292929; font-size: .87rem; font-weight: 700; line-height: 1.35; }
+.permission-option-description { color: #666; font-size: .76rem; line-height: 1.4; }
+.permission-option-name mark, .permission-option-description mark, .permission-module-title mark { padding: 0 .05em; background: #ffe08a; color: inherit; }
+@media (max-width: 680px) { .permission-selector-toolbar, .permission-selector-actions { align-items: stretch; flex-direction: column; } .permission-selector-actions { width: 100%; } .permission-options { grid-template-columns: 1fr; padding-right: .7rem; padding-left: .7rem; } .permission-module > summary { padding: .75rem; } .permission-module-actions { padding-right: .7rem; padding-left: .7rem; } }
 @media (max-width: 900px) { .dashboard-layout { grid-template-columns: 1fr; } .role-sidebar { position: static; } .role-sidebar nav { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 1100px) { .shell { padding-left: 1.5rem; padding-right: 1.5rem; } .header-inner { grid-template-columns: minmax(150px, .8fr) minmax(230px, 1.2fr) minmax(160px, .9fr); gap: .7rem; } .delegation-switch select { max-width: 145px; } .role-nav { gap: .7rem; } .role-nav a { font-size: .74rem; } }
 @media (max-width: 900px) { .role-nav { display: none; } .nav-toggle { display: inline-block; } .mobile-nav { display: block; } .account-area { margin-left: auto; } }

@@ -24,7 +24,37 @@ from AdminApp.roles import (
 )
 from CoordinadorApp.models import CargoFuncion, Desempeno, Funcion, Item, Periodo
 from config.forms import BootstrapFormMixin
-from config.permissions import PERMISSION_CATALOG
+from config.permissions import PERMISSION_CATALOG, PERMISSION_DESCRIPTIONS
+
+
+class PermissionCheckboxSelectMultiple(forms.CheckboxSelectMultiple):
+    def __init__(self, *args, permission_metadata=None, **kwargs):
+        self.permission_metadata = permission_metadata or {}
+        super().__init__(*args, **kwargs)
+
+    def create_option(
+        self,
+        name,
+        value,
+        label,
+        selected,
+        index,
+        subindex=None,
+        attrs=None,
+    ):
+        option = super().create_option(
+            name,
+            value,
+            label,
+            selected,
+            index,
+            subindex=subindex,
+            attrs=attrs,
+        )
+        metadata = self.permission_metadata.get(str(value), {})
+        option['permission_module'] = metadata.get('module', '')
+        option['permission_description'] = metadata.get('description', '')
+        return option
 
 
 def _configure_user_form_fields(form, actor):
@@ -197,7 +227,7 @@ class RolForm(BootstrapFormMixin, forms.ModelForm):
         queryset=Permission.objects.none(),
         required=False,
         label='Permisos',
-        widget=forms.CheckboxSelectMultiple,
+        widget=PermissionCheckboxSelectMultiple,
     )
 
     class Meta:
@@ -241,6 +271,18 @@ class RolForm(BootstrapFormMixin, forms.ModelForm):
                 codename__in=allowed_codenames,
             )
         self.fields['permissions'].queryset = permissions
+        self.fields['permissions'].widget.permission_metadata = {
+            str(permission.pk): {
+                'module': definitions_by_codename[
+                    permission.codename
+                ].module,
+                'description': PERMISSION_DESCRIPTIONS.get(
+                    permission.codename,
+                    '',
+                ),
+            }
+            for permission in permissions
+        }
         groups = {}
         permission_by_codename = {
             permission.codename: permission
@@ -262,6 +304,23 @@ class RolForm(BootstrapFormMixin, forms.ModelForm):
                     codename__in=definitions_by_codename,
                 ).values_list('pk', flat=True)
             )
+        permission_field = self['permissions']
+        widget_context = self.fields['permissions'].widget.get_context(
+            'permissions',
+            permission_field.value(),
+            {'id': permission_field.auto_id},
+        )['widget']
+        self.permission_groups = [
+            {
+                'module': module,
+                'choices': choices,
+                'selected_count': sum(
+                    option['selected'] for option in choices
+                ),
+                'total': len(choices),
+            }
+            for module, choices, _ in widget_context['optgroups']
+        ]
         if self.instance.protegido:
             for field in self.fields.values():
                 field.disabled = True

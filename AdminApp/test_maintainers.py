@@ -50,6 +50,9 @@ class MaintainerTests(TestCase):
         self.assertContains(role_page, 'Administración')
         self.assertContains(role_page, 'Funcionario')
         self.assertContains(role_page, 'name="permissions"')
+        self.assertContains(role_page, 'Buscar por permiso')
+        self.assertContains(role_page, 'Revisar y validar evidencias de actividades.')
+        self.assertContains(role_page, 'Seleccionar todo')
 
     def test_non_administrator_cannot_open_administration_routes(self):
         user = get_user_model().objects.create_user(
@@ -147,6 +150,61 @@ class MaintainerTests(TestCase):
                 entidad_afectada=f'Rol:{role.pk}',
             ).exists()
         )
+
+    def test_role_form_shows_existing_permissions_and_preserves_selection_on_error(self):
+        permission = Permission.objects.get(
+            content_type__app_label='AdminApp',
+            codename='manage_periods',
+        )
+        role = Rol.objects.create(nombre='Rol con período')
+        ensure_role_group(role).permissions.add(permission)
+
+        edit_response = self.client.get(
+            reverse('administracion:roles'),
+            {'editar': role.pk},
+        )
+        self.assertEqual(edit_response.status_code, 200)
+        self.assertTrue(any(
+            group['selected_count'] == 1
+            for group in edit_response.context['form'].permission_groups
+        ))
+        self.assertContains(edit_response, 'checked')
+
+        error_response = self.client.post(reverse('administracion:roles'), {
+            'action': 'guardar',
+            'nombre': 'Administrador del sistema',
+            'descripcion': '',
+            'permissions': [permission.pk],
+            'alcance': Rol.Alcance.GLOBAL,
+            'estado': Rol.Estado.ACTIVO,
+        })
+        self.assertEqual(error_response.status_code, 200)
+        self.assertIn(
+            str(permission.pk),
+            [str(value) for value in error_response.context['form']['permissions'].value()],
+        )
+        self.assertIn(
+            'checked',
+            str(error_response.context['form']['permissions']),
+        )
+
+    def test_role_form_rejects_permissions_outside_the_catalog(self):
+        invalid_permission = Permission.objects.get(
+            content_type__app_label='AdminApp',
+            codename='add_rol',
+        )
+        response = self.client.post(reverse('administracion:roles'), {
+            'action': 'guardar',
+            'nombre': 'Rol con permiso ajeno',
+            'descripcion': '',
+            'permissions': [invalid_permission.pk],
+            'alcance': Rol.Alcance.GLOBAL,
+            'estado': Rol.Estado.ACTIVO,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Rol.objects.filter(nombre='Rol con permiso ajeno').exists())
+        self.assertIn('permissions', response.context['form'].errors)
 
     def test_role_permissions_are_applied_through_groups_and_revocable(self):
         permission = Permission.objects.get(

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}{{ maintainer_title }} | SGR{% endblock %}
 {% block page_title %}{{ maintainer_title }}{% endblock %}
 
@@ -25,7 +26,14 @@
           <div class="form-grid">
             {% for field in form %}
             <div class="mb-3 {% if field.field.widget.allow_multiple_selected %}field-wide{% endif %}{% if field.field.widget.input_type == 'checkbox' %}form-check{% endif %}">
-              {% if field.field.widget.input_type == 'checkbox' %}
+              {% if is_role_maintainer and field.name == 'permissions' %}
+              <fieldset class="permission-fieldset">
+                <legend class="form-label">{{ field.label }}</legend>
+                {% include 'AdminApp/partials/permission_selector.html' %}
+                {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+              </fieldset>
+              {% elif field.field.widget.input_type == 'checkbox' %}
               {{ field }} <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="required-mark" aria-hidden="true">*</span>{% endif %}</label>
               {% else %}
               <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="required-mark" aria-hidden="true">*</span>{% endif %}</label>
@@ -124,4 +132,7 @@
     </section>
   </div>
 </div>
+{% endblock %}
+{% block extra_js %}
+{% if is_role_maintainer %}<script src="{% static 'js/permission-selector.js' %}" defer></script>{% endif %}
 {% endblock %}
