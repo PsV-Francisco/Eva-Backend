@@ -171,7 +171,8 @@ manual de inicialización.
 La autorización conserva los accesos del cargo actual y concede acceso
 adicional si uno de los roles activos del usuario contiene el permiso de la
 vista. Un rol no revoca accesos heredados del cargo. El cargo `admin` o
-`administrador`, y las cuentas superusuario, mantienen acceso total. Los
+`administrador` mantiene acceso total. Una cuenta superusuario sin ese cargo no
+obtiene un bypass automático de las restricciones de la aplicación. Los
 permisos adicionales respetan además los filtros de delegación y las reglas de
 negocio existentes.
 
