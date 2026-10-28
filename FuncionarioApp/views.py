@@ -52,7 +52,7 @@ def _cases_for_user(user, delegation):
     )
 
 
-@cargo_required('funcionario')
+@cargo_required('funcionario', permission='access_employee_dashboard')
 def home(request):
     if request.method == 'POST':
         action = request.POST.get('action', 'guardar')
@@ -139,7 +139,7 @@ def home(request):
     })
 
 
-@cargo_required('funcionario')
+@cargo_required('funcionario', permission='manage_employee_compliance')
 def cumplimiento(request):
     assigned_periods = Periodo.objects.filter(
         desempenos__usuario=request.user,
@@ -172,7 +172,7 @@ def cumplimiento(request):
     })
 
 
-@cargo_required('funcionario')
+@cargo_required('funcionario', permission='manage_social_care')
 def atencion_social(request):
     delegation = active_delegation(request)
     case_form = CasoSocialForm(delegation=delegation)
@@ -293,7 +293,7 @@ def atencion_social(request):
     })
 
 
-@cargo_required('funcionario')
+@cargo_required('funcionario', permission='search_social_applicants')
 @require_GET
 def buscar_solicitantes(request):
     delegation = active_delegation(request)
@@ -309,7 +309,7 @@ def buscar_solicitantes(request):
     return JsonResponse({'results': list(results)})
 
 
-@cargo_required('funcionario')
+@cargo_required('funcionario', permission='view_social_subattentions')
 @require_GET
 def subatenciones_tipo(request, tipo_id):
     subattentions = SubAtencion.objects.filter(
@@ -320,7 +320,7 @@ def subatenciones_tipo(request, tipo_id):
     return JsonResponse({'results': list(subattentions)})
 
 
-@cargo_required('funcionario')
+@cargo_required('funcionario', permission='manage_collective_agenda')
 def agenda_colectiva(request):
     delegation = active_delegation(request)
     delegation_id = delegation.pk if delegation else None

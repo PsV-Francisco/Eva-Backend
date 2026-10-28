@@ -28,7 +28,7 @@ def _has_associated_records(periodo):
     )
 
 
-@cargo_required('coordinador', 'admin', 'administrador')
+@cargo_required('coordinador', 'admin', 'administrador', permission='manage_periods')
 def home(request):
     cargo_name = request.user.cargo.nombre.strip().casefold()
     is_coordinator = cargo_name == 'coordinador'

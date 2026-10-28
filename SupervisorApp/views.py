@@ -42,7 +42,7 @@ def _evidence_period(evidencia):
     return None
 
 
-@cargo_required('supervisor', 'verificador')
+@cargo_required('supervisor', 'verificador', permission='review_evidence')
 def home(request):
     if request.method == 'POST':
         evidencia = get_object_or_404(

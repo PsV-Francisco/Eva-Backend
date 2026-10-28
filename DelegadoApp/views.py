@@ -139,7 +139,7 @@ def seguimiento_publico(request, token):
     })
 
 
-@cargo_required('delegado')
+@cargo_required('delegado', permission='manage_commitments')
 def home(request):
     delegation = active_delegation(request)
     delegation_id = delegation.pk if delegation else None
@@ -337,7 +337,7 @@ def home(request):
     })
 
 
-@cargo_required('delegado')
+@cargo_required('delegado', permission='view_delegation_summary')
 def resumen(request):
     delegation = active_delegation(request)
     delegation_id = delegation.pk if delegation else None

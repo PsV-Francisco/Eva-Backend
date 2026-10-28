@@ -16,6 +16,7 @@
       <div>
         <p class="eyebrow">{% if editing_user %}EDICIÓN DE CUENTA{% else %}NUEVA CUENTA{% endif %}</p>
         <h2>{% if editing_user %}Actualizar usuario{% else %}Crear usuario{% endif %}</h2>
+        {% if editing_user.pk == last_active_admin_id %}<div class="alert alert-warning">Esta es la última cuenta Administrador activa. Su cargo y estado están protegidos.</div>{% endif %}
         <p class="section-note">La contraseña se guarda mediante el mecanismo seguro de Django. Asigna solo las delegaciones autorizadas para esta cuenta.</p>
         <form method="post" data-loading data-loading-title="Guardando" novalidate>
           {% csrf_token %}
@@ -84,7 +85,9 @@
               <td>
                 <div class="d-flex flex-wrap gap-1">
                   <a class="btn btn-sm btn-outline-primary" href="?editar={{ user.pk }}{% if pagination_query %}&amp;{{ pagination_query }}{% endif %}">Editar</a>
-                  {% if user.pk != request.user.pk and not user.is_superuser %}
+                  {% if user.pk == last_active_admin_id %}
+                  <span class="badge text-bg-warning align-self-center">Último Administrador activo protegido</span>
+                  {% elif user.pk != request.user.pk and not user.is_superuser %}
                   <form method="post" data-confirm="¿Cambiar el estado de esta cuenta?">
                     {% csrf_token %}<input type="hidden" name="action" value="cambiar_estado"><input type="hidden" name="usuario_id" value="{{ user.pk }}">
                     <button class="btn btn-sm btn-outline-secondary" type="submit">{% if user.is_active %}Desactivar{% else %}Activar{% endif %}</button>

@@ -2,9 +2,10 @@ from tempfile import TemporaryDirectory
 from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase, override_settings
-from django.urls import reverse
+from django.urls import resolve, reverse
 
 from AdminApp.models import (
 	Cargo,
@@ -14,6 +15,8 @@ from AdminApp.models import (
 	ParametroSistema,
 	Rol,
 )
+from AdminApp.roles import ensure_role_group
+from config.permissions import PERMISSION_CATALOG
 from CoordinadorApp.models import Funcion, Item, Periodo
 from DelegadoApp.models import Agenda, Compromiso
 from FuncionarioApp.models import Registro
@@ -51,6 +54,88 @@ class RolePortalTests(TestCase):
 				response = client.get(reverse(route))
 				self.assertEqual(response.status_code, 200)
 				self.assertContains(response, sidebar_label)
+
+	def test_each_existing_cargo_keeps_access_with_and_without_an_additional_role(self):
+		role_routes = (
+			('admin', 'administracion:home'),
+			('administrador', 'administracion:home'),
+			('coordinador', 'coordinador:home'),
+			('delegado', 'delegado:home'),
+			('funcionario', 'funcionario:home'),
+			('supervisor', 'supervisor:home'),
+			('verificador', 'supervisor:home'),
+			('vistaf', 'vistaf:home'),
+			('consulta', 'vistaf:home'),
+			('usuario de consulta', 'vistaf:home'),
+		)
+		additional_role = Rol.objects.create(nombre='Permiso adicional de consulta')
+		permission = Permission.objects.get(
+			content_type__app_label='AdminApp',
+			codename='view_public_reports',
+		)
+		ensure_role_group(additional_role).permissions.add(permission)
+
+		for index, (cargo_name, route_name) in enumerate(role_routes):
+			with self.subTest(cargo=cargo_name):
+				cargo, _ = Cargo.objects.get_or_create(nombre=cargo_name)
+				user = get_user_model().objects.create_user(
+					email=f'cargo-matriz-{index}@sgr.test',
+					password='Sgr-Test-Password-418!',
+					cargo=cargo,
+				)
+				client = Client()
+				client.force_login(user)
+				route = reverse(route_name)
+				self.assertEqual(client.get(route).status_code, 200)
+
+				user.roles.add(additional_role)
+				self.assertEqual(client.get(route).status_code, 200)
+
+	def test_administrator_cargo_can_open_each_existing_panel(self):
+		panel_routes = (
+			'funcionario:home',
+			'supervisor:home',
+			'delegado:home',
+			'coordinador:home',
+			'administracion:home',
+			'vistaf:home',
+		)
+		for route_name in panel_routes:
+			with self.subTest(route=route_name):
+				response = self.client.get(reverse(route_name))
+				self.assertEqual(response.status_code, 200)
+
+	def test_every_catalogued_permission_resolves_to_its_protected_view(self):
+		for definition in PERMISSION_CATALOG:
+			with self.subTest(view=definition.view_name):
+				callback = resolve(reverse(
+					definition.view_name,
+					kwargs=dict(definition.route_kwargs),
+				)).func
+				self.assertEqual(
+					callback.required_permission,
+					definition.codename,
+				)
+
+	def test_menu_shows_role_granted_views_but_not_unpermitted_admin_views(self):
+		permission = Permission.objects.get(
+			content_type__app_label='AdminApp',
+			codename='view_public_reports',
+		)
+		role = Rol.objects.create(nombre='Menú de consulta')
+		ensure_role_group(role).permissions.add(permission)
+		user = get_user_model().objects.create_user(
+			email='menu-por-rol@sgr.test',
+			password='Sgr-Test-Password-418!',
+			cargo=Cargo.objects.create(nombre='Cargo sin menú'),
+		)
+		user.roles.add(role)
+		client = Client()
+		client.force_login(user)
+
+		response = client.get(reverse('vistaf:home'))
+		self.assertContains(response, 'Consultar información')
+		self.assertNotContains(response, 'Administrar usuarios')
 
 	def test_root_shows_login_and_authenticates_demo_user(self):
 		client = Client()

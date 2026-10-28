@@ -1,6 +1,7 @@
 import json
 
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q
@@ -44,8 +45,21 @@ def _user_snapshot(user):
     }
 
 
-@cargo_required('admin', 'administrador')
+@cargo_required('admin', 'administrador', permission='access_admin_users')
 def home(request):
+    active_administrators = Usuario.objects.filter(
+        is_active=True,
+    ).filter(
+        Q(is_superuser=True)
+        | Q(cargo__nombre__iexact='admin')
+        | Q(cargo__nombre__iexact='administrador')
+    )
+    administrator_ids = list(
+        active_administrators.values_list('pk', flat=True)[:2]
+    )
+    last_active_admin_id = (
+        administrator_ids[0] if len(administrator_ids) == 1 else None
+    )
     status_filter = request.GET.get('estado', '')
     if status_filter not in {'', 'activo', 'inactivo'}:
         return HttpResponseBadRequest('Filtro de estado no válido.')
@@ -85,8 +99,11 @@ def home(request):
                             before=before,
                         )
                     messages.success(request, 'La cuenta se eliminó correctamente.')
-                except ProtectedError:
-                    messages.error(request, 'No se puede eliminar esta cuenta porque tiene información asociada.')
+                except ProtectedError as error:
+                    if 'último Administrador' in str(error):
+                        messages.error(request, 'No se puede eliminar al último Administrador activo.')
+                    else:
+                        messages.error(request, 'No se puede eliminar esta cuenta porque tiene información asociada.')
             return redirect('administracion:home')
 
         if action == 'cambiar_estado':
@@ -95,47 +112,73 @@ def home(request):
                 messages.error(request, 'No puedes desactivar tu propia cuenta ni otra cuenta superadministradora.')
             else:
                 before = _user_snapshot(target)
-                with transaction.atomic():
-                    target.is_active = not target.is_active
-                    target.save(update_fields=['is_active'])
-                    registrar_historial(
-                        actor=request.user,
-                        action='Cambiar estado de usuario',
-                        entity=f'Usuario:{target.pk}',
-                        before=before,
-                        after=_user_snapshot(target),
-                    )
-                messages.success(request, 'El estado del usuario se actualizó correctamente.')
+                try:
+                    with transaction.atomic():
+                        target.is_active = not target.is_active
+                        target.save(update_fields=['is_active'])
+                        registrar_historial(
+                            actor=request.user,
+                            action='Cambiar estado de usuario',
+                            entity=f'Usuario:{target.pk}',
+                            before=before,
+                            after=_user_snapshot(target),
+                        )
+                    messages.success(request, 'El estado del usuario se actualizó correctamente.')
+                except ValidationError as error:
+                    messages.error(request, str(error))
             return redirect('administracion:home')
 
         if target_id:
             editing_user = get_object_or_404(Usuario, pk=target_id)
-            form = UsuarioUpdateForm(request.POST, instance=editing_user)
+            form = UsuarioUpdateForm(
+                request.POST,
+                instance=editing_user,
+                protected_admin=editing_user.pk == last_active_admin_id,
+                actor=request.user,
+            )
         else:
-            form = UsuarioCreationForm(request.POST)
+            form = UsuarioCreationForm(request.POST, actor=request.user)
 
         before = _user_snapshot(editing_user) if target_id else None
         if form.is_valid():
-            with transaction.atomic():
-                user = form.save()
-                registrar_historial(
-                    actor=request.user,
-                    action='Editar usuario' if target_id else 'Crear usuario',
-                    entity=f'Usuario:{user.pk}',
-                    before=before,
-                    after=_user_snapshot(user),
+            try:
+                with transaction.atomic():
+                    user = form.save()
+                    after = _user_snapshot(user)
+                    registrar_historial(
+                        actor=request.user,
+                        action='Editar usuario' if target_id else 'Crear usuario',
+                        entity=f'Usuario:{user.pk}',
+                        before=before,
+                        after=after,
+                    )
+                    previous_roles = before['roles'] if before else []
+                    if previous_roles != after['roles']:
+                        registrar_historial(
+                            actor=request.user,
+                            action='Cambiar asignación de roles',
+                            entity=f'Usuario:{user.pk}',
+                            before={'roles': previous_roles},
+                            after={'roles': after['roles']},
+                        )
+                messages.success(
+                    request,
+                    'La cuenta se actualizó correctamente.' if target_id
+                    else 'El usuario quedó creado correctamente.',
                 )
-            messages.success(
-                request,
-                'La cuenta se actualizó correctamente.' if target_id
-                else 'El usuario quedó creado correctamente.',
-            )
-            return redirect('administracion:home')
+                return redirect('administracion:home')
+            except ValidationError as error:
+                form.add_error(None, error)
+                messages.error(request, 'No se pudo guardar la cuenta: revisa las restricciones de administración.')
         messages.error(request, 'Revisa los campos del formulario.')
     else:
         form = (
-            UsuarioUpdateForm(instance=editing_user)
-            if editing_user else UsuarioCreationForm()
+            UsuarioUpdateForm(
+                instance=editing_user,
+                protected_admin=editing_user.pk == last_active_admin_id,
+                actor=request.user,
+            )
+            if editing_user else UsuarioCreationForm(actor=request.user)
         )
 
     users = Usuario.objects.select_related(
@@ -188,6 +231,7 @@ def home(request):
         'sgr_role': 'Administración',
         'form': form,
         'editing_user': editing_user,
+        'last_active_admin_id': last_active_admin_id,
         'users': user_page.object_list,
         'page_obj': user_page,
         'pagination_query': pagination_query,
@@ -204,7 +248,7 @@ def home(request):
     return render(request, 'AdminApp/index.html', context)
 
 
-@cargo_required('admin', 'administrador')
+@cargo_required('admin', 'administrador', permission='access_admin_parameters')
 def parametros(request):
     keys = {
         'tope_cumplimiento': ParametroSistema.Clave.TOPE_CUMPLIMIENTO,
@@ -244,57 +288,57 @@ def parametros(request):
     })
 
 
-@cargo_required('admin', 'administrador')
+@cargo_required('admin', 'administrador', permission='access_admin_delegations')
 def delegaciones(request):
     return maintainer(request, 'delegaciones')
 
 
-@cargo_required('admin', 'administrador')
+@cargo_required('admin', 'administrador', permission='access_admin_positions')
 def cargos(request):
     return maintainer(request, 'cargos')
 
 
-@cargo_required('admin', 'administrador')
+@cargo_required('admin', 'administrador', permission='access_admin_functions')
 def funciones(request):
     return maintainer(request, 'funciones')
 
 
-@cargo_required('admin', 'administrador')
+@cargo_required('admin', 'administrador', permission='access_admin_position_functions')
 def cargos_funciones(request):
     return maintainer(request, 'cargos-funciones')
 
 
-@cargo_required('admin', 'administrador')
+@cargo_required('admin', 'administrador', permission='access_admin_catalog')
 def catalogo(request):
     return maintainer(request, 'catalogo')
 
 
-@cargo_required('admin', 'administrador')
+@cargo_required('admin', 'administrador', permission='access_admin_roles')
 def roles(request):
     return maintainer(request, 'roles')
 
 
-@cargo_required('coordinador', 'admin', 'administrador')
+@cargo_required('coordinador', 'admin', 'administrador', permission='access_admin_items')
 def items(request):
     return maintainer(request, 'items')
 
 
-@cargo_required('admin', 'administrador')
+@cargo_required('admin', 'administrador', permission='access_admin_attention_types')
 def tipos_atencion(request):
     return maintainer(request, 'tipos-atencion')
 
 
-@cargo_required('admin', 'administrador')
+@cargo_required('admin', 'administrador', permission='access_admin_subattentions')
 def subatenciones(request):
     return maintainer(request, 'subatenciones')
 
 
-@cargo_required('coordinador', 'admin', 'administrador')
+@cargo_required('coordinador', 'admin', 'administrador', permission='access_admin_goals')
 def metas(request):
     return maintainer(request, 'metas')
 
 
-@cargo_required('admin', 'administrador')
+@cargo_required('admin', 'administrador', permission='access_admin_history')
 @require_GET
 def historial(request):
     actions = Historial.objects.order_by().values_list(
@@ -354,7 +398,7 @@ def historial(request):
     })
 
 
-@cargo_required('admin', 'administrador')
+@cargo_required('admin', 'administrador', permission='access_admin_password_audit')
 @require_GET
 def password_reset_audit(request):
     form = PasswordResetAuditFilterForm(request.GET or None)

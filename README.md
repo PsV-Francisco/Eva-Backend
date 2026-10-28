@@ -158,3 +158,61 @@ Abre la ruta impresa en un navegador. El correo real conserva la imagen CID. Est
    Configura Nginx como proxy inverso hacia `127.0.0.1:8000` y sirve `/static/` desde `/opt/sgr/staticfiles/`. Mantén el proceso bajo un usuario del sistema sin privilegios y habilita HTTPS con un certificado válido antes de usar el sitio públicamente.
 7. Reinicia el servicio, verifica `systemctl status <servicio>` y los logs, y prueba en el sitio: login, recepción del enlace de recuperación por SMTP y su vencimiento/uso único, recuperación por código alternativa, cambio de delegación autorizada, CRUD/exportación, alta de atención, relación tipo/Sub Atención y acceso denegado a rutas no autorizadas.
 8. Mantén respaldos y monitoreo de base y medios. No uses `runserver` como servidor de producción.
+
+## Roles y permisos
+
+Los roles se administran desde **Administración → Roles**. Cada rol mantiene un
+grupo de Django asociado y sus permisos son permisos Django (`Group` y
+`Permission`); las asignaciones del usuario se sincronizan con sus grupos. La
+migración `AdminApp.0013_alter_rol_options_rol_grupo_rol_protegido` crea el
+catálogo y los grupos existentes de forma idempotente. No hay un comando
+manual de inicialización.
+
+La autorización conserva los accesos del cargo actual y concede acceso
+adicional si uno de los roles activos del usuario contiene el permiso de la
+vista. Un rol no revoca accesos heredados del cargo. El cargo `admin` o
+`administrador`, y las cuentas superusuario, mantienen acceso total. Los
+permisos adicionales respetan además los filtros de delegación y las reglas de
+negocio existentes.
+
+Las cuentas no administradoras que gestionen usuarios o roles solo pueden
+asignar permisos que su propia cuenta ya posee. La aplicación registra en el
+Historial la creación, edición, duplicación y eliminación de roles y los
+cambios de asignación de roles a usuarios. Los roles marcados como protegidos
+(incluidos los nombres críticos preexistentes) no se pueden editar ni eliminar.
+La última cuenta Administrador activa no se puede desactivar, degradar ni
+eliminar; estas restricciones se aplican también en el servidor.
+
+### Permiso y vistas protegidas
+
+El catálogo está definido en `config/permissions.py`. El chequeo de Django
+verifica que cada vista protegida por `cargo_required` tenga una asociación
+exacta con el catálogo.
+
+| Módulo | Permiso | Vista protegida |
+|---|---|---|
+| Administración | `access_admin_users` | `administracion:home` |
+| Administración | `access_admin_parameters` | `administracion:parametros` |
+| Administración | `access_admin_delegations` | `administracion:delegaciones` |
+| Administración | `access_admin_positions` | `administracion:cargos` |
+| Administración | `access_admin_functions` | `administracion:funciones` |
+| Administración | `access_admin_position_functions` | `administracion:cargos-funciones` |
+| Administración | `access_admin_catalog` | `administracion:catalogo` |
+| Administración | `access_admin_roles` | `administracion:roles` |
+| Administración | `access_admin_items` | `administracion:items` |
+| Administración | `access_admin_attention_types` | `administracion:tipos-atencion` |
+| Administración | `access_admin_subattentions` | `administracion:subatenciones` |
+| Administración | `access_admin_goals` | `administracion:metas` |
+| Administración | `access_admin_history` | `administracion:historial` |
+| Administración | `access_admin_password_audit` | `administracion:auditoria-recuperacion` |
+| Funcionario | `access_employee_dashboard` | `funcionario:home` |
+| Funcionario | `manage_employee_compliance` | `funcionario:cumplimiento` |
+| Funcionario | `manage_social_care` | `funcionario:atencion_social` |
+| Funcionario | `search_social_applicants` | `funcionario:buscar_solicitantes` |
+| Funcionario | `view_social_subattentions` | `funcionario:subatenciones_tipo` |
+| Funcionario | `manage_collective_agenda` | `funcionario:agenda_colectiva` |
+| Supervisor / Verificador | `review_evidence` | `supervisor:home` |
+| Delegado | `manage_commitments` | `delegado:home` |
+| Delegado | `view_delegation_summary` | `delegado:resumen` |
+| Coordinador | `manage_periods` | `coordinador:home` |
+| Consulta | `view_public_reports` | `vistaf:home` |

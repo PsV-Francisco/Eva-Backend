@@ -2,6 +2,10 @@ from datetime import date, timedelta
 from io import BytesIO
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models.deletion import ProtectedError
 from django.test import Client, TestCase
 from django.urls import reverse
 from openpyxl import load_workbook
@@ -14,6 +18,7 @@ from AdminApp.models import (
     SubAtencion,
     TipoAtencion,
 )
+from AdminApp.roles import ensure_role_group
 from CoordinadorApp.models import Desempeno, Funcion, Item, Periodo
 from config.delegations import authorized_delegations
 
@@ -41,6 +46,10 @@ class MaintainerTests(TestCase):
                 response = self.client.get(reverse(f'administracion:{route_name}'))
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, 'Exportar a Excel')
+        role_page = self.client.get(reverse('administracion:roles'))
+        self.assertContains(role_page, 'Administración')
+        self.assertContains(role_page, 'Funcionario')
+        self.assertContains(role_page, 'name="permissions"')
 
     def test_non_administrator_cannot_open_administration_routes(self):
         user = get_user_model().objects.create_user(
@@ -87,20 +96,310 @@ class MaintainerTests(TestCase):
         self.assertEqual(delegation.codigo, f'DEL-{delegation.pk:04d}')
 
     def test_role_form_persists_description_permissions_scope_and_state(self):
+        permission = Permission.objects.get(
+            content_type__app_label='AdminApp',
+            codename='manage_periods',
+        )
         response = self.client.post(reverse('administracion:roles'), {
             'action': 'guardar',
             'nombre': 'Coordinador Territorial',
             'descripcion': 'Gestión de una delegación',
-            'permisos': 'items.manage',
+            'permissions': [permission.pk],
             'alcance': Rol.Alcance.DELEGACION,
             'estado': Rol.Estado.ACTIVO,
         })
 
         self.assertRedirects(response, reverse('administracion:roles'))
         role = Rol.objects.get(nombre='Coordinador Territorial')
-        self.assertEqual(role.permisos, 'items.manage')
+        self.assertTrue(role.grupo.permissions.filter(pk=permission.pk).exists())
         self.assertEqual(role.alcance, Rol.Alcance.DELEGACION)
         self.assertEqual(role.descripcion, 'Gestión de una delegación')
+        self.assertTrue(
+            Historial.objects.filter(
+                accion='Crear roles y permisos',
+                entidad_afectada=f'Rol:{role.pk}',
+            ).exists()
+        )
+
+        updated_permission = Permission.objects.get(
+            content_type__app_label='AdminApp',
+            codename='view_public_reports',
+        )
+        response = self.client.post(reverse('administracion:roles'), {
+            'action': 'guardar',
+            'object_id': role.pk,
+            'nombre': 'Coordinador Territorial',
+            'descripcion': 'Descripción actualizada',
+            'permissions': [updated_permission.pk],
+            'alcance': Rol.Alcance.DELEGACION,
+            'estado': Rol.Estado.ACTIVO,
+        })
+        self.assertRedirects(response, reverse('administracion:roles'))
+        role.refresh_from_db()
+        self.assertEqual(role.descripcion, 'Descripción actualizada')
+        self.assertEqual(
+            list(role.grupo.permissions.values_list('codename', flat=True)),
+            ['view_public_reports'],
+        )
+        self.assertTrue(
+            Historial.objects.filter(
+                accion='Editar roles y permisos',
+                entidad_afectada=f'Rol:{role.pk}',
+            ).exists()
+        )
+
+    def test_role_permissions_are_applied_through_groups_and_revocable(self):
+        permission = Permission.objects.get(
+            content_type__app_label='AdminApp',
+            codename='view_public_reports',
+        )
+        role = Rol.objects.create(nombre='Consulta adicional')
+        user = get_user_model().objects.create_user(
+            email='consulta-adicional@sgr.test',
+            password='Sgr-Test-Password-418!',
+            cargo=Cargo.objects.create(nombre='Cargo adicional'),
+        )
+        ensure_role_group(role).permissions.add(permission)
+        user.roles.add(role)
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('vistaf:home'))
+        self.assertEqual(response.status_code, 200)
+
+        role.estado = Rol.Estado.INACTIVO
+        role.save(update_fields=['estado'])
+        self.assertFalse(user.groups.filter(pk=role.grupo_id).exists())
+        self.assertEqual(
+            client.get(reverse('vistaf:home')).status_code,
+            403,
+        )
+
+        role.estado = Rol.Estado.ACTIVO
+        role.save(update_fields=['estado'])
+        self.assertTrue(user.groups.filter(pk=role.grupo_id).exists())
+        role.grupo.permissions.remove(permission)
+        response = client.get(reverse('vistaf:home'))
+        self.assertEqual(response.status_code, 403)
+
+    def test_role_duplication_and_deletion_are_audited(self):
+        permission = Permission.objects.get(
+            content_type__app_label='AdminApp',
+            codename='manage_periods',
+        )
+        role = Rol.objects.create(nombre='Rol para duplicar')
+        ensure_role_group(role).permissions.add(permission)
+
+        response = self.client.post(reverse('administracion:roles'), {
+            'action': 'duplicar',
+            'object_id': role.pk,
+        })
+        self.assertEqual(response.status_code, 302)
+        duplicate = Rol.objects.get(nombre='Rol para duplicar (copia)')
+        self.assertTrue(
+            duplicate.grupo.permissions.filter(pk=permission.pk).exists()
+        )
+        self.assertTrue(
+            Historial.objects.filter(
+                accion='Duplicar rol',
+                entidad_afectada=f'Rol:{duplicate.pk}',
+            ).exists()
+        )
+
+        response = self.client.post(reverse('administracion:roles'), {
+            'action': 'eliminar',
+            'object_id': duplicate.pk,
+        })
+        self.assertRedirects(response, reverse('administracion:roles'))
+        self.assertFalse(Rol.objects.filter(pk=duplicate.pk).exists())
+        self.assertTrue(
+            Historial.objects.filter(
+                accion='Eliminar roles y permisos',
+                entidad_afectada=f'Rol:{duplicate.pk}',
+            ).exists()
+        )
+
+    def test_critical_roles_are_protected_in_the_model_and_view(self):
+        permission = Permission.objects.get(
+            content_type__app_label='AdminApp',
+            codename='manage_periods',
+        )
+        role = Rol.objects.create(nombre='Rol crítico', protegido=True)
+        group = ensure_role_group(role)
+        with transaction.atomic():
+            with self.assertRaises(ValidationError):
+                group.permissions.add(permission)
+        role.nombre = 'Rol crítico renombrado'
+        with transaction.atomic():
+            with self.assertRaises(ValidationError):
+                role.save()
+        with self.assertRaises(ProtectedError):
+            role.delete()
+        with self.assertRaises(ProtectedError):
+            Rol.objects.filter(pk=role.pk).delete()
+
+        response = self.client.post(reverse('administracion:roles'), {
+            'action': 'eliminar',
+            'object_id': role.pk,
+        }, follow=True)
+        self.assertContains(response, 'no se puede eliminar')
+        self.assertTrue(Rol.objects.filter(pk=role.pk).exists())
+        response = self.client.post(reverse('administracion:roles'), {
+            'action': 'guardar',
+            'nombre': 'Administrador del sistema',
+            'descripcion': '',
+            'permissions': [],
+            'alcance': Rol.Alcance.GLOBAL,
+            'estado': Rol.Estado.ACTIVO,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            Rol.objects.filter(nombre='Administrador del sistema').exists()
+        )
+
+    def test_role_assignment_changes_are_audited(self):
+        role = Rol.objects.create(nombre='Rol asignable')
+        user = get_user_model().objects.create_user(
+            email='usuario-con-rol@sgr.test',
+            password='Sgr-Test-Password-418!',
+            cargo=Cargo.objects.create(nombre='funcionario'),
+        )
+        response = self.client.post(reverse('administracion:home'), {
+            'usuario_id': user.pk,
+            'email': user.email,
+            'first_name': '',
+            'last_name': '',
+            'delegacion': '',
+            'delegaciones_autorizadas': [],
+            'cargo': user.cargo_id,
+            'roles': [role.pk],
+            'is_active': 'on',
+            'password1': '',
+            'password2': '',
+        })
+        self.assertRedirects(response, reverse('administracion:home'))
+        self.assertTrue(
+            Historial.objects.filter(
+                accion='Cambiar asignación de roles',
+                entidad_afectada=f'Usuario:{user.pk}',
+            ).exists()
+        )
+        role.refresh_from_db()
+        self.assertTrue(user.groups.filter(pk=role.grupo_id).exists())
+
+    def test_user_manager_cannot_assign_permissions_the_manager_does_not_have(self):
+        manager_permission = Permission.objects.get(
+            content_type__app_label='AdminApp',
+            codename='access_admin_users',
+        )
+        elevated_permission = Permission.objects.get(
+            content_type__app_label='AdminApp',
+            codename='manage_periods',
+        )
+        manager_role = Rol.objects.create(nombre='Administrar usuarios limitada')
+        elevated_role = Rol.objects.create(nombre='Coordinación elevada')
+        ensure_role_group(manager_role).permissions.add(manager_permission)
+        ensure_role_group(elevated_role).permissions.add(elevated_permission)
+        actor = get_user_model().objects.create_user(
+            email='gestor-limitado@sgr.test',
+            password='Sgr-Test-Password-418!',
+            cargo=Cargo.objects.create(nombre='Funcionario con permiso'),
+        )
+        actor.roles.add(manager_role)
+        target = get_user_model().objects.create_user(
+            email='destinatario-rol@sgr.test',
+            password='Sgr-Test-Password-418!',
+            cargo=Cargo.objects.get_or_create(nombre='funcionario')[0],
+        )
+        self.client.force_login(actor)
+
+        response = self.client.post(reverse('administracion:home'), {
+            'usuario_id': target.pk,
+            'email': target.email,
+            'first_name': '',
+            'last_name': '',
+            'delegacion': '',
+            'delegaciones_autorizadas': [],
+            'cargo': target.cargo_id,
+            'roles': [elevated_role.pk],
+            'is_active': 'on',
+            'password1': '',
+            'password2': '',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(target.roles.filter(pk=elevated_role.pk).exists())
+
+    def test_last_administrator_is_protected_by_the_user_endpoint_and_model(self):
+        admin_cargo = Cargo.objects.get(nombre='administrador')
+        target = get_user_model().objects.create_user(
+            email='ultimo-administrador@sgr.test',
+            password='Sgr-Test-Password-418!',
+            cargo=admin_cargo,
+        )
+        self.admin.is_superuser = False
+        self.admin.cargo = Cargo.objects.get_or_create(
+            nombre='funcionario',
+        )[0]
+        self.admin.save(update_fields=['is_superuser', 'cargo'])
+        permission = Permission.objects.get(
+            content_type__app_label='AdminApp',
+            codename='access_admin_users',
+        )
+        role = Rol.objects.create(nombre='Administrar usuarios')
+        ensure_role_group(role).permissions.add(permission)
+        self.admin.roles.add(role)
+        self.client.force_login(self.admin)
+
+        response = self.client.post(reverse('administracion:home'), {
+            'action': 'cambiar_estado',
+            'usuario_id': target.pk,
+        }, follow=True)
+        self.assertContains(response, 'último Administrador')
+        target.refresh_from_db()
+        self.assertTrue(target.is_active)
+
+        response = self.client.post(reverse('administracion:home'), {
+            'action': 'eliminar',
+            'usuario_id': target.pk,
+        }, follow=True)
+        self.assertContains(response, 'último Administrador')
+        self.assertTrue(get_user_model().objects.filter(pk=target.pk).exists())
+
+        response = self.client.post(reverse('administracion:home'), {
+            'usuario_id': target.pk,
+            'email': target.email,
+            'first_name': '',
+            'last_name': '',
+            'delegacion': '',
+            'delegaciones_autorizadas': [],
+            'cargo': self.admin.cargo_id,
+            'roles': [],
+            'is_active': 'on',
+            'password1': '',
+            'password2': '',
+        })
+        self.assertRedirects(response, reverse('administracion:home'))
+        target.refresh_from_db()
+        self.assertEqual(target.cargo_id, admin_cargo.pk)
+
+        with self.assertRaises(ValidationError):
+            get_user_model().objects.filter(pk=target.pk).update(
+                is_active=False,
+            )
+        target.cargo = self.admin.cargo
+        with transaction.atomic():
+            with self.assertRaises(ValidationError):
+                target.save(update_fields=['cargo'])
+        target.refresh_from_db()
+        self.assertEqual(target.cargo_id, admin_cargo.pk)
+
+        response = self.client.get(
+            reverse('administracion:home'),
+            {'editar': target.pk},
+        )
+        self.assertContains(response, 'Último Administrador activo protegido')
+        self.assertContains(response, 'disabled')
 
     def test_type_cannot_be_deleted_while_subtypes_are_associated(self):
         attention_type = TipoAtencion.objects.create(

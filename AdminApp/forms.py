@@ -1,4 +1,5 @@
 from django import forms
+from django.contrib.auth.models import Permission
 from django.contrib.auth.password_validation import validate_password
 from decimal import Decimal
 from django.db.models import Q
@@ -13,9 +14,51 @@ from AdminApp.models import (
     SubAtencion,
     TipoAtencion,
     Usuario,
+    PROTECTED_ROLE_NAMES,
+)
+from AdminApp.roles import (
+    assignable_role_ids,
+    ensure_role_group,
+    is_system_administrator,
+    permission_codenames_for,
 )
 from CoordinadorApp.models import CargoFuncion, Desempeno, Funcion, Item, Periodo
 from config.forms import BootstrapFormMixin
+from config.permissions import PERMISSION_CATALOG
+
+
+def _configure_user_form_fields(form, actor):
+    instance = form.instance
+    delegations = Delegacion.objects.filter(
+        estado=Delegacion.Estado.ACTIVA,
+    )
+    if instance.pk:
+        delegations = Delegacion.objects.filter(
+            Q(estado=Delegacion.Estado.ACTIVA)
+            | Q(usuarios=instance)
+            | Q(usuarios_autorizados=instance)
+        ).distinct()
+    form.fields['delegacion'].queryset = delegations.order_by('nombre')
+    form.fields['delegaciones_autorizadas'].queryset = (
+        delegations.order_by('nombre')
+    )
+
+    cargos = Cargo.objects.filter(estado=Cargo.Estado.ACTIVO)
+    if instance.pk and instance.cargo_id:
+        cargos = Cargo.objects.filter(
+            Q(estado=Cargo.Estado.ACTIVO) | Q(pk=instance.cargo_id),
+        )
+    form.fields['cargo'].queryset = cargos.order_by('nombre')
+
+    roles = Rol.objects.filter(estado=Rol.Estado.ACTIVO)
+    if instance.pk:
+        roles = Rol.objects.filter(
+            Q(estado=Rol.Estado.ACTIVO) | Q(usuarios=instance),
+        ).distinct()
+    assignable = assignable_role_ids(actor, instance) if actor else None
+    if assignable is not None:
+        roles = roles.filter(pk__in=assignable)
+    form.fields['roles'].queryset = roles.order_by('nombre')
 
 
 class UsuarioCreationForm(BootstrapFormMixin, forms.ModelForm):
@@ -40,31 +83,9 @@ class UsuarioCreationForm(BootstrapFormMixin, forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        actor = kwargs.pop('actor', None)
         super().__init__(*args, **kwargs)
-        delegations = Delegacion.objects.filter(
-            estado=Delegacion.Estado.ACTIVA,
-        )
-        if self.instance.pk:
-            delegations = Delegacion.objects.filter(
-                Q(estado=Delegacion.Estado.ACTIVA)
-                | Q(usuarios=self.instance)
-                | Q(usuarios_autorizados=self.instance)
-            ).distinct()
-        delegations = delegations.order_by('nombre')
-        self.fields['delegacion'].queryset = delegations
-        self.fields['delegaciones_autorizadas'].queryset = delegations
-        cargos = Cargo.objects.filter(estado=Cargo.Estado.ACTIVO)
-        if self.instance.pk and self.instance.cargo_id:
-            cargos = Cargo.objects.filter(
-                Q(estado=Cargo.Estado.ACTIVO) | Q(pk=self.instance.cargo_id),
-            )
-        self.fields['cargo'].queryset = cargos.order_by('nombre')
-        roles = Rol.objects.filter(estado=Rol.Estado.ACTIVO)
-        if self.instance.pk:
-            roles = Rol.objects.filter(
-                Q(estado=Rol.Estado.ACTIVO) | Q(usuarios=self.instance),
-            ).distinct()
-        self.fields['roles'].queryset = roles.order_by('nombre')
+        _configure_user_form_fields(self, actor)
 
     def clean(self):
         cleaned_data = super().clean()
@@ -99,6 +120,14 @@ class UsuarioUpdateForm(BootstrapFormMixin, forms.ModelForm):
 
     class Meta(UsuarioCreationForm.Meta):
         pass
+
+    def __init__(self, *args, protected_admin=False, **kwargs):
+        actor = kwargs.pop('actor', None)
+        super().__init__(*args, **kwargs)
+        _configure_user_form_fields(self, actor)
+        if protected_admin:
+            self.fields['cargo'].disabled = True
+            self.fields['is_active'].disabled = True
 
     def clean(self):
         cleaned_data = super().clean()
@@ -164,29 +193,123 @@ class DelegacionForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class RolForm(BootstrapFormMixin, forms.ModelForm):
+    permissions = forms.ModelMultipleChoiceField(
+        queryset=Permission.objects.none(),
+        required=False,
+        label='Permisos',
+        widget=forms.CheckboxSelectMultiple,
+    )
+
     class Meta:
         model = Rol
-        fields = ('nombre', 'descripcion', 'permisos', 'alcance', 'estado')
+        fields = ('nombre', 'descripcion', 'alcance', 'estado')
         labels = {
             'nombre': 'Nombre',
             'descripcion': 'Descripción',
-            'permisos': 'Permisos',
             'alcance': 'Alcance',
             'estado': 'Estado',
         }
-        help_texts = {
-            'permisos': (
-                'Campo descriptivo del rol. El acceso a los módulos sigue '
-                'validándose según el cargo de la cuenta.'
-            ),
-        }
         widgets = {
             'descripcion': forms.Textarea(attrs={'rows': 3}),
-            'permisos': forms.Textarea(attrs={
-                'rows': 4,
-                'placeholder': 'Describe los permisos del rol',
-            }),
         }
+
+    def __init__(self, *args, **kwargs):
+        self.actor = kwargs.pop('actor', None)
+        super().__init__(*args, **kwargs)
+        definitions_by_codename = {
+            definition.codename: definition
+            for definition in PERMISSION_CATALOG
+        }
+        permissions = Permission.objects.filter(
+            content_type__app_label='AdminApp',
+            codename__in=definitions_by_codename,
+        ).order_by('name')
+        if self.actor and not is_system_administrator(self.actor):
+            existing_codenames = (
+                set(
+                    self.instance.grupo.permissions.values_list(
+                        'codename',
+                        flat=True,
+                    )
+                )
+                if self.instance.pk and self.instance.grupo_id else set()
+            )
+            allowed_codenames = (
+                permission_codenames_for(self.actor) | existing_codenames
+            )
+            permissions = permissions.filter(
+                codename__in=allowed_codenames,
+            )
+        self.fields['permissions'].queryset = permissions
+        groups = {}
+        permission_by_codename = {
+            permission.codename: permission
+            for permission in permissions
+        }
+        for definition in PERMISSION_CATALOG:
+            permission = permission_by_codename.get(definition.codename)
+            if permission:
+                groups.setdefault(definition.module, []).append(
+                    (permission.pk, definition.label),
+                )
+        self.fields['permissions'].choices = [
+            (module, choices)
+            for module, choices in groups.items()
+        ]
+        if self.instance.pk and self.instance.grupo_id:
+            self.initial['permissions'] = list(
+                self.instance.grupo.permissions.filter(
+                    codename__in=definitions_by_codename,
+                ).values_list('pk', flat=True)
+            )
+        if self.instance.protegido:
+            for field in self.fields.values():
+                field.disabled = True
+
+    def clean_permissions(self):
+        selected = self.cleaned_data['permissions']
+        if not self.actor or is_system_administrator(self.actor):
+            return selected
+        current = (
+            set(
+                self.instance.grupo.permissions.values_list(
+                    'codename',
+                    flat=True,
+                )
+            )
+            if self.instance.pk and self.instance.grupo_id else set()
+        )
+        permitted = permission_codenames_for(self.actor) | current
+        unauthorized = {
+            permission.codename
+            for permission in selected
+        } - permitted
+        if unauthorized:
+            raise forms.ValidationError(
+                'No puedes asignar permisos que tu propia cuenta no posee.'
+            )
+        return selected
+
+    def clean_nombre(self):
+        name = self.cleaned_data['nombre'].strip()
+        if (
+            name.casefold() in PROTECTED_ROLE_NAMES
+            and not self.instance.protegido
+        ):
+            raise forms.ValidationError(
+                'Este nombre está reservado para roles críticos del sistema.'
+            )
+        return name
+
+    def save(self, commit=True):
+        role = super().save(commit=False)
+        if not commit:
+            return role
+        role.save()
+        group = ensure_role_group(role)
+        if not role.protegido:
+            group.permissions.set(self.cleaned_data['permissions'])
+        return role
 
 
 class CargoForm(BootstrapFormMixin, forms.ModelForm):

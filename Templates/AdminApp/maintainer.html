@@ -13,6 +13,10 @@
       <div>
         <p class="eyebrow">{% if editing_object %}EDICIÓN{% else %}NUEVO REGISTRO{% endif %}</p>
         <h2>{% if editing_object %}Editar registro{% else %}Crear registro{% endif %}</h2>
+        {% if is_role_maintainer %}
+        <p>Los permisos se conceden por grupos de Django. El cargo conserva su acceso actual; los roles agregan acceso a las vistas indicadas en el catálogo.</p>
+        {% if editing_object.protegido %}<div class="alert alert-warning">Rol protegido: solo lectura; no se puede editar ni eliminar.</div>{% endif %}
+        {% endif %}
         <form method="post" data-loading data-loading-title="Guardando">
           {% csrf_token %}
           <input type="hidden" name="action" value="guardar">
@@ -82,11 +86,17 @@
               {% for cell in row.values %}<td>{{ cell|default:'—' }}</td>{% endfor %}
               <td>
                 <div class="d-flex flex-wrap gap-1">
-                  <a class="btn btn-sm btn-outline-primary" href="?editar={{ row.object.pk }}{% if pagination_query %}&amp;{{ pagination_query }}{% endif %}">Editar</a>
-                  {% if has_status %}
+                  {% if row.can_edit %}<a class="btn btn-sm btn-outline-primary" href="?editar={{ row.object.pk }}{% if pagination_query %}&amp;{{ pagination_query }}{% endif %}">Editar</a>{% endif %}
+                  {% if has_status and row.can_change_status %}
                   <form method="post" data-loading data-loading-title="Actualizando estado">
                     {% csrf_token %}<input type="hidden" name="action" value="cambiar_estado"><input type="hidden" name="object_id" value="{{ row.object.pk }}">
                     <button class="btn btn-sm btn-outline-secondary" type="submit">Activar / desactivar</button>
+                  </form>
+                  {% endif %}
+                  {% if row.can_duplicate %}
+                  <form method="post" data-confirm="¿Duplicar este rol y copiar sus permisos?">
+                    {% csrf_token %}<input type="hidden" name="action" value="duplicar"><input type="hidden" name="object_id" value="{{ row.object.pk }}">
+                    <button class="btn btn-sm btn-outline-secondary" type="submit">Duplicar</button>
                   </form>
                   {% endif %}
                   {% if row.can_delete %}

@@ -10,7 +10,12 @@ from config.decorators import cargo_required
 from config.delegations import active_delegation
 
 
-@cargo_required('vistaf', 'consulta', 'usuario de consulta')
+@cargo_required(
+    'vistaf',
+    'consulta',
+    'usuario de consulta',
+    permission='view_public_reports',
+)
 def home(request):
 	registros = Registro.objects.all()
 	compromisos = Compromiso.objects.all()

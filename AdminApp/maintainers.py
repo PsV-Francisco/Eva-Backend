@@ -31,6 +31,11 @@ from AdminApp.models import (
     TipoAtencion,
     is_critical_cargo_name,
 )
+from AdminApp.roles import (
+    ensure_role_group,
+    is_system_administrator,
+    permission_codenames_for,
+)
 from CoordinadorApp.models import CargoFuncion, Desempeno, Funcion, Item
 from config.delegations import active_delegation
 from FuncionarioApp.models import AtencionSocial
@@ -59,6 +64,8 @@ def _delegation_delete_block(delegation):
 
 
 def _role_delete_block(role):
+    if role.protegido:
+        return 'Este rol está protegido y no se puede eliminar.'
     if role.usuarios.exists():
         return 'El rol está asignado a usuarios. Desactívalo para conservar esas asignaciones.'
     return ''
@@ -229,23 +236,27 @@ SPECS = {
     ),
     'roles': MaintainerSpec(
         key='roles',
-        title='Roles',
+        title='Roles y permisos',
         model=Rol,
         form_class=RolForm,
-        search_fields=('nombre', 'descripcion', 'permisos', 'alcance'),
+        search_fields=(
+            'nombre', 'descripcion', 'grupo__permissions__name', 'alcance',
+        ),
         display_fields=(
             ('Nombre', 'nombre'),
             ('Descripción', 'descripcion'),
-            ('Permisos', 'permisos'),
+            ('Permisos', 'permisos_resumen'),
             ('Alcance', 'alcance'),
             ('Estado', 'estado'),
+            ('Protegido', 'protegido'),
         ),
         export_fields=(
             ('Nombre', 'nombre'),
             ('Descripción', 'descripcion'),
-            ('Permisos', 'permisos'),
+            ('Permisos', 'permisos_resumen'),
             ('Alcance', 'alcance'),
             ('Estado', 'estado'),
+            ('Protegido', 'protegido'),
         ),
         ordering=('nombre',),
         active_value=Rol.Estado.ACTIVO,
@@ -412,6 +423,16 @@ def _safe_spreadsheet_value(value):
 def display_value(record, field_name):
     if field_name == 'roles':
         return ', '.join(sorted(role.nombre for role in record.roles.all()))
+    if field_name == 'permisos_resumen':
+        if not record.grupo_id:
+            return 'Sin permisos'
+        return ', '.join(
+            record.grupo.permissions.order_by('codename').values_list(
+                'name', flat=True,
+            )
+        ) or 'Sin permisos'
+    if field_name == 'protegido':
+        return 'Sí' if record.protegido else 'No'
     if field_name == 'delegaciones_autorizadas':
         return ', '.join(
             sorted(
@@ -514,6 +535,8 @@ def _snapshot(spec, record):
 
 
 def _form_kwargs(spec, request):
+    if spec.key == 'roles':
+        return {'actor': request.user}
     if spec.key == 'metas':
         return {
             'user': request.user,
@@ -548,6 +571,15 @@ def _maintainer_context(spec, request, form, editing, queryset, base_count):
                 for _, field in spec.display_fields
             ],
             'can_delete': not bool(_delete_block(spec, record)),
+            'can_edit': not (
+                spec.key == 'roles' and record.protegido
+            ),
+            'can_change_status': not (
+                spec.key == 'roles' and record.protegido
+            ),
+            'can_duplicate': (
+                spec.key == 'roles' and not record.protegido
+            ),
         }
         for record in page_obj.object_list
     ]
@@ -572,6 +604,7 @@ def _maintainer_context(spec, request, form, editing, queryset, base_count):
         'is_item_maintainer': spec.key == 'items',
         'route_name': f'administracion:{spec.key}',
         'is_meta_maintainer': spec.key == 'metas',
+        'is_role_maintainer': spec.key == 'roles',
     }
 
 
@@ -596,8 +629,63 @@ def maintainer(request, key):
     if request.method == 'POST':
         action = request.POST.get('action', 'guardar')
         object_id = request.POST.get('object_id')
-        if action not in {'guardar', 'eliminar', 'cambiar_estado'}:
+        if action not in {'guardar', 'eliminar', 'cambiar_estado', 'duplicar'}:
             return HttpResponseBadRequest('Acción no válida.')
+        if action == 'duplicar':
+            if spec.key != 'roles':
+                return HttpResponseBadRequest('La duplicación no está disponible.')
+            source = get_object_or_404(authorized_queryset, pk=object_id)
+            if source.protegido:
+                messages.error(request, 'No se puede duplicar un rol protegido.')
+                return redirect(request.path)
+            source_permissions = (
+                set(
+                    source.grupo.permissions.values_list(
+                        'codename',
+                        flat=True,
+                    )
+                )
+                if source.grupo_id else set()
+            )
+            if (
+                not is_system_administrator(request.user)
+                and not source_permissions.issubset(
+                    permission_codenames_for(request.user)
+                )
+            ):
+                messages.error(
+                    request,
+                    'No puedes duplicar un rol con permisos que tu cuenta no posee.',
+                )
+                return redirect(request.path)
+
+            base_name = f'{source.nombre[:72]} (copia)'
+            duplicate_name = base_name
+            suffix = 2
+            while Rol.objects.filter(nombre=duplicate_name).exists():
+                duplicate_name = f'{source.nombre[:70]} (copia {suffix})'
+                suffix += 1
+            with transaction.atomic():
+                duplicate = Rol.objects.create(
+                    nombre=duplicate_name,
+                    descripcion=source.descripcion,
+                    alcance=source.alcance,
+                    estado=Rol.Estado.ACTIVO,
+                )
+                duplicate_group = ensure_role_group(duplicate)
+                duplicate_group.permissions.set(
+                    source.grupo.permissions.all()
+                    if source.grupo_id else []
+                )
+                registrar_historial(
+                    actor=request.user,
+                    action='Duplicar rol',
+                    entity=f'Rol:{duplicate.pk}',
+                    before=_snapshot(spec, source),
+                    after=_snapshot(spec, duplicate),
+                )
+            messages.success(request, 'El rol se duplicó correctamente.')
+            return redirect(f'{request.path}?editar={duplicate.pk}')
         if action in {'eliminar', 'cambiar_estado'}:
             if action == 'eliminar':
                 try:
@@ -636,6 +724,9 @@ def maintainer(request, key):
                     authorized_queryset.select_for_update(),
                     pk=object_id,
                 )
+                if spec.key == 'roles' and record.protegido:
+                    messages.error(request, 'Este rol protegido no se puede modificar.')
+                    return redirect(request.path)
                 current_value = getattr(record, spec.status_field)
                 new_value = (
                     spec.inactive_value

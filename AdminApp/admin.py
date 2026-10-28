@@ -1,5 +1,7 @@
 from django.contrib import admin
 from django import forms
+from django.contrib.admin.sites import NotRegistered
+from django.contrib.auth.models import Group
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 
@@ -15,6 +17,13 @@ from .models import (
 	TipoAtencion,
 	Usuario,
 )
+from .audit import registrar_historial
+
+
+try:
+	admin.site.unregister(Group)
+except NotRegistered:
+	pass
 
 
 class UsuarioCreationForm(forms.ModelForm):
@@ -64,14 +73,51 @@ class UsuarioAdmin(UserAdmin):
 	fieldsets = (
 		(None, {'fields': ('email', 'password')}),
 		('Información personal', {'fields': ('first_name', 'last_name', 'delegacion', 'cargo', 'roles')}),
-		('Permisos', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
+		('Permisos', {'fields': ('is_active', 'is_staff', 'is_superuser')}),
 		('Fechas', {'fields': ('last_login', 'date_joined')}),
 	)
 	list_display = ('email', 'first_name', 'last_name', 'is_staff', 'is_active')
 	list_filter = ('is_staff', 'is_superuser', 'is_active', 'delegacion', 'cargo')
 	search_fields = ('email', 'first_name', 'last_name')
 	ordering = ('email',)
-	filter_horizontal = ('roles', 'groups', 'user_permissions')
+	filter_horizontal = ('roles',)
+
+	def save_model(self, request, obj, form, change):
+		obj._roles_before_save = (
+			set(obj.roles.values_list('pk', flat=True))
+			if change else set()
+		)
+		super().save_model(request, obj, form, change)
+
+	def save_related(self, request, form, formsets, change):
+		super().save_related(request, form, formsets, change)
+		roles_after = set(
+			form.instance.roles.values_list('pk', flat=True),
+		)
+		roles_before = form.instance._roles_before_save
+		if roles_before != roles_after:
+			registrar_historial(
+				actor=request.user,
+				action='Cambiar asignación de roles',
+				entity=f'Usuario:{form.instance.pk}',
+				before={'roles': sorted(roles_before)},
+				after={'roles': sorted(roles_after)},
+			)
+
+	def has_module_permission(self, request):
+		return request.user.is_superuser
+
+	def has_view_permission(self, request, obj=None):
+		return request.user.is_superuser
+
+	def has_add_permission(self, request):
+		return request.user.is_superuser
+
+	def has_change_permission(self, request, obj=None):
+		return request.user.is_superuser
+
+	def has_delete_permission(self, request, obj=None):
+		return request.user.is_superuser
 
 
 @admin.register(Delegacion)
@@ -92,6 +138,15 @@ class RolAdmin(admin.ModelAdmin):
 	list_display = ('nombre', 'alcance', 'estado')
 	list_filter = ('alcance', 'estado')
 	search_fields = ('nombre', 'descripcion', 'permisos')
+
+	def has_add_permission(self, request):
+		return False
+
+	def has_change_permission(self, request, obj=None):
+		return False
+
+	def has_delete_permission(self, request, obj=None):
+		return False
 
 
 @admin.register(TipoAtencion)

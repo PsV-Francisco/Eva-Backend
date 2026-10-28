@@ -1,9 +1,12 @@
 from django.conf import settings
 from django.contrib.auth.base_user import BaseUserManager
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import AbstractUser, Group
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
+from django.db.models import Q
 from django.db.models.deletion import ProtectedError
+
+from config.permissions import PERMISSION_CATALOG
 
 
 CRITICAL_CARGO_NAMES = frozenset({
@@ -17,6 +20,11 @@ CRITICAL_CARGO_NAMES = frozenset({
     'vistaf',
     'consulta',
     'usuario de consulta',
+})
+PROTECTED_ROLE_NAMES = frozenset({
+    'admin',
+    'administrador',
+    'administrador del sistema',
 })
 
 
@@ -41,9 +49,77 @@ class CargoQuerySet(models.QuerySet):
 class CargoManager(models.Manager.from_queryset(CargoQuerySet)):
     pass
 
+
+class RolQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        protected_fields = {
+            'nombre', 'descripcion', 'alcance', 'estado', 'protegido', 'grupo',
+            'grupo_id',
+        }
+        if protected_fields.intersection(kwargs) and self.filter(
+            protegido=True,
+        ).exists():
+            raise ValidationError(
+                'Un rol protegido no se puede modificar ni desproteger.'
+            )
+        return super().update(**kwargs)
+
+    def delete(self):
+        protected_roles = [
+            role for role in self
+            if role.protegido or role.usuarios.exists()
+        ]
+        if protected_roles:
+            raise ProtectedError(
+                'Los roles protegidos o asignados no se pueden eliminar.',
+                protected_roles,
+            )
+        return super().delete()
+
+
+class RolManager(models.Manager.from_queryset(RolQuerySet)):
+    pass
+
+
+def _administrator_accounts():
+    return (
+        Q(is_superuser=True)
+        | Q(cargo__nombre__iexact='admin')
+        | Q(cargo__nombre__iexact='administrador')
+    )
+
+
+class UsuarioQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        protected_fields = {'cargo', 'cargo_id', 'is_active', 'is_superuser'}
+        if protected_fields.intersection(kwargs) and self.filter(
+            is_active=True,
+        ).filter(_administrator_accounts()).exists():
+            raise ValidationError(
+                'La administración de cuentas con privilegios requiere guardar '
+                'cada cuenta individualmente para proteger al último Administrador.'
+            )
+        return super().update(**kwargs)
+
+    def delete(self):
+        active_admins = self.filter(is_active=True).filter(
+            _administrator_accounts(),
+        )
+        total_admins = self.model._default_manager.filter(
+            is_active=True,
+        ).filter(_administrator_accounts()).count()
+        if total_admins and active_admins.count() >= total_admins:
+            raise ProtectedError(
+                'No se puede eliminar el último Administrador activo.',
+                list(active_admins),
+            )
+        return super().delete()
+
+
 #Modelo Usuario Abstracto
 class UsuarioManager(BaseUserManager):
     use_in_migrations = True
+    _queryset_class = UsuarioQuerySet
 
     def create_user(self, email, password=None, **extra_fields):
         if not email:
@@ -178,6 +254,14 @@ class Rol(models.Model):
     nombre = models.CharField(max_length=80, unique=True)
     permisos = models.CharField(blank=True,max_length=1000)
     descripcion = models.TextField(blank=True)
+    grupo = models.OneToOneField(
+        Group,
+        on_delete=models.CASCADE,
+        related_name='rol_sgr',
+        null=True,
+        blank=True,
+    )
+    protegido = models.BooleanField(default=False)
     alcance = models.CharField(
         max_length=20,
         choices=Alcance.choices,
@@ -194,9 +278,54 @@ class Rol(models.Model):
         ordering = ['nombre']
         verbose_name = "Rol"
         verbose_name_plural = "Roles"
+        permissions = tuple(
+            (permission.codename, permission.label)
+            for permission in PERMISSION_CATALOG
+        )
+    objects = RolManager()
 
     def __str__(self):
         return self.nombre
+
+    def save(self, *args, **kwargs):
+        normalized_name = self.nombre.strip().casefold()
+        if not self.pk and normalized_name in PROTECTED_ROLE_NAMES:
+            raise ValidationError(
+                'El nombre está reservado para roles críticos del sistema.'
+            )
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).first()
+            if previous and previous.protegido and (
+                self.nombre != previous.nombre
+                or self.descripcion != previous.descripcion
+                or self.alcance != previous.alcance
+                or self.estado != previous.estado
+                or self.protegido != previous.protegido
+                or (
+                    previous.grupo_id is not None
+                    and self.grupo_id != previous.grupo_id
+                )
+            ):
+                raise ValidationError(
+                    'Un rol protegido no se puede modificar ni desproteger.'
+                )
+            if (
+                previous
+                and normalized_name in PROTECTED_ROLE_NAMES
+                and normalized_name != previous.nombre.strip().casefold()
+            ):
+                raise ValidationError(
+                    'El nombre está reservado para roles críticos del sistema.'
+                )
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self.protegido or self.usuarios.exists():
+            raise ProtectedError(
+                'Los roles protegidos o asignados no se pueden eliminar.',
+                [self],
+            )
+        return super().delete(*args, **kwargs)
 
 #Modelo del Usuario
 class Usuario(AbstractUser):
@@ -219,6 +348,43 @@ class Usuario(AbstractUser):
         ordering = ['email']
         verbose_name = "Usuario"
         verbose_name_plural = "Usuarios"
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            using = kwargs.get('using') or self._state.db or 'default'
+            with transaction.atomic(using=using):
+                administrators = type(self).objects.using(using).select_for_update().filter(
+                    is_active=True,
+                ).filter(_administrator_accounts())
+                previous = administrators.filter(pk=self.pk).exists()
+                remains_administrator = self.is_active and (
+                    self.is_superuser
+                    or (
+                        self.cargo
+                        and self.cargo.nombre.strip().casefold()
+                        in {'admin', 'administrador'}
+                    )
+                )
+                if previous and not remains_administrator and administrators.count() <= 1:
+                    raise ValidationError(
+                        'No se puede desactivar, eliminar o degradar al último '
+                        'Administrador activo.'
+                    )
+                return super().save(*args, **kwargs)
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        using = kwargs.get('using') or self._state.db or 'default'
+        with transaction.atomic(using=using):
+            administrators = type(self).objects.using(using).select_for_update().filter(
+                is_active=True,
+            ).filter(_administrator_accounts())
+            if administrators.filter(pk=self.pk).exists() and administrators.count() <= 1:
+                raise ProtectedError(
+                    'No se puede eliminar al último Administrador activo.',
+                    [self],
+                )
+            return super().delete(*args, **kwargs)
 
     def crearResumenEjecutivo(self, periodo=None):
         #Importaciones
