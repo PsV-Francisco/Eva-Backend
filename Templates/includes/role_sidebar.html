@@ -1,23 +1,44 @@
-<aside class="role-sidebar" aria-label="Módulos del cargo">
-  <p class="eyebrow">MENÚ PRINCIPAL</p>
-  <nav>
-    {% for module in primary_navigation %}
-      {% if module.url_name %}<a class="sidebar-link{% if request.resolver_match.view_name == module.url_name or module.url_name == 'administracion:items' and request.resolver_match.view_name == 'administracion:metas' %} active{% endif %}" href="{% url module.url_name %}">
-        <span class="sidebar-index">{{ forloop.counter|stringformat:'02d' }}</span>
-        {{ module.label }}
-      </a>{% else %}<span class="sidebar-link sidebar-link-disabled" aria-disabled="true" title="Disponible en una fase posterior">
-        <span class="sidebar-index">{{ forloop.counter|stringformat:'02d' }}</span>
-        {{ module.label }}
-      </span>{% endif %}
-    {% endfor %}
-    {% for module in sidebar_modules %}
-      {% if module.url_name and module.url_name not in primary_navigation_urls %}<a class="sidebar-link{% if request.resolver_match.view_name == module.url_name %} active{% endif %}" href="{% url module.url_name %}">
-        <span class="sidebar-index">{{ forloop.counter|stringformat:'02d' }}</span>
-        {{ module.label }}
-      </a>{% elif not module.url_name %}<span class="sidebar-link">
-        <span class="sidebar-index">{{ forloop.counter|stringformat:'02d' }}</span>
-        {{ module }}
-      </span>{% endif %}
+{% load navigation_tags static %}
+{% sidebar_sections primary_navigation primary_navigation_urls sidebar_modules request.resolver_match.view_name request.user as navigation_sections %}
+<button class="sidebar-mobile-toggle" type="button" data-sidebar-open aria-controls="role-sidebar-panel" aria-expanded="false">
+  <span aria-hidden="true">☰</span> Menú
+</button>
+<aside class="role-sidebar" data-role-sidebar aria-label="Menú principal">
+  <div class="role-sidebar-heading">
+    <p class="eyebrow">MENÚ PRINCIPAL</p>
+    <button class="sidebar-collapse-toggle" type="button" data-sidebar-collapse aria-controls="role-sidebar-panel" aria-expanded="true" aria-label="Contraer menú" title="Contraer menú">
+      <span aria-hidden="true">⇤</span>
+    </button>
+    <button class="sidebar-mobile-close" type="button" data-sidebar-close aria-label="Cerrar menú">
+      <span aria-hidden="true">×</span>
+    </button>
+  </div>
+  <nav class="role-sidebar-scroll" id="role-sidebar-panel">
+    {% for section in navigation_sections %}
+    <details class="sidebar-section" data-sidebar-section data-section-key="{{ section.key }}" data-current="{% if section.is_current %}true{% else %}false{% endif %}" {% if section.is_current %}open{% endif %}>
+      <summary class="sidebar-section-summary" title="{{ section.label }}">
+        <span class="sidebar-section-icon" aria-hidden="true">{{ section.icon }}</span>
+        <span class="sidebar-section-label">{{ section.label }}</span>
+        <span class="sidebar-section-arrow" aria-hidden="true"></span>
+      </summary>
+      <div class="sidebar-section-links">
+        {% for module in section.items %}
+          {% if module.url_name %}
+          <a class="sidebar-link{% if module.is_current %} active{% endif %}" href="{% url module.url_name %}" title="{{ module.label }}" aria-label="{{ module.label }}"{% if module.is_current %} aria-current="page"{% endif %}>
+            <span class="sidebar-item-icon" aria-hidden="true">{{ module.icon }}</span>
+            <span class="sidebar-link-label">{{ module.label }}</span>
+          </a>
+          {% else %}
+          <span class="sidebar-link sidebar-link-disabled{% if module.is_current %} active{% endif %}" title="{{ module.label }}"{% if module.is_current %} aria-current="page"{% endif %}>
+            <span class="sidebar-item-icon" aria-hidden="true">{{ module.icon }}</span>
+            <span class="sidebar-link-label">{{ module.label }}</span>
+          </span>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </details>
     {% endfor %}
   </nav>
 </aside>
+<button class="sidebar-backdrop" type="button" data-sidebar-backdrop aria-label="Cerrar menú" hidden></button>
+<script src="{% static 'js/sidebar.js' %}" defer></script>

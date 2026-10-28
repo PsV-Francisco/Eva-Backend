@@ -54,6 +54,9 @@ class RolePortalTests(TestCase):
 				response = client.get(reverse(route))
 				self.assertEqual(response.status_code, 200)
 				self.assertContains(response, sidebar_label)
+				self.assertContains(response, 'data-role-sidebar')
+				self.assertContains(response, 'data-sidebar-section')
+				self.assertContains(response, 'data-current="true"')
 
 	def test_each_existing_cargo_keeps_access_with_and_without_an_additional_role(self):
 		role_routes = (
@@ -86,10 +89,15 @@ class RolePortalTests(TestCase):
 				client = Client()
 				client.force_login(user)
 				route = reverse(route_name)
-				self.assertEqual(client.get(route).status_code, 200)
+				response = client.get(route)
+				self.assertEqual(response.status_code, 200)
+				self.assertContains(response, 'data-role-sidebar')
+				self.assertContains(response, 'data-sidebar-section')
 
 				user.roles.add(additional_role)
-				self.assertEqual(client.get(route).status_code, 200)
+				response = client.get(route)
+				self.assertEqual(response.status_code, 200)
+				self.assertContains(response, 'data-role-sidebar')
 
 	def test_administrator_cargo_can_open_each_existing_panel(self):
 		panel_routes = (
