@@ -5,16 +5,104 @@
 <div class="dashboard-layout">
 {% include 'includes/role_sidebar.html' %}
 <div class="dashboard-main">
-<div class="metric-grid"><article class="metric"><span>Mis registros</span><strong>{{ registro_count }}</strong></article><article class="metric"><span>Períodos abiertos</span><strong>{{ form.periodo.field.queryset.count }}</strong></article><article class="metric"><span>Últimos registros</span><strong>{{ registros|length }}</strong></article></div>
-<section class="content-section split-layout"><div><p class="eyebrow">NUEVA ACTIVIDAD</p><h2>Registrar gestión</h2><p class="section-note">La actividad queda asociada a tu cuenta y al período e ítem seleccionados.</p>
-	<form method="post" enctype="multipart/form-data" data-loading novalidate>{% csrf_token %}<input type="hidden" name="action" value="guardar">{% if editing_record %}<input type="hidden" name="registro_id" value="{{ editing_record.pk }}">{% endif %}{% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}<div class="form-grid">
-		{% for field in form %}<div class="mb-3 {% if field.name == 'accion' or field.name == 'evidencia' %}field-wide{% endif %}{% if field.name == 'incluir_en_agenda' %}form-check field-wide{% endif %}">{% if field.name == 'incluir_en_agenda' %}{{ field }} <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{% else %}<label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% endif %}{% if field.name == 'evidencia' %}<div class="form-text">JPG, PNG o PDF. Máximo 5 MB.</div>{% endif %}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}
-	</div><button class="btn btn-primary" type="submit">{% if editing_record %}Actualizar actividad{% else %}Crear actividad{% endif %}</button>{% if editing_record %} <a class="btn btn-outline-secondary" href="{% url 'funcionario:home' %}">Cancelar edición</a>{% endif %}</form>
-</div><aside class="side-note"><span class="side-note-mark">+</span><h3>Identificador único</h3><p>Al guardar, el sistema asigna un código inmutable para consultar y vincular evidencia.</p></aside></section>
-<section class="content-section"><div class="section-head"><div><p class="eyebrow">HISTORIAL PERSONAL</p><h2>Mis actividades recientes</h2></div><span class="count-pill">{{ registro_count }} total</span></div>
-	<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Fecha</th><th>Actividad</th><th>Ítem</th><th>Período</th><th>Código</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
-		{% for registro in registros %}<tr><td>{{ registro.fecha|date:'d/m/Y' }}</td><td><strong>{{ registro.descripcion }}</strong><small class="d-block text-muted">{{ registro.accion|truncatechars:90 }}</small></td><td>{{ registro.item }}</td><td>{{ registro.periodo }}</td><td><code>{{ registro.codigo|slice:':8' }}</code></td><td><span class="tag">{{ registro.get_estado_display }}</span></td><td>{% if registro.estado == 'pendiente' %}<div class="d-flex flex-wrap gap-1"><a class="btn btn-sm btn-outline-primary" href="{% url 'funcionario:home' %}?editar={{ registro.pk }}">Editar</a><form method="post" data-confirm="¿Eliminar esta actividad? La acción no se puede deshacer.">{% csrf_token %}<input type="hidden" name="action" value="eliminar"><input type="hidden" name="registro_id" value="{{ registro.pk }}"><button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button></form></div>{% else %}<span class="text-muted small">Cerrado</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="7" class="empty-state">Todavía no tienes actividades registradas.</td></tr>{% endfor %}
-	</tbody></table></div>
+<div class="metric-grid">
+	<article class="metric"><span>Mis registros</span><strong>{{ registro_count }}</strong></article>
+	<article class="metric"><span>Períodos abiertos</span><strong>{{ form.periodo.field.queryset.count }}</strong></article>
+	<article class="metric"><span>Últimos registros</span><strong>{{ registros|length }}</strong></article>
+</div>
+<!--Creación de Actividades-->
+<section class="content-section split-layout">
+	<div>
+		<p class="eyebrow">NUEVA ACTIVIDAD</p>
+		<h2>Registrar gestión</h2>
+		<p class="section-note">La actividad queda asociada a tu cuenta y al período e ítem seleccionados.</p>
+		<form method="post" enctype="multipart/form-data" data-loading novalidate>
+		{% csrf_token %}
+		<input type="hidden" name="action" value="guardar">
+		{% if editing_record %}
+		<input type="hidden" name="registro_id" value="{{ editing_record.pk }}">
+		{% endif %}
+		<!--Error por falta de campos-->
+		{% if form.non_field_errors %}
+		<div class="alert alert-danger">{{ form.non_field_errors }}</div>
+		{% endif %}
+
+		<div class="form-grid">
+		{% for field in form %}
+			<div class="mb-3 {% if field.name == 'accion' or field.name == 'evidencia' %}field-wide{% endif %}{% if field.name == 'incluir_en_agenda' %}form-check field-wide{% endif %}">
+				{% if field.name == 'incluir_en_agenda' %}{{ field }} 
+				<label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+				{% else %}
+				<label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+				{{ field }}
+				{% endif %}
+				{% if field.name == 'evidencia' %}
+				<div class="form-text">JPG, PNG o PDF. Máximo 5 MB.</div>
+				{% endif %}
+				{% for error in field.errors %}
+				<div class="invalid-feedback d-block">{{ error }}</div>
+				{% endfor %}
+			</div>
+		{% endfor %}
+		</div>
+		<button class="btn btn-primary" type="submit">
+			{% if editing_record %}
+			Actualizar actividad
+			{% else %}
+			Crear actividad
+			{% endif %}
+		</button>
+		{% if editing_record %} 
+		<a class="btn btn-outline-secondary" href="{% url 'funcionario:home' %}">Cancelar edición</a>
+		{% endif %}
+		</form>
+	</div>
+	<aside class="side-note"><span class="side-note-mark">+</span><h3>Identificador único</h3>
+		<p>Al guardar, el sistema asigna un código inmutable para consultar y vincular evidencia.</p>
+	</aside>
+</section>
+<!--Historial de Actividades-->
+<section class="content-section">
+	<div class="section-head"><div>
+		<p class="eyebrow">HISTORIAL PERSONAL</p><h2>Mis actividades recientes</h2>
+		</div><span class="count-pill">{{ registro_count }} total</span></div>
+	<div class="table-responsive">
+		<table class="table align-middle">
+			<thead>
+				<tr><th>Fecha</th><th>Actividad</th><th>Ítem</th><th>Período</th><th>Código</th><th>Estado</th><th>Acciones</th></tr>
+			</thead>
+			<tbody>
+			{% for registro in registros %}
+			<tr>
+				<td>{{ registro.fecha|date:'d/m/Y' }}</td>
+				<td><strong>{{ registro.descripcion }}</strong><small class="d-block text-muted">{{ registro.accion|truncatechars:90 }}</small></td>
+				<td>{{ registro.item }}</td><td>{{ registro.periodo }}</td>
+				<td><code>{{ registro.codigo|slice:':8' }}</code></td>
+				<td><span class="tag">{{ registro.get_estado_display }}</span></td>
+				
+				<td>
+					<!--Si el estado del registro es pendiente-->
+					{% if registro.estado == 'pendiente' %}<div class="d-flex flex-wrap gap-1"><a class="btn btn-sm btn-outline-primary" href="{% url 'funcionario:home' %}?editar={{ registro.pk }}">Editar</a>
+					<form method="post" data-confirm="¿Eliminar esta actividad? La acción no se puede deshacer.">
+						{% csrf_token %}
+						<input type="hidden" name="action" value="eliminar">
+						<input type="hidden" name="registro_id" value="{{ registro.pk }}">
+						<button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button>
+					</form></div>
+					<!--Todos los demás casos-->
+					{% else %}
+					<span class="text-muted small">Cerrado</span>
+					{% endif %}
+				</td>
+			</tr>
+			<!--Si no hay actividades registradas-->
+			{% empty %}
+			<tr>
+				<td colspan="7" class="empty-state">Todavía no tienes actividades registradas.</td></tr>
+				{% endfor %}
+			</tbody>
+		</table>
+	</div>
 </section>
 </div>
 </div>
