@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import AtencionSocial, GestionAtencion, Registro
+from .models import AtencionSocial, CasoSocial, GestionAtencion, Registro, Solicitante
 
 
 @admin.register(Registro)
@@ -13,14 +13,28 @@ class RegistroAdmin(admin.ModelAdmin):
 
 @admin.register(AtencionSocial)
 class AtencionSocialAdmin(admin.ModelAdmin):
-	list_display = ('usuario', 'tipo_atencion', 'fecha', 'creado')
-	list_filter = ('tipo_atencion', 'fecha')
-	search_fields = ('usuario__email', 'tipo_atencion', 'resultado')
+	list_display = ('solicitante', 'delegacion', 'tipo_atencion', 'usuario', 'fecha', 'creado')
+	list_filter = ('delegacion', 'tipo_atencion', 'fecha')
+	search_fields = ('usuario__email', 'solicitante__identificador', 'solicitante__nombre', 'tipo_atencion', 'resultado')
 	readonly_fields = ('creado',)
+
+
+@admin.register(Solicitante)
+class SolicitanteAdmin(admin.ModelAdmin):
+	list_display = ('identificador', 'nombre', 'delegacion')
+	list_filter = ('delegacion',)
+	search_fields = ('identificador', 'nombre', 'delegacion__nombre')
 
 
 @admin.register(GestionAtencion)
 class GestionAtencionAdmin(admin.ModelAdmin):
 	list_display = ('atencion', 'numero_gestion', 'fecha')
 	list_filter = ('numero_gestion', 'fecha')
-	search_fields = ('atencion__usuario__email', 'resultado')
+	search_fields = ('atencion__usuario__email', 'observaciones')
+	readonly_fields = ('codigo',)
+
+
+@admin.register(CasoSocial)
+class CasoSocialAdmin(admin.ModelAdmin):
+	list_display = ('codigo', 'atencion_social')
+	readonly_fields = ('codigo',)

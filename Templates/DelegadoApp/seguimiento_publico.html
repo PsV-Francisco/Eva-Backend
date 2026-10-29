@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% block title %}Seguimiento público | SGR{% endblock %}
+{% block extra_css %}
+<meta name="robots" content="noindex, nofollow">
+<style>
+  .timeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: .75rem; }
+  .timeline-step { border: 1px solid #e5e7eb; border-radius: .75rem; padding: .75rem; background: #fff; }
+  .timeline-step.done { border-color: #198754; background: #f0fff5; }
+  .timeline-step.current { border-color: #0d6efd; background: #eff6ff; }
+  .timeline-bullet { display: inline-flex; width: 2rem; height: 2rem; align-items: center; justify-content: center; border-radius: 50%; background: #adb5bd; color: #fff; margin-bottom: .5rem; }
+  .timeline-step.done .timeline-bullet { background: #198754; }
+  .timeline-step.current .timeline-bullet { background: #0d6efd; }
+  @media print {
+    body { background: #fff; }
+    .topbar, .site-footer, .btn, form, nav { display: none !important; }
+    .dashboard-layout, .dashboard-main { display: block !important; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  {% if public_access_denied %}
+    <div class="card shadow-sm border-0">
+      <div class="card-body text-center py-5">
+        <h1 class="h3 mb-3">Seguimiento no disponible</h1>
+        <p class="mb-0 text-muted">No se pudo acceder a la información solicitada.</p>
+      </div>
+    </div>
+  {% else %}
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+          <div>
+            <p class="eyebrow mb-1">SEGUIMIENTO PÚBLICO</p>
+            <h1 class="h2 mb-0">Código de gestión: {{ public_code }}</h1>
+          </div>
+          <span class="badge text-bg-primary fs-6">{{ compromiso.get_estado_display }}</span>
+        </div>
+
+        <div class="row g-4 mb-4">
+          <div class="col-md-6">
+            <h2 class="h5">Resumen</h2>
+            <p class="mb-3"><strong>Título / descripción:</strong> {{ compromiso.descripcion }}</p>
+            <p class="mb-3"><strong>Fecha de creación:</strong> {{ compromiso.creado|date:'d/m/Y H:i' }}</p>
+            <p class="mb-3"><strong>Última actualización:</strong> {{ compromiso.actualizado|date:'d/m/Y H:i' }}</p>
+            {% if compromiso.seguimiento_expira %}
+              <p class="mb-0"><strong>Vence:</strong> {{ compromiso.seguimiento_expira|date:'d/m/Y H:i' }}</p>
+            {% endif %}
+          </div>
+          <div class="col-md-6">
+            <h2 class="h5">Estado actual</h2>
+            <div class="timeline mt-3">
+              {% for step in timeline %}
+              <div class="timeline-step {% if step.done %}done{% endif %}{% if step.current %} current{% endif %}">
+                <div class="timeline-bullet">{% if step.done %}✓{% else %}{{ forloop.counter }}{% endif %}</div>
+                <div class="fw-semibold">{{ step.label }}</div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <div class="border-top pt-4">
+          <h2 class="h5">Historial de cambios de estado</h2>
+          {% if historial %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Estado anterior</th>
+                  <th>Estado nuevo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for cambio in historial %}
+                <tr>
+                  <td>{{ cambio.fecha|date:'d/m/Y H:i' }}</td>
+                  <td>{{ cambio.estado_anterior|default:'Sin estado previo' }}</td>
+                  <td>{{ cambio.get_estado_nuevo_display }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+            <p class="text-muted mb-0">Aún no hay cambios de estado registrados.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

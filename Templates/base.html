@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#8f1d2c">
+  <meta name="theme-color" content="#AD0000">
   <!--Título-->
   <title>{% block title %}SGR | Gestión de resultados Municipalidad de La Serena{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'vendor/bootstrap.min.css' %}">
@@ -15,19 +15,46 @@
 <body>
   <!--Cabecera-->
   <header class="topbar">
-    <div class="container-fluid shell d-flex align-items-center justify-content-between gap-3">
-      <a class="brand" href="{% url 'login' %}"><span class="brand-mark">S</span><span>SGR <small>Municipalidad de la Serena</small></span></a>
-      
+    <div class="container-fluid shell header-inner">
+      <a class="brand" href="{% url 'login' %}"><img class="brand-logo" src="{% static 'img/logo.png' %}" alt="Ilustre Municipalidad de La Serena"><span>SGR</span></a>
+      {% if request.user.is_authenticated %}
+      <div class="delegation-context">
+        <svg class="delegation-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#AD0000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+          <path d="M12 21s7-5.2 7-11a7 7 0 1 0-14 0c0 5.8 7 11 7 11Z"></path>
+          <circle cx="12" cy="10" r="2.3"></circle>
+        </svg>
+        {% if active_delegation %}
+        <div class="delegation-label">
+          <strong>{{ active_delegation_code }}</strong>
+          <span>{{ active_delegation.nombre }}</span>
+        </div>
+        {% if authorized_delegations|length > 1 %}
+        <form class="delegation-switch" method="post" action="{% url 'select_active_delegation' %}" data-delegation-switch>
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <label class="visually-hidden" for="active-delegation">Delegación activa</label>
+          <select id="active-delegation" name="delegacion" aria-label="Cambiar delegación activa">
+            {% for delegation in authorized_delegations %}
+            <option value="{{ delegation.pk }}"{% if delegation.pk == active_delegation.pk %} selected{% endif %}>{{ delegation.codigo }} · {{ delegation.nombre }}</option>
+            {% endfor %}
+          </select>
+        </form>
+        {% endif %}
+        {% else %}
+        <div class="delegation-label"><strong>Contexto</strong><span>Sin delegación asignada</span></div>
+        {% endif %}
+      </div>
       <div class="account-area">
-        {% if request.user.is_authenticated %}
-        <span class="account-email">{{ request.user.email }}</span>
+        <span class="account-identity"><strong>{{ request.user.get_full_name|default:request.user.email }}</strong><small>{{ header_role }}</small></span>
         <form method="post" action="{% url 'logout' %}">{% csrf_token %}
           <button class="btn btn-sm btn-outline-light" type="submit">Salir</button>
         </form>
-        {% else %}
-        <a class="btn btn-sm btn-outline-light" href="{% url 'login' %}">Ingresar</a>
-        {% endif %}
       </div>
+      {% else %}
+      <div class="account-area">
+        <a class="btn btn-sm btn-outline-light" href="{% url 'login' %}">Ingresar</a>
+      </div>
+      {% endif %}
     </div>
   </header>
 <!--Main-->
@@ -45,12 +72,78 @@
   </main>
 
   <!--Pie de Página-->
-  <footer class="site-footer"><div class="container-fluid shell"> <span></span>* Version 1.0</div></footer>
+  <footer class="site-footer"><div class="container-fluid shell">Sgr | Gestión de resultados Municipalidad de La Serena</div></footer>
   <script src="{% static 'vendor/bootstrap.bundle.min.js' %}"></script><script src="{% static 'vendor/sweetalert2.min.js' %}"></script>
   <script>
     document.querySelectorAll('[data-sgr-message]').forEach((message) => { const kind = message.dataset.kind || ''; const icon = kind.includes('success') ? 'success' : kind.includes('error') ? 'error' : kind.includes('warning') ? 'warning' : 'info'; Swal.fire({icon, text: message.dataset.text, confirmButtonText: 'Entendido'}); });
     document.querySelectorAll('form[data-confirm]').forEach((form) => { form.addEventListener('submit', (event) => { event.preventDefault(); Swal.fire({icon: 'question', text: form.dataset.confirm, showCancelButton: true, confirmButtonText: 'Confirmar', cancelButtonText: 'Cancelar'}).then((result) => { if (result.isConfirmed) { Swal.fire({title: 'Guardando', allowOutsideClick: false, didOpen: () => Swal.showLoading()}); form.submit(); } }); }); });
-    document.querySelectorAll('form[data-loading]').forEach((form) => { form.addEventListener('submit', () => Swal.fire({title: 'Guardando', allowOutsideClick: false, didOpen: () => Swal.showLoading()})); });
+    document.querySelectorAll('form[data-loading]').forEach((form) => { form.addEventListener('submit', () => Swal.fire({title: form.dataset.loadingTitle || 'Guardando', allowOutsideClick: false, didOpen: () => Swal.showLoading()})); });
+    document.querySelectorAll('form[data-single-submit]').forEach((form) => {
+      let submitting = false;
+      form.addEventListener('submit', (event) => {
+        if (submitting) {
+          event.preventDefault();
+          return;
+        }
+        submitting = true;
+        form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach((button) => {
+          button.disabled = true;
+        });
+      });
+    });
+    document.querySelectorAll('[data-password-toggle]').forEach((button) => {
+      const input = document.getElementById(button.dataset.passwordToggle);
+      button.addEventListener('click', () => {
+        const showPassword = input.type === 'password';
+        input.type = showPassword ? 'text' : 'password';
+        button.textContent = showPassword ? 'Ocultar' : 'Mostrar';
+        button.setAttribute(
+          'aria-label',
+          showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña',
+        );
+      });
+    });
+    document.querySelectorAll('form[data-delegation-switch]').forEach((form) => {
+      const selector = form.querySelector('select[name="delegacion"]');
+      let currentValue = selector.value;
+      const fieldValue = (field) => {
+        if (field.type === 'checkbox' || field.type === 'radio') {
+          return field.checked;
+        }
+        if (field.multiple) {
+          return [...field.selectedOptions].map((option) => option.value).join('\0');
+        }
+        return field.value;
+      };
+      const baseline = new Map(
+        [...document.querySelectorAll('form:not([data-delegation-switch]) input:not([type="hidden"]), form:not([data-delegation-switch]) textarea, form:not([data-delegation-switch]) select')]
+          .map((field) => [field, fieldValue(field)])
+      );
+      const hasUnsavedChanges = () => [...document.querySelectorAll('form:not([data-delegation-switch])')].some((otherForm) =>
+        [...otherForm.querySelectorAll('input:not([type="hidden"]), textarea, select')].some((field) =>
+          fieldValue(field) !== baseline.get(field)
+        )
+      );
+      selector.addEventListener('change', () => {
+        if (!hasUnsavedChanges()) {
+          form.requestSubmit();
+          return;
+        }
+        Swal.fire({
+          icon: 'warning',
+          text: 'Hay cambios sin guardar. Si cambias de delegación, podrías perderlos.',
+          showCancelButton: true,
+          confirmButtonText: 'Cambiar delegación',
+          cancelButtonText: 'Continuar editando',
+        }).then((result) => {
+          if (result.isConfirmed) {
+            form.requestSubmit();
+          } else {
+            selector.value = currentValue;
+          }
+        });
+      });
+    });
   </script>
   {% block extra_js %}{% endblock %}
 </body>

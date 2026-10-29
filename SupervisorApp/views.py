@@ -3,18 +3,57 @@ from django.db.models import Q
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 
+from AdminApp.audit import registrar_historial
+from CoordinadorApp.models import Periodo
 from config.decorators import cargo_required
+from config.delegations import active_delegation
 from FuncionarioApp.models import Registro
 from SupervisorApp.forms import RevisionEvidenciaForm
 from SupervisorApp.models import Evidencia, RevisionEvidencia
 
 
-@cargo_required('supervisor', 'verificador')
+def _evidencias_visibles(request):
+    user = request.user
+    delegation = active_delegation(request)
+    evidences = Evidencia.objects.select_related(
+        'registro', 'compromiso', 'supervisor',
+        'gestion_atencion', 'gestion_atencion__atencion',
+    )
+    if delegation:
+        delegation_id = delegation.pk
+    elif user.is_superuser:
+        return evidences
+    else:
+        return evidences.none()
+    return evidences.filter(
+        Q(registro__autor__delegacion_id=delegation_id)
+        | Q(registro__autor__delegaciones_autorizadas__pk=delegation_id)
+        | Q(compromiso__agenda__delegacion_id=delegation_id)
+        | Q(gestion_atencion__atencion__usuario__delegacion_id=delegation_id)
+        | Q(gestion_atencion__atencion__usuario__delegaciones_autorizadas__pk=delegation_id)
+    ).distinct()
+
+
+def _evidence_period(evidencia):
+    if evidencia.registro_id:
+        return evidencia.registro.periodo
+    if evidencia.compromiso_id:
+        return evidencia.compromiso.agenda.periodo
+    return None
+
+
+@cargo_required('supervisor', 'verificador', permission='review_evidence')
 def home(request):
     if request.method == 'POST':
-        evidencia = get_object_or_404(Evidencia, pk=request.POST.get('evidencia_id'))
+        evidencia = get_object_or_404(
+            _evidencias_visibles(request),
+            pk=request.POST.get('evidencia_id'),
+        )
         form = RevisionEvidenciaForm(request.POST)
-        if evidencia.estado != Evidencia.Estado.PENDIENTE:
+        period = _evidence_period(evidencia)
+        if period and period.estado != Periodo.Estado.ABIERTO:
+            messages.error(request, 'Las evidencias de un período cerrado son de solo lectura.')
+        elif evidencia.estado != Evidencia.Estado.PENDIENTE:
             messages.error(request, 'Esta evidencia ya fue revisada.')
         elif form.is_valid():
             with transaction.atomic():
@@ -22,6 +61,7 @@ def home(request):
                 revision.evidencia = evidencia
                 revision.verificador = request.user
                 revision.save()
+                previous = {'estado': evidencia.estado}
                 if revision.decision in (RevisionEvidencia.Decision.APROBADA, RevisionEvidencia.Decision.RECHAZADA):
                     evidencia.estado = revision.decision
                     evidencia.save(update_fields=['estado'])
@@ -32,21 +72,33 @@ def home(request):
                             else Registro.Estado.OBSERVADA
                         )
                         evidencia.registro.save(update_fields=['estado'])
+                registrar_historial(
+                    actor=request.user,
+                    action='Validar evidencia',
+                    entity=f'Evidencia:{evidencia.pk}',
+                    before=previous,
+                    after={
+                        'estado': evidencia.estado,
+                        'decision': revision.decision,
+                        'observaciones': revision.observaciones,
+                        'codigo': str(evidencia.codigo),
+                    },
+                    period=period,
+                )
             messages.success(request, 'La revisión quedó registrada.')
         else:
             messages.error(request, 'Selecciona una decisión válida y revisa la observación.')
         return redirect('supervisor:home')
 
-    evidencias = Evidencia.objects.filter(estado=Evidencia.Estado.PENDIENTE).select_related(
-        'registro', 'compromiso', 'supervisor',
+    evidencias = _evidencias_visibles(request).filter(
+        estado=Evidencia.Estado.PENDIENTE,
+    ).filter(
+        Q(registro__isnull=True)
+        | Q(registro__periodo__estado=Periodo.Estado.ABIERTO)
+    ).filter(
+        Q(compromiso__isnull=True)
+        | Q(compromiso__agenda__periodo__estado=Periodo.Estado.ABIERTO)
     )
-    if request.user.delegacion_id:
-        evidencias = evidencias.filter(
-            Q(registro__autor__delegacion_id=request.user.delegacion_id)
-            | Q(compromiso__agenda__delegacion_id=request.user.delegacion_id)
-        )
-    elif not request.user.is_superuser:
-        evidencias = Evidencia.objects.none()
     return render(request, 'SupervisorApp/index.html', {
         'sgr_role': 'Verificación', 'evidencias': evidencias,
         'pending_count': evidencias.count(), 'review_form': RevisionEvidenciaForm(),
@@ -56,7 +108,6 @@ def home(request):
             'evidencia', 'evidencia__registro', 'evidencia__compromiso',
         )[:20],
         'sidebar_modules': (
-            'Revisión de Compromisos', 'Revisión de Actividades',
-            'Funciones e Indicadores',
+            {'label': 'Validar evidencias', 'url_name': 'supervisor:home'},
         ),
     })

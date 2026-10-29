@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Parámetros | SGR{% endblock %}
+{% block page_title %}Parámetros del sistema{% endblock %}
+{% block content %}
+<div class="dashboard-layout">
+{% include 'includes/role_sidebar.html' %}
+<div class="dashboard-main">
+<div class="metric-grid"><article class="metric"><span>Tope predeterminado</span><strong>150%</strong></article><article class="metric"><span>Umbral predeterminado</span><strong>80%</strong></article><article class="metric"><span>Permiso</span><strong>Administración</strong></article></div>
+<section class="content-section split-layout"><div><p class="eyebrow">CONFIGURACIÓN AUDITADA</p><h2>Editar valores</h2><p class="section-note">Los cambios quedan registrados en la auditoría con autor, fecha y valores anterior y nuevo.</p>
+<form method="post" data-loading novalidate>{% csrf_token %}<div class="form-grid">{% for field in form %}<div class="mb-3 field-wide"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}</div><button class="btn btn-primary" type="submit">Guardar parámetros</button></form></div>
+<aside class="side-note"><span class="side-note-mark">i</span><h3>Rangos permitidos</h3><p>El tope debe ser al menos 100 %. El umbral se configura entre 0 % y 100 % y se usa para alertas del resumen delegado.</p></aside></section>
+</div></div>
+{% endblock %}

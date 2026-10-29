@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}Manual / Ayuda | SGR{% endblock %}
+{% block page_title %}Manual / Ayuda{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+    <section class="content-section">
+      <div class="section-head align-items-center">
+        <div>
+          <p class="eyebrow">CENTRO DE AYUDA</p>
+          <h2>Manuales por tipo de usuario</h2>
+        </div>
+        <button class="btn btn-outline-primary" type="button" onclick="window.print()">Imprimir / Guardar como PDF</button>
+      </div>
+      <p class="section-note">Seleccione el perfil para abrir el manual que corresponde al uso del sistema.</p>
+
+      <div class="row g-3">
+        {% for manual in manuals %}
+        <div class="col-md-6">
+          <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+              <span class="badge text-bg-primary mb-2">{{ manual.label }}</span>
+              <h3 class="h5 mb-3">{{ manual.label }}</h3>
+              <p class="mb-3">{{ manual.summary }}</p>
+              <a class="btn btn-primary" href="{% url 'manual_role' role=manual.key %}">Abrir manual</a>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+</div>
+
+<style>
+@media print {
+  body { background: #fff; }
+  .topbar, .role-sidebar, .btn, .date-chip, .site-footer, .navbar, form, .alert, .pagination { display: none !important; }
+  .dashboard-layout, .dashboard-main { display: block !important; }
+  .content-section { box-shadow: none !important; border: 0 !important; }
+}
+</style>
+{% endblock %}

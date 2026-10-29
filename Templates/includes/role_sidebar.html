@@ -1,11 +1,23 @@
 <aside class="role-sidebar" aria-label="Módulos del cargo">
-  <p class="eyebrow">MÓDULOS</p>
+  <p class="eyebrow">MENÚ PRINCIPAL</p>
   <nav>
+    {% for module in primary_navigation %}
+      {% if module.url_name %}<a class="sidebar-link{% if request.resolver_match.view_name == module.url_name or module.url_name == 'administracion:items' and request.resolver_match.view_name == 'administracion:metas' %} active{% endif %}" href="{% url module.url_name %}">
+        <span class="sidebar-index">{{ forloop.counter|stringformat:'02d' }}</span>
+        {{ module.label }}
+      </a>{% else %}<span class="sidebar-link sidebar-link-disabled" aria-disabled="true" title="Disponible en una fase posterior">
+        <span class="sidebar-index">{{ forloop.counter|stringformat:'02d' }}</span>
+        {{ module.label }}
+      </span>{% endif %}
+    {% endfor %}
     {% for module in sidebar_modules %}
-      <span class="sidebar-link{% if forloop.first %} active{% endif %}">
+      {% if module.url_name and module.url_name not in primary_navigation_urls %}<a class="sidebar-link{% if request.resolver_match.view_name == module.url_name %} active{% endif %}" href="{% url module.url_name %}">
+        <span class="sidebar-index">{{ forloop.counter|stringformat:'02d' }}</span>
+        {{ module.label }}
+      </a>{% elif not module.url_name %}<span class="sidebar-link">
         <span class="sidebar-index">{{ forloop.counter|stringformat:'02d' }}</span>
         {{ module }}
-      </span>
+      </span>{% endif %}
     {% endfor %}
   </nav>
 </aside>
