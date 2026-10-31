@@ -39,12 +39,15 @@
 
     sections.forEach((section) => {
       const key = section.dataset.sectionKey;
+      const summary = section.querySelector('[data-sidebar-summary]');
       if (section.dataset.current === 'true') {
         section.open = true;
       } else if (typeof savedSections[key] === 'boolean') {
         section.open = savedSections[key];
       }
+      summary.setAttribute('aria-expanded', String(section.open));
       section.addEventListener('toggle', () => {
+        summary.setAttribute('aria-expanded', String(section.open));
         savedSections[key] = section.open;
         storageWrite(sectionKey, JSON.stringify(savedSections));
       });
