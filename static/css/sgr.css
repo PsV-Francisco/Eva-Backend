@@ -237,7 +237,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .role-sidebar-scroll { min-width: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #c76b6b #f4eeee; }
 .role-sidebar-scroll::-webkit-scrollbar-thumb { background: #c76b6b; }
 .sidebar-mobile-toggle { display: none; }
-.sidebar-button-icon, .sidebar-collapse-toggle svg, .sidebar-mobile-close svg, .sidebar-section-icon svg, .sidebar-item-icon svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sidebar-button-icon, .sidebar-collapse-toggle svg, .sidebar-mobile-close svg, .sidebar-section-icon svg, .sidebar-item-icon svg { width: 20px; height: 20px; flex: 0 0 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+nav svg { max-width: 24px; max-height: 24px; }
 .sidebar-mobile-toggle > span[aria-hidden="true"], .sidebar-collapse-toggle > span[aria-hidden="true"], .sidebar-mobile-close > span[aria-hidden="true"] { display: none; }
 .sidebar-collapse-toggle, .sidebar-mobile-close, .sidebar-mobile-toggle { border: 1px solid #d8b4b4; color: var(--institution-red); background: #fff; }
 .sidebar-collapse-toggle { width: 2rem; height: 2rem; }
