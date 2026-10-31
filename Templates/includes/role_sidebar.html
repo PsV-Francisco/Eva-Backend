@@ -1,15 +1,18 @@
 {% load navigation_tags static %}
 {% sidebar_sections primary_navigation primary_navigation_urls sidebar_modules request.resolver_match.view_name request.user as navigation_sections %}
 <button class="sidebar-mobile-toggle" type="button" data-sidebar-open aria-controls="role-sidebar-panel" aria-expanded="false">
+  <svg class="sidebar-button-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>
   <span aria-hidden="true">☰</span> Menú
 </button>
 <aside class="role-sidebar" data-role-sidebar aria-label="Menú principal">
   <div class="role-sidebar-heading">
     <p class="eyebrow">MENÚ PRINCIPAL</p>
     <button class="sidebar-collapse-toggle" type="button" data-sidebar-collapse aria-controls="role-sidebar-panel" aria-expanded="true" aria-label="Contraer menú" title="Contraer menú">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5 8 12l7 7M9 12h11"></path></svg>
       <span aria-hidden="true">⇤</span>
     </button>
     <button class="sidebar-mobile-close" type="button" data-sidebar-close aria-label="Cerrar menú">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"></path></svg>
       <span aria-hidden="true">×</span>
     </button>
   </div>
@@ -17,7 +20,7 @@
     {% for section in navigation_sections %}
     <details class="sidebar-section" data-sidebar-section data-section-key="{{ section.key }}" data-current="{% if section.is_current %}true{% else %}false{% endif %}" {% if section.is_current %}open{% endif %}>
       <summary class="sidebar-section-summary" data-sidebar-summary aria-expanded="{% if section.is_current %}true{% else %}false{% endif %}" title="{{ section.label }}">
-        <span class="sidebar-section-icon" aria-hidden="true">{{ section.icon }}</span>
+        <span class="sidebar-section-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 5h5v5H5zM14 5h5v5h-5zM5 14h5v5H5zM14 14h5v5h-5z"></path></svg></span>
         <span class="sidebar-section-label">{{ section.label }}</span>
         <span class="sidebar-section-arrow" aria-hidden="true"></span>
       </summary>
@@ -25,12 +28,12 @@
         {% for module in section.items %}
           {% if module.url_name %}
           <a class="sidebar-link{% if module.is_current %} active{% endif %}" href="{% url module.url_name %}" title="{{ module.label }}" aria-label="{{ module.label }}"{% if module.is_current %} aria-current="page"{% endif %}>
-            <span class="sidebar-item-icon" aria-hidden="true">{{ module.icon }}</span>
+            <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="6" cy="12" r="2"></circle><path d="M10 12h9M15 8l4 4-4 4"></path></svg></span>
             <span class="sidebar-link-label">{{ module.label }}</span>
           </a>
           {% else %}
           <span class="sidebar-link sidebar-link-disabled{% if module.is_current %} active{% endif %}" title="{{ module.label }}"{% if module.is_current %} aria-current="page"{% endif %}>
-            <span class="sidebar-item-icon" aria-hidden="true">{{ module.icon }}</span>
+            <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="6" cy="12" r="2"></circle><path d="M10 12h9M15 8l4 4-4 4"></path></svg></span>
             <span class="sidebar-link-label">{{ module.label }}</span>
           </span>
           {% endif %}
