@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% block title %}Tendencias históricas | SGR{% endblock %}
+{% block page_title %}Tendencias históricas{% endblock %}
+{% block content %}
+<style>
+    .trend-chart-wrap { width: 100%; overflow-x: auto; }
+    .trend-chart { display: block; width: 100%; height: auto; }
+    .trend-grid { stroke: #d2d2d2; stroke-width: 1; }
+    .trend-axis { stroke: #666; stroke-width: 1.5; }
+    .trend-average { fill: none; stroke: #AD0000; stroke-width: 3; }
+    .trend-over { fill: none; stroke: #666; stroke-width: 3; stroke-dasharray: 8 5; }
+    .trend-threshold { stroke: #888; stroke-width: 2; stroke-dasharray: 5 5; }
+    .trend-average-marker { fill: #AD0000; stroke: #fff; stroke-width: 2; }
+    .trend-over-marker { fill: #666; stroke: #fff; stroke-width: 2; }
+    .trend-label { fill: #333; font-size: 12px; }
+    .trend-legend { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: .75rem; }
+</style>
+<div class="dashboard-layout"><div class="dashboard-main">
+<section class="content-section">
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">EVOLUCIÓN DEL CUMPLIMIENTO</p>
+            <h2>Resultados por período</h2>
+        </div>
+        <a class="btn btn-outline-primary" href="?periodos={{ period_limit }}&amp;delegacion={{ selected_delegation }}&amp;cargo={{ selected_cargo }}&amp;funcionario={{ selected_user }}&amp;export=csv">Exportar CSV</a>
+    </div>
+    {% if range_message %}<p role="status">{{ range_message }}</p>{% endif %}
+    {% if filter_message %}<p role="alert">{{ filter_message }}</p>{% endif %}
+    <form method="get" class="maintainer-filters" data-loading>
+        <label for="trend-range">Períodos</label>
+        <select class="form-select" id="trend-range" name="periodos">
+            <option value="1"{% if period_limit == 1 %} selected{% endif %}>Último período</option>
+            <option value="3"{% if period_limit == 3 %} selected{% endif %}>Últimos 3 períodos</option>
+            <option value="6"{% if period_limit == 6 %} selected{% endif %}>Últimos 6 períodos</option>
+            <option value="9"{% if period_limit == 9 %} selected{% endif %}>Últimos 9 períodos</option>
+            <option value="12"{% if period_limit == 12 %} selected{% endif %}>Últimos 12 períodos</option>
+        </select>
+        <label for="trend-delegation">Delegación</label>
+        <select class="form-select" id="trend-delegation" name="delegacion">
+            <option value="">Todas las delegaciones</option>
+            {% for delegacion in delegaciones %}<option value="{{ delegacion.pk }}"{% if selected_delegation == delegacion.pk|stringformat:'s' %} selected{% endif %}>{{ delegacion.nombre }}</option>{% endfor %}
+        </select>
+        <label for="trend-position">Cargo</label>
+        <select class="form-select" id="trend-position" name="cargo">
+            <option value="">Todos los cargos</option>
+            {% for cargo in cargos %}<option value="{{ cargo.pk }}"{% if selected_cargo == cargo.pk|stringformat:'s' %} selected{% endif %}>{{ cargo.nombre }}</option>{% endfor %}
+        </select>
+        <label for="trend-employee">Funcionario</label>
+        <select class="form-select" id="trend-employee" name="funcionario">
+            <option value="">Todos los funcionarios</option>
+            {% for funcionario in funcionarios %}<option value="{{ funcionario.pk }}"{% if selected_user == funcionario.pk|stringformat:'s' %} selected{% endif %}>{{ funcionario.get_full_name|default:funcionario.email }}</option>{% endfor %}
+        </select>
+        <button class="btn btn-primary" type="submit">Filtrar</button>
+    </form>
+</section>
+<section class="content-section">
+    <h2>Gráfico de tendencias</h2>
+    {% if chart_points|length >= 2 %}
+    <div class="trend-chart-wrap">
+        <svg class="trend-chart" viewBox="0 0 760 340" role="img" aria-label="Tendencias históricas del promedio de avance real y funcionarios sobre el umbral">
+            <title>Evolución del cumplimiento por período</title>
+            <desc>El gráfico compara el promedio de avance real de funcionarios con ítems y el porcentaje de esos funcionarios sobre el umbral configurado de {{ threshold }} por ciento. El eje vertical muestra porcentajes y el horizontal los períodos.</desc>
+            <g aria-hidden="true">
+                {% for tick in chart_ticks %}
+                <line class="trend-grid" x1="70" x2="710" y1="{{ tick.y }}" y2="{{ tick.y }}" />
+                <text class="trend-label" x="62" y="{{ tick.y|add:4 }}" text-anchor="end">{{ tick.value }}%</text>
+                {% endfor %}
+                <line class="trend-axis" x1="70" x2="70" y1="35" y2="260" />
+                <line class="trend-axis" x1="70" x2="710" y1="260" y2="260" />
+                <line class="trend-threshold" x1="70" x2="710" y1="{{ threshold_y }}" y2="{{ threshold_y }}" />
+                <text class="trend-label" x="704" y="{{ threshold_y|add:'-6' }}" text-anchor="end">Umbral {{ threshold|floatformat:2 }}%</text>
+                <polyline class="trend-average" points="{% for point in chart_points %}{{ point.x }},{{ point.promedio_y }} {% endfor %}" />
+                <polyline class="trend-over" points="{% for point in chart_points %}{{ point.x }},{{ point.sobre_y }} {% endfor %}" />
+                {% for point in chart_points %}
+                <circle class="trend-average-marker" cx="{{ point.x }}" cy="{{ point.promedio_y }}" r="6" />
+                <rect class="trend-over-marker" x="{{ point.x|add:'-5' }}" y="{{ point.sobre_y|add:'-5' }}" width="10" height="10" />
+                <text class="trend-label" x="{{ point.x }}" y="282" text-anchor="middle">{{ point.periodo.nombre }}</text>
+                {% endfor %}
+                <text class="trend-label" x="390" y="326" text-anchor="middle">Períodos</text>
+                <text class="trend-label" transform="translate(18 155) rotate(-90)" text-anchor="middle">Porcentaje</text>
+            </g>
+        </svg>
+    </div>
+    <div class="trend-legend" aria-hidden="true">
+        <span><span class="trend-average-marker">●</span> Promedio de avance real</span>
+        <span><span class="trend-over-marker">■</span> Funcionarios sobre el umbral</span>
+        <span>-- Umbral configurado: {{ threshold }}%</span>
+    </div>
+    {% else %}
+    <p role="status">Se necesitan al menos dos períodos con funcionarios con ítems para mostrar el gráfico.</p>
+    {% endif %}
+</section>
+<section class="content-section">
+    <h2>Datos por período</h2>
+    <div class="table-responsive">
+        <table class="table">
+            <caption>Promedio de avance real y porcentaje sobre el umbral. Los funcionarios sin ítems no entran en los promedios y se contabilizan aparte.</caption>
+            <thead><tr><th>Período</th><th>Funcionarios considerados</th><th>Promedio de avance real</th><th>Funcionarios sobre el umbral</th><th>Funcionarios sin ítems</th></tr></thead>
+            <tbody>
+                {% for row in series %}
+                <tr>
+                    <th scope="row">{{ row.periodo.nombre }}</th>
+                    <td>{{ row.funcionarios_considerados }}</td>
+                    <td>{{ row.promedio_avance_real|floatformat:2 }} %</td>
+                    <td>{{ row.porcentaje_sobre_umbral|floatformat:2 }} %</td>
+                    <td>{{ row.funcionarios_sin_items }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5">{{ empty_message|default:'No hay períodos con datos para mostrar.' }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+</div></div>
+{% endblock %}

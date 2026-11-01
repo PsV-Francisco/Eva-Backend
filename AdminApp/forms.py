@@ -181,6 +181,10 @@ class UsuarioUpdateForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class ParametroSistemaForm(BootstrapFormMixin, forms.Form):
+    max_dias_autorizacion = forms.IntegerField(
+        label='MÃ¡ximo de dÃ­as de autorizaciÃ³n', min_value=1, max_value=365,
+        required=False,
+    )
     tope_cumplimiento = forms.DecimalField(
         label='Tope de cumplimiento (%)',
         min_value=Decimal('100'),
@@ -206,7 +210,16 @@ class ParametroSistemaForm(BootstrapFormMixin, forms.Form):
             'umbral_delegacion',
             ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_DELEGACION),
         )
+        initial.setdefault(
+            'max_dias_autorizacion',
+            ParametroSistema.obtener(ParametroSistema.Clave.MAX_DIAS_AUTORIZACION),
+        )
         super().__init__(*args, initial=initial, **kwargs)
+
+    def clean_max_dias_autorizacion(self):
+        return self.cleaned_data.get('max_dias_autorizacion') or ParametroSistema.obtener(
+            ParametroSistema.Clave.MAX_DIAS_AUTORIZACION,
+        )
 
 
 class DelegacionForm(BootstrapFormMixin, forms.ModelForm):
@@ -524,16 +537,22 @@ class DesempenoForm(BootstrapFormMixin, forms.ModelForm):
             'periodo': 'Período',
         }
 
-    def __init__(self, *args, user=None, delegation=None, **kwargs):
+    def __init__(
+        self, *args, user=None, delegation=None, global_scope=False,
+        allow_closed_periods=False, **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self._original_item_id = self.instance.item_id if self.instance.pk else None
         self._original_function_id = (
             self.instance.funcion_id if self.instance.pk else None
         )
         usuarios = Usuario.objects.filter(is_active=True)
-        if user and user.cargo and user.cargo.nombre.strip().casefold() not in {
+        if (
+            user and not global_scope and user.cargo
+            and user.cargo.nombre.strip().casefold() not in {
             'admin', 'administrador',
-        }:
+            }
+        ):
             if delegation:
                 usuarios = usuarios.filter(
                     Q(delegacion=delegation)
@@ -556,7 +575,7 @@ class DesempenoForm(BootstrapFormMixin, forms.ModelForm):
         if self.instance.pk and self.instance.item_id:
             items = (items | Item.objects.filter(pk=self.instance.item_id)).distinct()
         self.fields['item'].queryset = items.order_by('nombre')
-        periods = Periodo.objects.filter(estado=Periodo.Estado.ABIERTO)
+        periods = Periodo.objects.all() if allow_closed_periods else Periodo.objects.filter(estado=Periodo.Estado.ABIERTO)
         if self.instance.pk and self.instance.periodo_id:
             periods = (periods | Periodo.objects.filter(
                 pk=self.instance.periodo_id,

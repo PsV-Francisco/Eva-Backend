@@ -21,7 +21,7 @@ SIDEBAR_SECTIONS = (
 )
 
 CURRENT_SECTION_BY_VIEW = {
-    'coordinador:home': ('medicion', 'Metas e indicadores'),
+    'coordinador:home': ('medicion', 'Tablero Personal'),
     'vistaf:home': ('consulta', 'Búsqueda de información'),
 }
 

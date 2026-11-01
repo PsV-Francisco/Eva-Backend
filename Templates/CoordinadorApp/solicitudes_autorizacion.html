@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Solicitudes para períodos cerrados</h1>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Solicitar</button></form>
+<h2>Mis solicitudes</h2>
+{% for solicitud in solicitudes %}
+<article>
+  <strong>{{ solicitud.periodo }}</strong> — {{ solicitud.get_estado_display }}
+  <p>{{ solicitud.motivo }}</p>
+  {% if solicitud.estado == 'pendiente' %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="cancelar"><input type="hidden" name="solicitud_id" value="{{ solicitud.pk }}"><button type="submit">Cancelar</button></form>{% endif %}
+</article>
+{% empty %}<p>No tienes solicitudes.</p>{% endfor %}
+{% endblock %}

@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -8,6 +9,7 @@ from django.db.models import Q
 from django.db.models.deletion import ProtectedError
 from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from AdminApp.audit import registrar_historial
@@ -28,6 +30,9 @@ from AdminApp.models import (
 )
 from AdminApp.maintainers import excel_response, maintainer
 from config.decorators import cargo_required
+from CoordinadorApp.authorization_forms import AuthorizationDecisionForm, AuthorizationRevokeForm
+from CoordinadorApp.models import SolicitudAutorizacionPeriodo
+from CoordinadorApp.services import _authorization_snapshot, expire_authorizations
 
 
 def _user_snapshot(user):
@@ -253,6 +258,7 @@ def parametros(request):
     keys = {
         'tope_cumplimiento': ParametroSistema.Clave.TOPE_CUMPLIMIENTO,
         'umbral_delegacion': ParametroSistema.Clave.UMBRAL_DELEGACION,
+        'max_dias_autorizacion': ParametroSistema.Clave.MAX_DIAS_AUTORIZACION,
     }
     form = ParametroSistemaForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
@@ -336,6 +342,77 @@ def subatenciones(request):
 @cargo_required('coordinador', 'admin', 'administrador', permission='access_admin_goals')
 def metas(request):
     return maintainer(request, 'metas')
+
+
+@cargo_required(
+    'admin', 'administrador', permission='review_closed_period_authorizations',
+)
+def solicitudes_autorizacion(request):
+    expire_authorizations()
+    if request.method == 'POST':
+        solicitud = get_object_or_404(
+            SolicitudAutorizacionPeriodo.objects.select_related('periodo'),
+            pk=request.POST.get('solicitud_id'),
+        )
+        action = request.POST.get('action')
+        before = _authorization_snapshot(solicitud)
+        if action in {'aprobar', 'rechazar'} and solicitud.estado != SolicitudAutorizacionPeriodo.Estado.PENDIENTE:
+            messages.error(request, 'Solo se pueden resolver solicitudes pendientes.')
+        elif action == 'aprobar':
+            form = AuthorizationDecisionForm(request.POST)
+            if form.is_valid():
+                solicitud.estado = SolicitudAutorizacionPeriodo.Estado.APROBADA
+                solicitud.aprobador = request.user
+                solicitud.comentario_aprobador = form.cleaned_data['comentario']
+                solicitud.vence_en = form.cleaned_data['vence_en']
+                solicitud.decidida_en = timezone.now()
+                solicitud.save(update_fields=['estado', 'aprobador', 'comentario_aprobador', 'vence_en', 'decidida_en'])
+                registrar_historial(actor=request.user, action='Aprobar autorizaciÃ³n de perÃ­odo', entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}', before=before, after=_authorization_snapshot(solicitud), period=solicitud.periodo)
+                messages.success(request, 'La autorización quedó vigente hasta la fecha indicada.')
+                return redirect('administracion:solicitudes-autorizacion')
+            messages.error(request, 'Revisa la fecha de vencimiento y el comentario.')
+        elif action == 'rechazar':
+            form = AuthorizationDecisionForm(request.POST)
+            if form.is_valid() and form.cleaned_data['comentario'].strip():
+                solicitud.estado = SolicitudAutorizacionPeriodo.Estado.RECHAZADA
+                solicitud.aprobador = request.user
+                solicitud.comentario_aprobador = form.cleaned_data['comentario']
+                solicitud.decidida_en = timezone.now()
+                solicitud.save(update_fields=['estado', 'aprobador', 'comentario_aprobador', 'decidida_en'])
+                registrar_historial(actor=request.user, action='Rechazar autorizaciÃ³n de perÃ­odo', entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}', before=before, after=_authorization_snapshot(solicitud), period=solicitud.periodo)
+                messages.success(request, 'La solicitud fue rechazada.')
+                return redirect('administracion:solicitudes-autorizacion')
+            messages.error(request, 'El rechazo requiere un comentario.')
+        elif action == 'revocar' and solicitud.estado == SolicitudAutorizacionPeriodo.Estado.APROBADA:
+            form = AuthorizationRevokeForm(request.POST)
+            if form.is_valid():
+                solicitud.estado = SolicitudAutorizacionPeriodo.Estado.REVOCADA
+                solicitud.aprobador = request.user
+                solicitud.comentario_aprobador = form.cleaned_data['comentario']
+                solicitud.revocada_en = timezone.now()
+                solicitud.decidida_en = timezone.now()
+                solicitud.save(update_fields=['estado', 'aprobador', 'comentario_aprobador', 'revocada_en', 'decidida_en'])
+                registrar_historial(actor=request.user, action='Revocar autorizaciÃ³n de perÃ­odo', entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}', before=before, after=_authorization_snapshot(solicitud), period=solicitud.periodo)
+                messages.success(request, 'La autorización fue revocada.')
+                return redirect('administracion:solicitudes-autorizacion')
+            messages.error(request, 'La revocación requiere un comentario.')
+    solicitudes = SolicitudAutorizacionPeriodo.objects.select_related(
+        'periodo', 'solicitante', 'aprobador',
+    ).prefetch_related('funcionarios')
+    now = timezone.now()
+    for solicitud in solicitudes:
+        solicitud.es_antigua = (
+            solicitud.estado == SolicitudAutorizacionPeriodo.Estado.PENDIENTE
+            and solicitud.creada_en <= now - timedelta(days=3)
+        )
+    return render(request, 'AdminApp/solicitudes_autorizacion.html', {
+        'sgr_role': 'AdministraciÃ³n',
+        'solicitudes': solicitudes,
+        'sidebar_modules': (
+            {'label': 'Usuarios', 'url_name': 'administracion:home'},
+            {'label': 'Solicitudes de autorizaciÃ³n', 'url_name': 'administracion:solicitudes-autorizacion'},
+        ),
+    })
 
 
 @cargo_required('admin', 'administrador', permission='access_admin_history')

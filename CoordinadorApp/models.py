@@ -110,6 +110,37 @@ class Periodo(models.Model):
 		return self.nombre
 
 #Modelo Desempeño
+class SolicitudAutorizacionPeriodo(models.Model):
+	class Estado(models.TextChoices):
+		PENDIENTE = 'pendiente', 'Pendiente'
+		APROBADA = 'aprobada', 'Aprobada'
+		RECHAZADA = 'rechazada', 'Rechazada'
+		VENCIDA = 'vencida', 'Vencida'
+		REVOCADA = 'revocada', 'Revocada'
+		CANCELADA = 'cancelada', 'Cancelada'
+
+	periodo = models.ForeignKey(Periodo, on_delete=models.PROTECT, related_name='solicitudes_autorizacion')
+	solicitante = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='solicitudes_autorizacion_periodo')
+	funcionarios = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='autorizaciones_periodo', blank=True)
+	alcances = models.JSONField(default=list)
+	motivo = models.TextField()
+	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.PENDIENTE)
+	aprobador = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name='decisiones_autorizacion_periodo')
+	comentario_aprobador = models.TextField(blank=True)
+	creada_en = models.DateTimeField(auto_now_add=True)
+	decidida_en = models.DateTimeField(null=True, blank=True)
+	vence_en = models.DateTimeField(null=True, blank=True)
+	usada_en = models.DateTimeField(null=True, blank=True)
+	revocada_en = models.DateTimeField(null=True, blank=True)
+
+	class Meta:
+		ordering = ['-creada_en']
+		db_table = 'solicitud_autorizacion_periodo'
+
+	def __str__(self):
+		return f'{self.periodo} - {self.solicitante}'
+
+
 class Desempeno(models.Model):
 	
 	usuario = models.ForeignKey(

@@ -4,7 +4,7 @@ from io import BytesIO
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.db.models.deletion import ProtectedError
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
@@ -37,8 +37,9 @@ from AdminApp.roles import (
     permission_codenames_for,
 )
 from CoordinadorApp.models import CargoFuncion, Desempeno, Funcion, Item
+from CoordinadorApp.services import authorization_for, record_authorization_use
 from config.delegations import active_delegation
-from FuncionarioApp.models import AtencionSocial
+from FuncionarioApp.models import AtencionSocial, Registro
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,23 @@ def _subtype_delete_block(subtype):
 def _meta_delete_block(record):
     if record.avance or record.ultimo_registro:
         return 'La meta tiene avance registrado y no se puede eliminar.'
+    return ''
+
+
+def _coordinator_meta_delete_block(record):
+    if record.periodo.estado != 'abierto':
+        return 'Una meta de un período cerrado no se puede eliminar.'
+    if record.avance or record.ultimo_registro:
+        return 'La meta tiene avance registrado y no se puede eliminar.'
+    activities = Registro.objects.filter(
+        autor_id=record.usuario_id,
+        item_id=record.item_id,
+        periodo_id=record.periodo_id,
+    )
+    if activities.exists():
+        if activities.filter(evidencias_registros__isnull=False).exists():
+            return 'La meta tiene actividades y evidencias asociadas; no se puede eliminar.'
+        return 'La meta tiene actividades asociadas; no se puede eliminar.'
     return ''
 
 
@@ -457,8 +475,10 @@ def display_value(record, field_name):
     return '' if value is None else str(value)
 
 
-def _queryset_for(spec, request):
-    queryset = _authorized_queryset(spec, request)
+def _queryset_for(spec, request, *, global_scope=False):
+    queryset = _authorized_queryset(
+        spec, request, global_scope=global_scope,
+    )
     query = request.GET.get('q', '').strip()
     if query:
         search = Q()
@@ -480,7 +500,7 @@ def _queryset_for(spec, request):
     return queryset.order_by(*spec.ordering)
 
 
-def _authorized_queryset(spec, request):
+def _authorized_queryset(spec, request, *, global_scope=False):
     if spec.key == 'items':
         return Item.objects.select_related('funcion').annotate(
             metas_asignadas=Count('desempenos'),
@@ -489,9 +509,10 @@ def _authorized_queryset(spec, request):
         queryset = Desempeno.objects.select_related(
             'usuario', 'item', 'periodo', 'funcion',
         )
-        if request.user.cargo and request.user.cargo.nombre.strip().casefold() not in {
+        if (not global_scope and request.user.cargo
+                and request.user.cargo.nombre.strip().casefold() not in {
             'admin', 'administrador',
-        }:
+        }):
             delegation = active_delegation(request)
             if delegation is None:
                 return queryset.none()
@@ -505,7 +526,7 @@ def _authorized_queryset(spec, request):
     return spec.model.objects.all()
 
 
-def _delete_block(spec, record):
+def _delete_block(spec, record, *, coordinator_meta_delete=False):
     if spec.key == 'cargos':
         return _cargo_delete_block(record)
     if spec.key == 'funciones':
@@ -523,6 +544,8 @@ def _delete_block(spec, record):
     if spec.key == 'subatenciones':
         return _subtype_delete_block(record)
     if spec.key == 'metas':
+        if coordinator_meta_delete:
+            return _coordinator_meta_delete_block(record)
         return _meta_delete_block(record)
     return ''
 
@@ -534,13 +557,15 @@ def _snapshot(spec, record):
     }
 
 
-def _form_kwargs(spec, request):
+def _form_kwargs(spec, request, *, global_scope=False, allow_closed_periods=False):
     if spec.key == 'roles':
         return {'actor': request.user}
     if spec.key == 'metas':
         return {
             'user': request.user,
             'delegation': active_delegation(request),
+            'global_scope': global_scope,
+            'allow_closed_periods': allow_closed_periods,
         }
     return {}
 
@@ -561,7 +586,11 @@ def _pagination_query(request):
     return parameters.urlencode()
 
 
-def _maintainer_context(spec, request, form, editing, queryset, base_count):
+def _maintainer_context(
+    spec, request, form, editing, queryset, base_count, *,
+    route_name=None, sgr_role=None, sidebar_modules=(),
+    coordinator_meta_delete=False,
+):
     page_obj = Paginator(queryset, 25).get_page(request.GET.get('page'))
     rows = [
         {
@@ -570,7 +599,9 @@ def _maintainer_context(spec, request, form, editing, queryset, base_count):
                 display_value(record, field)
                 for _, field in spec.display_fields
             ],
-            'can_delete': not bool(_delete_block(spec, record)),
+            'can_delete': not bool(_delete_block(
+                spec, record, coordinator_meta_delete=coordinator_meta_delete,
+            )),
             'can_edit': not (
                 spec.key == 'roles' and record.protegido
             ),
@@ -587,6 +618,7 @@ def _maintainer_context(spec, request, form, editing, queryset, base_count):
     status = request.GET.get('estado', '')
     return {
         'sgr_role': 'Administración',
+        'sgr_role': sgr_role or 'Administraci\u00f3n',
         'maintainer_title': spec.title,
         'form': form,
         'editing_object': editing,
@@ -602,13 +634,19 @@ def _maintainer_context(spec, request, form, editing, queryset, base_count):
         'base_count': base_count,
         'has_status': spec.status_field is not None,
         'is_item_maintainer': spec.key == 'items',
-        'route_name': f'administracion:{spec.key}',
+        'route_name': route_name or f'administracion:{spec.key}',
         'is_meta_maintainer': spec.key == 'metas',
         'is_role_maintainer': spec.key == 'roles',
+        'sidebar_modules': sidebar_modules,
     }
 
 
-def maintainer(request, key):
+def maintainer(
+    request, key, *, route_name=None, sgr_role=None, sidebar_modules=(),
+    protect_closed_periods=False, global_scope=False,
+    coordinator_meta_delete=False, warn_weight_total=False,
+    closed_period_authorization=False,
+):
     spec = SPECS[key]
     status = request.GET.get('estado', '')
     valid_statuses = {
@@ -620,8 +658,12 @@ def maintainer(request, key):
         return HttpResponseBadRequest('Filtro de estado no válido.')
     if request.GET.get('export', '') not in {'', 'excel'}:
         return HttpResponseBadRequest('Formato de exportación no válido.')
-    authorized_queryset = _authorized_queryset(spec, request)
-    queryset = _queryset_for(spec, request)
+    authorized_queryset = _authorized_queryset(
+        spec, request, global_scope=global_scope,
+    )
+    queryset = _queryset_for(
+        spec, request, global_scope=global_scope,
+    )
     base_count = authorized_queryset.count()
     editing = None
     form = None
@@ -694,11 +736,20 @@ def maintainer(request, key):
                             authorized_queryset.select_for_update(),
                             pk=object_id,
                         )
-                        blocked = _delete_block(spec, record)
+                        authorization = (
+                            authorization_for(request.user, record.periodo, funcionario=record.usuario)
+                            if closed_period_authorization and record.periodo.estado == 'cerrado' else None
+                        )
+                        blocked = _delete_block(
+                            spec, record,
+                            coordinator_meta_delete=coordinator_meta_delete and not authorization,
+                        )
                         if not blocked:
                             before = _snapshot(spec, record)
                             entity = f'{spec.model.__name__}:{record.pk}'
                             record.delete()
+                            if authorization:
+                                record_authorization_use(authorization, request.user)
                             registrar_historial(
                                 actor=request.user,
                                 action=f'Eliminar {spec.title.lower()}',
@@ -751,16 +802,35 @@ def maintainer(request, key):
             get_object_or_404(authorized_queryset, pk=object_id)
             if object_id else None
         )
+        if (
+            protect_closed_periods and editing
+            and editing.periodo.estado == 'cerrado'
+            and not (closed_period_authorization and authorization_for(request.user, editing.periodo, funcionario=editing.usuario))
+        ):
+            messages.error(request, 'El per\u00edodo est\u00e1 cerrado; la meta es de solo lectura.')
+            return redirect(request.path)
         before = _snapshot(spec, editing) if editing else None
         form = spec.form_class(
             request.POST,
             instance=editing,
-            **_form_kwargs(spec, request),
+            **_form_kwargs(spec, request, global_scope=global_scope, allow_closed_periods=closed_period_authorization),
         )
         if form.is_valid():
-            with transaction.atomic():
-                record = form.save()
-                registrar_historial(
+            authorization = None
+            selected_period = form.cleaned_data.get('periodo') if spec.key == 'metas' else None
+            selected_user = form.cleaned_data.get('usuario') if spec.key == 'metas' else None
+            if closed_period_authorization and selected_period and selected_period.estado == 'cerrado':
+                authorization = authorization_for(request.user, selected_period, funcionario=selected_user)
+                if not authorization:
+                    form.add_error(None, 'El perÃ­odo estÃ¡ cerrado y no existe una autorizaciÃ³n vigente para este funcionario.')
+            if form.errors:
+                messages.error(request, 'No existe una autorizaciÃ³n vigente para modificar esta meta.')
+            else:
+                with transaction.atomic():
+                    record = form.save()
+                    if authorization:
+                        record_authorization_use(authorization, request.user)
+                    registrar_historial(
                     actor=request.user,
                     action=(
                         f'Editar {spec.title.lower()}'
@@ -769,9 +839,14 @@ def maintainer(request, key):
                     entity=f'{spec.model.__name__}:{record.pk}',
                     before=before,
                     after=_snapshot(spec, record),
-                )
-            messages.success(request, 'Los cambios se guardaron correctamente.')
-            return redirect(request.path)
+                    )
+                if warn_weight_total and spec.key == 'metas':
+                    total = Desempeno.objects.filter(usuario_id=record.usuario_id, periodo_id=record.periodo_id).aggregate(total=Sum('ponderacion'))['total'] or 0
+                    if total != 100:
+                        relation = 'menor' if total < 100 else 'mayor'
+                        messages.warning(request, f'Advertencia: la suma de ponderaciones de este funcionario en el perÃ­odo es {total:.2f}%, {relation} a 100%.')
+                messages.success(request, 'Los cambios se guardaron correctamente.')
+                return redirect(request.path)
         messages.error(request, 'Revisa los campos obligatorios y sus valores.')
     else:
         edit_id = request.GET.get('editar')
@@ -779,9 +854,16 @@ def maintainer(request, key):
             get_object_or_404(authorized_queryset, pk=edit_id)
             if edit_id else None
         )
+        if (
+            protect_closed_periods and editing
+            and editing.periodo.estado == 'cerrado'
+            and not (closed_period_authorization and authorization_for(request.user, editing.periodo, funcionario=editing.usuario))
+        ):
+            messages.error(request, 'El per\u00edodo est\u00e1 cerrado; la meta es de solo lectura.')
+            return redirect(request.path)
         form = spec.form_class(
             instance=editing,
-            **_form_kwargs(spec, request),
+            **_form_kwargs(spec, request, global_scope=global_scope, allow_closed_periods=closed_period_authorization),
         )
 
     context = _maintainer_context(
@@ -791,6 +873,10 @@ def maintainer(request, key):
         editing,
         queryset,
         base_count,
+        route_name=route_name,
+        sgr_role=sgr_role,
+        sidebar_modules=sidebar_modules,
+        coordinator_meta_delete=coordinator_meta_delete,
     )
     if request.GET.get('export') == 'excel':
         return excel_response(

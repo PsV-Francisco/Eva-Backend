@@ -18,6 +18,7 @@ urlpatterns = [
     path('subatenciones/', views.subatenciones, name='subatenciones'),
     path('parametros/', views.parametros, name='parametros'),
     path('historial/', views.historial, name='historial'),
+    path('solicitudes-autorizacion/', views.solicitudes_autorizacion, name='solicitudes-autorizacion'),
     path(
         'auditoria-recuperacion/',
         views.password_reset_audit,

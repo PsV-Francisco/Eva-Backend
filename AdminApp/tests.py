@@ -38,7 +38,7 @@ class RolePortalTests(TestCase):
 			('funcionario:home', 'funcionario', 'Tablero Personal'),
 			('supervisor:home', 'supervisor', 'Validar evidencias'),
 			('delegado:home', 'delegado', 'Resumen de la delegación'),
-			('coordinador:home', 'coordinador', 'Metas e indicadores'),
+			('coordinador:home', 'coordinador', 'Tablero Personal'),
 			('administracion:home', 'administrador', 'Usuarios'),
 			('vistaf:home', 'consulta', 'Búsqueda de información'),
 		)

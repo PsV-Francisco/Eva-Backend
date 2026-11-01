@@ -674,6 +674,7 @@ class PasswordResetRateLimitKey(models.Model):
 
 class ParametroSistema(models.Model):
     class Clave(models.TextChoices):
+        MAX_DIAS_AUTORIZACION = 'max_dias_autorizacion', 'Maximo de dias de autorizacion'
         TOPE_CUMPLIMIENTO = 'tope_cumplimiento', 'Tope de cumplimiento (%)'
         UMBRAL_DELEGACION = 'umbral_delegacion', 'Umbral de delegación (%)'
 
@@ -689,6 +690,7 @@ class ParametroSistema(models.Model):
                 condition=(
                     models.Q(clave='tope_cumplimiento', valor__gte=100)
                     | models.Q(clave='umbral_delegacion', valor__gte=0, valor__lte=100)
+                    | models.Q(clave='max_dias_autorizacion', valor__gte=1, valor__lte=365)
                 ),
                 name='parametro_sistema_valor_en_rango',
             ),
@@ -702,6 +704,7 @@ class ParametroSistema(models.Model):
         defaults = {
             cls.Clave.TOPE_CUMPLIMIENTO: 150,
             cls.Clave.UMBRAL_DELEGACION: 80,
+            cls.Clave.MAX_DIAS_AUTORIZACION: 7,
         }
         value = cls.objects.filter(clave=clave).values_list('valor', flat=True).first()
         return value if value is not None else defaults[clave]
