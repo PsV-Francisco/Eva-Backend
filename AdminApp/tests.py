@@ -35,7 +35,7 @@ class RolePortalTests(TestCase):
 
 	def test_all_role_workspaces_render(self):
 		route_cargos = (
-			('funcionario:home', 'funcionario', 'Registro de Actividades'),
+			('funcionario:home', 'funcionario', 'Tablero Personal'),
 			('supervisor:home', 'supervisor', 'Validar evidencias'),
 			('delegado:home', 'delegado', 'Resumen de la delegación'),
 			('coordinador:home', 'coordinador', 'Metas e indicadores'),
@@ -590,7 +590,7 @@ class RolePortalTests(TestCase):
 		self.admin.cargo = cargo
 		self.admin.save(update_fields=['cargo'])
 		with TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
-			response = self.client.post(reverse('funcionario:home'), {
+			response = self.client.post(reverse('funcionario:gestion_actividades'), {
 				'fecha': '2026-10-01',
 				'periodo': period.pk,
 				'item': item.pk,
@@ -605,7 +605,7 @@ class RolePortalTests(TestCase):
 					content_type='application/pdf',
 				),
 			})
-			self.assertEqual(response.status_code, 302)
+			self.assertRedirects(response, reverse('funcionario:gestion_actividades'))
 			registro = Registro.objects.get(autor=self.admin)
 			evidencia = Evidencia.objects.get(registro=registro)
 			self.assertEqual(registro.estado, Registro.Estado.PENDIENTE)
@@ -646,15 +646,15 @@ class RolePortalTests(TestCase):
 			'accion': 'Acción actualizada', 'contacto': '', 'telefono': '',
 			'incluir_en_agenda': '',
 		}
-		response = self.client.post(reverse('funcionario:home'), payload)
-		self.assertEqual(response.status_code, 302)
+		response = self.client.post(reverse('funcionario:gestion_actividades'), payload)
+		self.assertRedirects(response, reverse('funcionario:gestion_actividades'))
 		registro.refresh_from_db()
 		self.assertEqual(registro.descripcion, 'Descripción actualizada')
 
-		response = self.client.post(reverse('funcionario:home'), {
+		response = self.client.post(reverse('funcionario:gestion_actividades'), {
 			'action': 'eliminar', 'registro_id': registro.pk,
 		})
-		self.assertEqual(response.status_code, 302)
+		self.assertRedirects(response, reverse('funcionario:gestion_actividades'))
 		self.assertFalse(Registro.objects.filter(pk=registro.pk).exists())
 
 	def test_delegate_can_create_commitment_for_their_delegation(self):

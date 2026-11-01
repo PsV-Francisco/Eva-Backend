@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}{% if vecino %}Editar vecino{% else %}Ingresar vecino{% endif %} | SGR{% endblock %}
+{% block page_title %}{% if vecino %}Editar vecino{% else %}Ingresar vecino{% endif %}{% endblock %}
+{% block content %}
+<div class="dashboard-layout">
+{% include 'includes/role_sidebar.html' %}
+<div class="dashboard-main"><section class="content-section split-layout"><div>
+  <form method="post" novalidate>{% csrf_token %}{% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+    <datalist id="territorios-usados">{% for territorio in territorios %}<option value="{{ territorio }}">{% endfor %}</datalist>
+    <div class="form-grid">{% for field in form %}<div class="mb-3{% if field.name == 'direccion' or field.name == 'territorio' %} field-wide{% endif %}">{% if field.name != 'activo' %}<label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{% endif %}{{ field }}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}</div>
+    <button class="btn btn-primary" type="submit">Guardar vecino</button> <a class="btn btn-outline-secondary" href="{% url 'funcionario:vecinos' %}">Cancelar</a>
+  </form>
+</div><aside class="side-note"><span class="side-note-mark">i</span><h3>Información</h3><p>El teléfono repetido en una misma delegación genera una advertencia, pero no bloquea el registro.</p></aside></section></div></div>
+{% endblock %}
