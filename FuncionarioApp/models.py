@@ -1,8 +1,13 @@
 import uuid
+import re
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+
+
+def normalizar_telefono(value):
+	return re.sub(r'\D', '', value or '')
 
 #Modelo del Registro
 class Registro(models.Model):
@@ -76,6 +81,145 @@ class Solicitante(models.Model):
 
 	def __str__(self):
 		return f'{self.nombre} ({self.identificador})'
+
+
+class Vecino(models.Model):
+	nombre = models.CharField(max_length=160)
+	telefono = models.CharField(max_length=32)
+	direccion = models.CharField(max_length=255, blank=True)
+	territorio = models.CharField(max_length=160)
+	delegacion = models.ForeignKey(
+		'AdminApp.Delegacion',
+		on_delete=models.PROTECT,
+		related_name='vecinos',
+	)
+	solicitante = models.OneToOneField(
+		Solicitante,
+		on_delete=models.SET_NULL,
+		null=True,
+		blank=True,
+		related_name='vecino',
+	)
+	activo = models.BooleanField(default=True)
+	creado = models.DateTimeField(auto_now_add=True)
+	actualizado = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		ordering = ['nombre', 'pk']
+		indexes = [
+			models.Index(fields=['delegacion', 'activo', 'nombre']),
+			models.Index(fields=['delegacion', 'telefono']),
+		]
+		verbose_name = 'vecino'
+		verbose_name_plural = 'vecinos'
+
+	def clean(self):
+		errors = {}
+		self.nombre = self.nombre.strip()
+		self.telefono = self.telefono.strip()
+		self.territorio = self.territorio.strip()
+		if len(self.nombre) < 2:
+			errors['nombre'] = 'Ingresa un nombre válido.'
+		phone_digits = normalizar_telefono(self.telefono)
+		if not 7 <= len(phone_digits) <= 15:
+			errors['telefono'] = 'Ingresa un teléfono válido.'
+		if not self.territorio:
+			errors['territorio'] = 'Ingresa un territorio.'
+		if self.solicitante_id and self.solicitante.delegacion_id != self.delegacion_id:
+			errors['solicitante'] = 'El solicitante debe pertenecer a la misma delegación.'
+		if errors:
+			raise ValidationError(errors)
+
+	def save(self, *args, **kwargs):
+		self.nombre = self.nombre.strip()
+		self.telefono = self.telefono.strip()
+		self.territorio = self.territorio.strip()
+		return super().save(*args, **kwargs)
+
+	def __str__(self):
+		return self.nombre
+
+
+class JuntaVecinos(models.Model):
+	nombre = models.CharField(max_length=160)
+	domicilio_legal = models.CharField(max_length=255)
+	territorio = models.CharField(max_length=160)
+	delegacion = models.ForeignKey(
+		'AdminApp.Delegacion',
+		on_delete=models.PROTECT,
+		related_name='juntas_vecinos',
+	)
+	cantidad_socios_activos = models.PositiveIntegerField(null=True, blank=True)
+	fecha_constitucion = models.DateField()
+	numero_personalidad_juridica = models.CharField(max_length=80)
+	fecha_inscripcion = models.DateField()
+	numero_registro = models.CharField(max_length=80)
+	activo = models.BooleanField(default=True)
+	creado = models.DateTimeField(auto_now_add=True)
+	actualizado = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		ordering = ['nombre', 'pk']
+		indexes = [
+			models.Index(fields=['delegacion', 'activo', 'nombre']),
+			models.Index(fields=['numero_personalidad_juridica']),
+		]
+		verbose_name = 'junta de vecinos'
+		verbose_name_plural = 'juntas de vecinos'
+
+	def clean(self):
+		errors = {}
+		self.nombre = self.nombre.strip()
+		self.domicilio_legal = self.domicilio_legal.strip()
+		self.territorio = self.territorio.strip()
+		self.numero_personalidad_juridica = self.numero_personalidad_juridica.strip()
+		self.numero_registro = self.numero_registro.strip()
+		if len(self.nombre) < 2:
+			errors['nombre'] = 'Ingresa un nombre válido.'
+		if self.cantidad_socios_activos is not None and self.cantidad_socios_activos < 0:
+			errors['cantidad_socios_activos'] = 'La cantidad no puede ser negativa.'
+		if self.fecha_inscripcion and self.fecha_constitucion and self.fecha_inscripcion < self.fecha_constitucion:
+			errors['fecha_inscripcion'] = 'La inscripción no puede ser anterior a la constitución.'
+		if errors:
+			raise ValidationError(errors)
+
+	def save(self, *args, **kwargs):
+		self.nombre = self.nombre.strip()
+		self.domicilio_legal = self.domicilio_legal.strip()
+		self.territorio = self.territorio.strip()
+		self.numero_personalidad_juridica = self.numero_personalidad_juridica.strip()
+		self.numero_registro = self.numero_registro.strip()
+		return super().save(*args, **kwargs)
+
+	def __str__(self):
+		return self.nombre
+
+
+class VecinoJunta(models.Model):
+	vecino = models.ForeignKey(
+		Vecino,
+		on_delete=models.PROTECT,
+		related_name='juntas_relacionadas',
+	)
+	junta = models.ForeignKey(
+		JuntaVecinos,
+		on_delete=models.PROTECT,
+		related_name='vecinos_relacionados',
+	)
+	es_dirigente = models.BooleanField(default=False)
+	creado = models.DateTimeField(auto_now_add=True)
+	actualizado = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		ordering = ['vecino__nombre', 'junta__nombre', 'pk']
+		constraints = [
+			models.UniqueConstraint(
+				fields=['vecino', 'junta'],
+				name='vecino_junta_unica',
+			),
+		]
+		verbose_name = 'relación vecino-junta'
+		verbose_name_plural = 'relaciones vecino-junta'
 
 
 class AtencionSocial(models.Model):

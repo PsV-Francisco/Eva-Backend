@@ -47,6 +47,10 @@ def _section_for(label, url_name):
         return 'medicion'
     if route in {
         'funcionario:home',
+        'funcionario:gestion_actividades',
+        'funcionario:vecinos',
+        'funcionario:vecino_nuevo',
+        'funcionario:juntas',
         'funcionario:cumplimiento',
         'funcionario:atencion_social',
         'funcionario:agenda_colectiva',

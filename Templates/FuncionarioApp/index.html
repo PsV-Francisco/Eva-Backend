@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}Funcionario | SGR{% endblock %}
-{% block page_title %}Registro de actividades{% endblock %}
+{% block page_title %}Gestión de Actividades{% endblock %}
 {% block content %}
 <div class="dashboard-layout">
 {% include 'includes/role_sidebar.html' %}
@@ -53,7 +53,7 @@
 			{% endif %}
 		</button>
 		{% if editing_record %} 
-		<a class="btn btn-outline-secondary" href="{% url 'funcionario:home' %}">Cancelar edición</a>
+		<a class="btn btn-outline-secondary" href="{% url 'funcionario:gestion_actividades' %}">Cancelar edición</a>
 		{% endif %}
 		</form>
 	</div>
@@ -82,7 +82,7 @@
 				
 				<td>
 					<!--Si el estado del registro es pendiente-->
-					{% if registro.estado == 'pendiente' %}<div class="d-flex flex-wrap gap-1"><a class="btn btn-sm btn-outline-primary" href="{% url 'funcionario:home' %}?editar={{ registro.pk }}">Editar</a>
+					{% if registro.estado == 'pendiente' %}<div class="d-flex flex-wrap gap-1"><a class="btn btn-sm btn-outline-primary" href="{% url 'funcionario:gestion_actividades' %}?editar={{ registro.pk }}">Editar</a>
 					<form method="post" data-confirm="¿Eliminar esta actividad? La acción no se puede deshacer.">
 						{% csrf_token %}
 						<input type="hidden" name="action" value="eliminar">

@@ -3,14 +3,59 @@ from django.db.models import Q
 from AdminApp.models import Catalogo, SubAtencion, TipoAtencion
 from CoordinadorApp.models import Periodo
 from CoordinadorApp.models import Funcion, Item
+from DelegadoApp.models import Compromiso
 from FuncionarioApp.models import (
     AtencionSocial,
     GestionAtencion,
+    JuntaVecinos,
     Registro,
     Solicitante,
+    Vecino,
+    VecinoJunta,
 )
 from config.forms import BootstrapFormMixin
 from SupervisorApp.files import validate_evidence_file
+
+
+class FuncionarioCompromisoForm(BootstrapFormMixin, forms.ModelForm):
+    periodo = forms.ModelChoiceField(
+        queryset=Periodo.objects.filter(estado=Periodo.Estado.ABIERTO),
+        label='Período de agenda',
+    )
+
+    class Meta:
+        model = Compromiso
+        fields = ('periodo', 'descripcion', 'solicitante', 'territorio', 'fecha', 'observaciones')
+        labels = {
+            'descripcion': 'Compromiso',
+            'solicitante': 'Solicitante',
+            'territorio': 'Territorio',
+            'fecha': 'Fecha comprometida',
+            'observaciones': 'Observaciones',
+        }
+        widgets = {
+            'fecha': forms.DateInput(attrs={'type': 'date'}),
+            'observaciones': forms.Textarea(attrs={'rows': 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['periodo'].queryset = Periodo.objects.filter(
+            estado=Periodo.Estado.ABIERTO,
+        )
+        if self.instance.pk:
+            self.initial['periodo'] = self.instance.agenda.periodo_id
+            self.fields['periodo'].disabled = True
+
+
+class CompromisoEvidenciaForm(BootstrapFormMixin, forms.Form):
+    evidencia = forms.FileField(
+        label='Archivo de evidencia',
+        widget=forms.ClearableFileInput(attrs={'accept': 'image/jpeg,image/png,application/pdf'}),
+    )
+
+    def clean_evidencia(self):
+        return validate_evidence_file(self.cleaned_data['evidencia'])
 
 
 class RegistroForm(BootstrapFormMixin, forms.ModelForm):
@@ -185,6 +230,123 @@ class CasoSocialForm(BootstrapFormMixin, forms.ModelForm):
             defaults={'nombre': self.cleaned_data['nombre_solicitante'].strip()},
         )
         return applicant
+
+
+class VecinoForm(BootstrapFormMixin, forms.ModelForm):
+	junta = forms.ModelChoiceField(
+		queryset=JuntaVecinos.objects.none(),
+		required=False,
+		label='Junta de vecinos',
+	)
+	es_dirigente = forms.BooleanField(required=False, label='Es dirigente')
+
+	class Meta:
+		model = Vecino
+		fields = ('nombre', 'telefono', 'direccion', 'territorio', 'delegacion', 'solicitante', 'activo')
+		labels = {
+			'nombre': 'Nombre',
+			'telefono': 'Teléfono',
+			'direccion': 'Dirección',
+			'territorio': 'Territorio',
+			'delegacion': 'Delegación',
+			'solicitante': 'Solicitante relacionado',
+			'activo': 'Activo',
+		}
+		widgets = {
+			'telefono': forms.TextInput(attrs={'autocomplete': 'tel'}),
+			'direccion': forms.TextInput(attrs={'autocomplete': 'street-address'}),
+			'territorio': forms.TextInput(attrs={'list': 'territorios-usados'}),
+		}
+
+	def __init__(self, *args, delegaciones=None, **kwargs):
+		super().__init__(*args, **kwargs)
+		self.displayed_membership = None
+		if delegaciones is not None:
+			self.fields['delegacion'].queryset = delegaciones
+		self.fields['solicitante'].queryset = Solicitante.objects.filter(
+			delegacion__in=self.fields['delegacion'].queryset,
+		).order_by('nombre', 'identificador')
+		juntas = JuntaVecinos.objects.filter(
+			delegacion__in=self.fields['delegacion'].queryset,
+			activo=True,
+		).order_by('nombre')
+		self.fields['junta'].queryset = juntas
+		if self.instance.pk and self.instance.delegacion_id:
+			self.fields['delegacion'].initial = self.instance.delegacion_id
+			self.displayed_membership = VecinoJunta.objects.filter(
+				vecino=self.instance,
+			).select_related('junta').order_by('pk').first()
+			if self.displayed_membership:
+				self.initial['junta'] = self.displayed_membership.junta_id
+				self.initial['es_dirigente'] = self.displayed_membership.es_dirigente
+
+	def clean_nombre(self):
+		return self.cleaned_data['nombre'].strip()
+
+	def clean_telefono(self):
+		return self.cleaned_data['telefono'].strip()
+
+	def clean_territorio(self):
+		return self.cleaned_data['territorio'].strip()
+
+	def clean(self):
+		cleaned_data = super().clean()
+		junta = cleaned_data.get('junta')
+		if junta and self.displayed_membership:
+			duplicate = VecinoJunta.objects.filter(
+				vecino=self.instance,
+				junta=junta,
+			).exclude(pk=self.displayed_membership.pk).exists()
+			if duplicate:
+				self.add_error('junta', 'El vecino ya está relacionado con esa junta.')
+		if cleaned_data.get('es_dirigente') and not junta:
+			self.add_error('es_dirigente', 'Selecciona una junta para indicar que es dirigente.')
+		return cleaned_data
+
+
+class JuntaVecinosForm(BootstrapFormMixin, forms.ModelForm):
+	class Meta:
+		model = JuntaVecinos
+		fields = (
+			'nombre', 'domicilio_legal', 'territorio', 'delegacion',
+			'cantidad_socios_activos', 'fecha_constitucion',
+			'numero_personalidad_juridica', 'fecha_inscripcion',
+			'numero_registro', 'activo',
+		)
+		labels = {
+			'nombre': 'Nombre',
+			'domicilio_legal': 'Domicilio legal',
+			'territorio': 'Territorio',
+			'delegacion': 'Delegación',
+			'cantidad_socios_activos': 'Cantidad de socios activos',
+			'fecha_constitucion': 'Fecha de constitución',
+			'numero_personalidad_juridica': 'Número de personalidad jurídica',
+			'fecha_inscripcion': 'Fecha de inscripción',
+			'numero_registro': 'Número de registro',
+			'activo': 'Activo',
+		}
+		widgets = {
+			'fecha_constitucion': forms.DateInput(attrs={'type': 'date'}),
+			'fecha_inscripcion': forms.DateInput(attrs={'type': 'date'}),
+			'territorio': forms.TextInput(attrs={'list': 'territorios-juntas-usados'}),
+		}
+
+	def __init__(self, *args, delegaciones=None, **kwargs):
+		super().__init__(*args, **kwargs)
+		if delegaciones is not None:
+			self.fields['delegacion'].queryset = delegaciones
+
+	def clean_nombre(self):
+		return self.cleaned_data['nombre'].strip()
+
+	def clean_numero_personalidad_juridica(self):
+		return self.cleaned_data['numero_personalidad_juridica'].strip()
+
+	def clean_numero_registro(self):
+		return self.cleaned_data['numero_registro'].strip()
+
+	def clean(self):
+		return super().clean()
 
 
 class GestionAtencionForm(BootstrapFormMixin, forms.ModelForm):

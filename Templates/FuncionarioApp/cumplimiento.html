@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
-{% block title %}Cumplimiento | SGR{% endblock %}
-{% block page_title %}Cumplimiento de metas{% endblock %}
+{% block title %}Tablero Personal | SGR{% endblock %}
+{% block page_title %}Tablero Personal{% endblock %}
 {% block content %}
 <div class="dashboard-layout">
 {% include 'includes/role_sidebar.html' %}
@@ -10,6 +10,7 @@
   <article class="metric"><span>Avance aprobado</span><strong>{{ summary.total_avance|floatformat:0 }}</strong></article>
   <article class="metric"><span>Avance real</span><strong>{{ summary.avance_real|floatformat:2 }}%</strong></article>
   <article class="metric"><span>Avance esperado</span><strong>{{ summary.avance_esperado|floatformat:2 }}%</strong></article>
+  <article class="metric"><span>Umbral fijo</span><strong>{% if summary.items %}{{ umbral_delegacion|floatformat:2 }}%{% else %}Sin ítems asignados{% endif %}</strong></article>
 </div>
 <section class="content-section split-layout">
   <div>
@@ -27,12 +28,12 @@
         <td>{{ row.cumplimiento|floatformat:2 }}%</td><td>{{ row.ponderacion|floatformat:2 }}%</td>
         <td>{{ row.aporte|floatformat:2 }}%</td>
         <td><span class="traffic-light traffic-{{ row.semaforo }}">{{ row.semaforo|title }}</span></td>
-      </tr>{% empty %}<tr><td colspan="7" class="empty-state">No tienes metas asignadas para este período.</td></tr>{% endfor %}
+      </tr>{% empty %}<tr><td colspan="7" class="empty-state">Sin ítems asignados.</td></tr>{% endfor %}
       </tbody>
       {% if summary.items %}<tfoot><tr><th>Total</th><th>{{ summary.total_meta|floatformat:2 }}</th><th>{{ summary.total_avance|floatformat:0 }}</th><th>{{ summary.avance_real|floatformat:2 }}%</th><th>—</th><th>{{ summary.total_aporte|floatformat:2 }}%</th><th></th></tr></tfoot>{% endif %}
     </table></div>
   </div>
-  <aside class="side-note"><span class="side-note-mark">i</span><h3>Cómo se calcula</h3><p>Solo cuentan actividades con evidencia aprobada, una vez por actividad. El avance esperado se calcula con días hábiles de lunes a viernes. Verde: alcanza lo esperado; ámbar: al menos 60 %; rojo: menos de 60 %.</p></aside>
+  <aside class="side-note"><span class="side-note-mark">i</span><h3>Cómo se calcula</h3><p>Solo cuentan actividades con evidencia aprobada, una vez por actividad. El avance esperado se calcula con días hábiles de lunes a viernes. El semáforo compara contra el avance esperado a la fecha; el umbral compara contra un porcentaje fijo de cumplimiento.</p>{% if summary.items %}<p><strong>Estado frente al umbral:</strong> {% if clasificacion_umbral == 'sobre' %}Sobre el umbral{% else %}Bajo el umbral{% endif %} ({{ umbral_delegacion|floatformat:2 }}%).</p>{% else %}<p><strong>Sin ítems asignados.</strong> No se clasifica frente al umbral.</p>{% endif %}</aside>
 </section>
 </div></div>
 {% endblock %}

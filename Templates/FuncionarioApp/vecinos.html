@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}Gestión de Vecinos | SGR{% endblock %}
+{% block page_title %}Gestión de Vecinos{% endblock %}
+{% block content %}
+<div class="dashboard-layout">
+{% include 'includes/role_sidebar.html' %}
+<div class="dashboard-main">
+<section class="content-section">
+  <div class="section-head"><div><p class="eyebrow">PADRÓN TERRITORIAL</p><h2>Vecinos</h2></div><a class="btn btn-primary" href="{% url 'funcionario:vecino_nuevo' %}">Ingresar vecino</a></div>
+  <form method="get" class="search-panel mb-3">
+    <div><label class="form-label" for="q">Buscar</label><input class="form-control" id="q" name="q" value="{{ search_query }}" placeholder="Nombre, teléfono, dirección o territorio"></div>
+    <div class="form-check align-self-end"><input class="form-check-input" type="checkbox" id="inactivos" name="inactivos" value="1" {% if show_inactive %}checked{% endif %}><label class="form-check-label" for="inactivos">Incluir inactivos</label></div>
+    <button class="btn btn-outline-primary align-self-end" type="submit">Buscar</button>
+  </form>
+  <div class="table-responsive"><table class="table align-middle">
+    <thead><tr><th>Nombre</th><th>Teléfono</th><th>Territorio</th><th>Delegación</th><th>Estado</th><th>Acciones</th></tr></thead>
+    <tbody>{% for vecino in page_obj %}<tr>
+      <td><strong>{{ vecino.nombre }}</strong>{% if vecino.direccion %}<small class="d-block text-muted">{{ vecino.direccion }}</small>{% endif %}</td>
+      <td>{{ vecino.telefono }}</td><td>{{ vecino.territorio }}</td><td>{{ vecino.delegacion }}</td>
+      <td><span class="tag">{% if vecino.activo %}Activo{% else %}Inactivo{% endif %}</span></td>
+      <td><a class="btn btn-sm btn-outline-primary" href="{% url 'funcionario:vecino_editar' vecino.pk %}">Editar</a>{% if vecino.activo %}<form class="d-inline" method="post" action="{% url 'funcionario:vecino_desactivar' vecino.pk %}" data-confirm="¿Desactivar este vecino?">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" type="submit">Desactivar</button></form>{% else %}<form class="d-inline" method="post" action="{% url 'funcionario:vecino_eliminar' vecino.pk %}" data-confirm="¿Eliminar este vecino?">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button></form>{% endif %}</td>
+    </tr>{% empty %}<tr><td colspan="6" class="empty-state">No hay vecinos para los filtros seleccionados.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if page_obj.paginator.num_pages > 1 %}<nav aria-label="Paginación"><ul class="pagination">{% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ search_query|urlencode }}&inactivos={% if show_inactive %}1{% endif %}&page={{ page_obj.previous_page_number }}">Anterior</a></li>{% endif %}<li class="page-item disabled"><span class="page-link">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span></li>{% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?q={{ search_query|urlencode }}&inactivos={% if show_inactive %}1{% endif %}&page={{ page_obj.next_page_number }}">Siguiente</a></li>{% endif %}</ul></nav>{% endif %}
+</section>
+</div></div>
+{% endblock %}

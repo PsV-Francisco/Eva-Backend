@@ -16,7 +16,7 @@ from AdminApp.models import ParametroSistema, Usuario
 from config.decorators import cargo_required
 from config.delegations import active_delegation
 from CoordinadorApp.models import Desempeno, Periodo
-from CoordinadorApp.services import cumplimiento_por_usuario
+from CoordinadorApp.services import clasificar_umbral, cumplimiento_por_usuario, umbral_delegacion
 from DelegadoApp.forms import CompromisoEstadoForm, CompromisoForm
 from DelegadoApp.models import Agenda, Compromiso, HistorialEstadoCompromiso, SeguimientoAcceso
 from DelegadoApp.services import actualizar_estado_compromiso
@@ -361,9 +361,7 @@ def resumen(request):
             'periodo_seleccionado': selected_period,
             'funcionarios': [],
             'below_threshold': [],
-            'threshold': ParametroSistema.obtener(
-                ParametroSistema.Clave.UMBRAL_DELEGACION,
-            ),
+            'threshold': umbral_delegacion(),
             'has_delegation': False,
         })
 
@@ -389,7 +387,7 @@ def resumen(request):
         periodo=selected_period,
     ).select_related('usuario', 'item', 'periodo')) if selected_period else []
     summaries = cumplimiento_por_usuario(performances)
-    threshold = ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_DELEGACION)
+    threshold = umbral_delegacion()
     rows = []
     for user in users:
         summary = summaries.get(user.pk, {
@@ -408,6 +406,11 @@ def resumen(request):
                 'verde' if summary['avance_real'] >= summary['avance_esperado']
                 else 'ambar' if summary['avance_real'] >= summary['avance_esperado'] * Decimal('0.60')
                 else 'rojo'
+            ),
+            'umbral': threshold,
+            'clasificacion_umbral': clasificar_umbral(
+                summary['avance_real'],
+                tiene_items=bool(summary['items']),
             ),
             'ultimo_registro': user.ultimo_registro,
             'fecha_ultimo_registro': user.fecha_ultimo_registro,

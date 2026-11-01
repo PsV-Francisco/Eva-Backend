@@ -1,0 +1,4 @@
+{% extends 'base.html' %}
+{% block title %}Cargar evidencia | SGR{% endblock %}
+{% block page_title %}Cargar evidencia de compromiso{% endblock %}
+{% block content %}<div class="dashboard-layout">{% include 'includes/role_sidebar.html' %}<div class="dashboard-main"><section class="content-section"><p>Compromiso: <strong>{{ compromiso.descripcion }}</strong></p><form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary" type="submit">Cargar evidencia</button> <a class="btn btn-outline-secondary" href="{% url 'funcionario:agenda_colectiva' %}">Cancelar</a></form></section></div></div>{% endblock %}

@@ -15,6 +15,16 @@ ZERO = Decimal('0.00')
 HUNDRED = Decimal('100')
 
 
+def umbral_delegacion():
+    return ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_DELEGACION)
+
+
+def clasificar_umbral(cumplimiento, *, tiene_items=True):
+    if not tiene_items:
+        return None
+    return 'sobre' if Decimal(cumplimiento) >= umbral_delegacion() else 'bajo'
+
+
 def dias_habiles(inicio, termino):
     if termino < inicio:
         return 0
