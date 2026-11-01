@@ -16,6 +16,7 @@ from AdminApp.models import (
 	Rol,
 )
 from AdminApp.roles import ensure_role_group
+from AdminApp.forms import RolForm
 from config.permissions import PERMISSION_CATALOG
 from CoordinadorApp.models import Funcion, Item, Periodo
 from DelegadoApp.models import Agenda, Compromiso
@@ -54,6 +55,9 @@ class RolePortalTests(TestCase):
 				response = client.get(reverse(route))
 				self.assertEqual(response.status_code, 200)
 				self.assertContains(response, sidebar_label)
+				self.assertContains(response, 'data-role-sidebar')
+				self.assertContains(response, 'data-sidebar-section')
+				self.assertContains(response, 'data-current="true"')
 
 	def test_each_existing_cargo_keeps_access_with_and_without_an_additional_role(self):
 		role_routes = (
@@ -86,10 +90,15 @@ class RolePortalTests(TestCase):
 				client = Client()
 				client.force_login(user)
 				route = reverse(route_name)
-				self.assertEqual(client.get(route).status_code, 200)
+				response = client.get(route)
+				self.assertEqual(response.status_code, 200)
+				self.assertContains(response, 'data-role-sidebar')
+				self.assertContains(response, 'data-sidebar-section')
 
 				user.roles.add(additional_role)
-				self.assertEqual(client.get(route).status_code, 200)
+				response = client.get(route)
+				self.assertEqual(response.status_code, 200)
+				self.assertContains(response, 'data-role-sidebar')
 
 	def test_administrator_cargo_can_open_each_existing_panel(self):
 		panel_routes = (
@@ -136,6 +145,138 @@ class RolePortalTests(TestCase):
 		response = client.get(reverse('vistaf:home'))
 		self.assertContains(response, 'Consultar información')
 		self.assertNotContains(response, 'Administrar usuarios')
+
+	def test_sidebar_marks_current_section_and_hides_empty_sections(self):
+		cargo = Cargo.objects.create(nombre='consulta')
+		user = get_user_model().objects.create_user(
+			email='sidebar-consulta@sgr.test',
+			password='Sgr-Test-Password-418!',
+			cargo=cargo,
+		)
+		client = Client()
+		client.force_login(user)
+		response = client.get(reverse('vistaf:home'))
+		self.assertContains(
+			response,
+			'data-section-key="consulta" data-current="true" open',
+		)
+		self.assertContains(response, 'aria-expanded="true"')
+		self.assertNotContains(response, 'data-section-key="usuarios"')
+		self.assertNotContains(response, 'Administrar usuarios')
+
+	def test_sidebar_groups_administrator_options_without_empty_sections(self):
+		response = self.client.get(reverse('administracion:home'))
+		self.assertContains(response, 'data-section-key="usuarios"')
+		self.assertContains(response, 'data-section-key="organizacion"')
+		self.assertContains(response, 'data-section-key="medicion"')
+		self.assertContains(response, 'data-section-key="atenciones"')
+		self.assertContains(response, 'data-section-key="operacion"')
+		self.assertContains(response, 'data-section-key="auditoria"')
+		self.assertContains(response, 'data-section-key="ayuda"')
+
+	def test_role_form_saves_selected_permissions(self):
+		permissions = Permission.objects.filter(
+			content_type__app_label='AdminApp',
+			codename__in=('access_admin_roles', 'view_public_reports'),
+		).order_by('codename')
+		role = Rol.objects.create(nombre='Rol selector')
+		form = RolForm(
+			data={
+				'nombre': role.nombre,
+				'descripcion': 'Permisos seleccionados',
+				'alcance': Rol.Alcance.GLOBAL,
+				'estado': Rol.Estado.ACTIVO,
+				'permissions': [str(permission.pk) for permission in permissions],
+			},
+			instance=role,
+			actor=self.admin,
+		)
+		self.assertTrue(form.is_valid(), form.errors)
+		form.save()
+		self.assertQuerySetEqual(
+			role.grupo.permissions.order_by('codename'),
+			permissions,
+			transform=lambda item: item,
+		)
+
+	def test_role_form_loads_existing_permissions_when_editing(self):
+		permission = Permission.objects.get(
+			content_type__app_label='AdminApp',
+			codename='access_admin_roles',
+		)
+		role = Rol.objects.create(nombre='Rol existente')
+		ensure_role_group(role).permissions.add(permission)
+		form = RolForm(instance=role, actor=self.admin)
+		self.assertIn(permission.pk, form.initial['permissions'])
+		group = next(
+			group for group in form.permission_groups
+			if any(
+				str(option['value']) == str(permission.pk)
+				for option in group['choices']
+			)
+		)
+		selected = [
+			option['value']
+			for option in group['choices']
+			if option['selected']
+		]
+		self.assertIn(str(permission.pk), [str(value) for value in selected])
+
+	def test_role_form_rejects_permissions_outside_actor_authority(self):
+		actor = get_user_model().objects.create_user(
+			email='role-editor@sgr.test',
+			password='Sgr-Test-Password-418!',
+			cargo=Cargo.objects.create(nombre='funcionario'),
+		)
+		permission = Permission.objects.get(
+			content_type__app_label='AdminApp',
+			codename='access_admin_roles',
+		)
+		form = RolForm(
+			data={
+				'nombre': 'Rol no autorizado',
+				'descripcion': '',
+				'alcance': Rol.Alcance.GLOBAL,
+				'estado': Rol.Estado.ACTIVO,
+				'permissions': [permission.pk],
+			},
+			actor=actor,
+		)
+		self.assertFalse(form.is_valid())
+		self.assertIn('permissions', form.errors)
+
+	def test_roles_page_renders_visible_permission_checkboxes(self):
+		response = self.client.get(reverse('administracion:roles'))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'data-permission-selector')
+		self.assertContains(response, 'type="checkbox"')
+		self.assertContains(response, 'data-permission-search')
+		self.assertContains(response, 'data-module-select')
+		self.assertContains(response, 'data-permission-description')
+
+	def test_role_form_keeps_selected_permissions_after_validation_error(self):
+		permission = Permission.objects.get(
+			content_type__app_label='AdminApp',
+			codename='access_admin_roles',
+		)
+		form = RolForm(
+			data={
+				'nombre': '',
+				'descripcion': '',
+				'alcance': Rol.Alcance.GLOBAL,
+				'estado': Rol.Estado.ACTIVO,
+				'permissions': [permission.pk],
+			},
+			actor=self.admin,
+		)
+		self.assertFalse(form.is_valid())
+		selected = [
+			str(option['value'])
+			for group in form.permission_groups
+			for option in group['choices']
+			if option['selected']
+		]
+		self.assertEqual(selected, [str(permission.pk)])
 
 	def test_root_shows_login_and_authenticates_demo_user(self):
 		client = Client()

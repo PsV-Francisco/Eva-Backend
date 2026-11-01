@@ -2,7 +2,7 @@
 
 ## Integrantes
 
-Pendiente de completar por el equipo: el repositorio no identifica los nombres de sus integrantes.
+Francisco Andres Alonzo Diaz Moralez
 
 ## Descripción
 

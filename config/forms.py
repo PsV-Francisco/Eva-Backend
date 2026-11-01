@@ -8,6 +8,11 @@ class BootstrapFormMixin:
             widget = field.widget
             if isinstance(widget, forms.CheckboxInput):
                 css_class = 'form-check-input'
+            elif isinstance(widget, forms.CheckboxSelectMultiple):
+                # The individual options receive their checkbox class when
+                # rendered. Styling the widget container as an input makes a
+                # multiple-checkbox field look like an empty bar.
+                css_class = ''
             elif isinstance(widget, (forms.Select, forms.SelectMultiple)):
                 css_class = 'form-select'
             else:

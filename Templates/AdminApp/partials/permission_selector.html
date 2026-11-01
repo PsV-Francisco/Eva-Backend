@@ -1,0 +1,51 @@
+<div class="permission-selector" data-permission-selector>
+  <div class="permission-selector-toolbar">
+    <div class="permission-search">
+      <label class="form-label" for="{{ field.auto_id }}_search">Buscar permisos</label>
+      <input class="form-control" id="{{ field.auto_id }}_search" type="search" data-permission-search autocomplete="off" placeholder="Buscar por permiso, descripción o módulo">
+      <span class="form-text" data-permission-results role="status" aria-live="polite"></span>
+    </div>
+    <div class="permission-selector-actions">
+      <label class="permission-selected-toggle">
+        <input type="checkbox" data-permission-only-selected>
+        <span>Mostrar solo seleccionados</span>
+      </label>
+      <button class="btn btn-sm btn-outline-secondary" type="button" data-permission-clear-all>Quitar todos</button>
+    </div>
+  </div>
+
+  <section class="permission-selected-summary" aria-label="Permisos elegidos">
+    <h3>Permisos seleccionados</h3>
+    <div class="permission-chips" data-permission-chips aria-live="polite"></div>
+    <p class="permission-empty-selection" data-permission-empty>Sin permisos seleccionados.</p>
+  </section>
+
+  <div class="permission-modules">
+    {% for group in form.permission_groups %}
+    <details class="permission-module" data-permission-module data-module="{{ group.module }}" {% if group.selected_count %}open{% endif %}>
+      <summary aria-controls="permission-options-{{ forloop.counter }}">
+        <span class="permission-module-title" data-module-title>{{ group.module }}</span>
+        <span class="permission-module-count" data-module-count data-selected="{{ group.selected_count }}" data-total="{{ group.total }}">{{ group.selected_count }} de {{ group.total }} seleccionados</span>
+      </summary>
+      <div class="permission-module-actions">
+        <button class="btn btn-sm btn-outline-primary" type="button" data-module-select>Seleccionar todo</button>
+        <button class="btn btn-sm btn-outline-secondary" type="button" data-module-clear>Quitar todo</button>
+      </div>
+      <div class="permission-options" id="permission-options-{{ forloop.counter }}">
+        {% for option in group.choices %}
+        <div class="permission-option" data-permission-option data-module="{{ option.permission_module }}">
+          <label class="permission-option-label" for="{{ option.attrs.id }}">
+            <input type="checkbox" name="{{ option.name }}" value="{{ option.value }}" id="{{ option.attrs.id }}" class="form-check-input" aria-describedby="{{ option.attrs.id }}-description"{% if option.selected %} checked{% endif %}{% if field.field.disabled %} disabled{% endif %}>
+            <span class="permission-option-copy">
+              <span class="permission-option-name" data-permission-name>{{ option.label }}</span>
+              <span class="permission-option-description" id="{{ option.attrs.id }}-description" data-permission-description>{{ option.permission_description }}</span>
+            </span>
+          </label>
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+  <p class="permission-no-results" data-permission-no-results hidden>No hay permisos que coincidan con la búsqueda.</p>
+</div>
