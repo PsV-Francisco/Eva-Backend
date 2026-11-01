@@ -1,7 +1,9 @@
+import uuid
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
-#Modelo Funcion
+#Modelo : Funcion (OK)
 class Funcion(models.Model):
 	class Estado(models.TextChoices):
 		ACTIVO = 'activo', 'Activo'
@@ -24,27 +26,20 @@ class Funcion(models.Model):
 	def __str__(self):
 		return self.nombre
 
-#Modelo Item
+#Modelo : Item (OK)
 class Item(models.Model):
 	class Estado(models.TextChoices):
 		ACTIVO = 'activo', 'Activo'
 		INACTIVO = 'inactivo', 'Inactivo'
 
 	codigo = models.CharField(max_length=20, unique=True, null=True)
-	funcion = models.ForeignKey(Funcion, on_delete=models.PROTECT, related_name='items')
 	nombre = models.CharField(max_length=120)
 	descripcion = models.TextField(blank=True)
-	estado = models.CharField(
-		max_length=20,
-		choices=Estado.choices,
-		default=Estado.ACTIVO,
-	)
+	ponderacion = models.DecimalField(max_digits=3,decimal_places=1,null=True,blank=True,db_column='PONDERACION',)
+	estado = models.CharField(max_length=20,choices=Estado.choices,default=Estado.ACTIVO,)
 
 	class Meta:
-		ordering = ['funcion__nombre', 'nombre']
-		constraints = [
-			models.UniqueConstraint(fields=['funcion', 'nombre'], name='item_nombre_unico_por_funcion'),
-		]
+		ordering = ['nombre']
 		db_table = "item"
 		verbose_name = 'Item'
 		verbose_name_plural = 'Items'
@@ -61,13 +56,9 @@ class Item(models.Model):
 		return super().save(*args, **kwargs)
 
 
-#Modelo CargoFuncion
+#Modelo : CargoFuncion (OK)
 class CargoFuncion(models.Model):
-	cargo = models.ForeignKey(
-		'AdminApp.Cargo',
-		on_delete=models.PROTECT,
-		related_name='asignaciones_funciones',
-	)
+	cargo = models.ForeignKey('AdminApp.Cargo',on_delete=models.PROTECT,related_name='asignaciones_funciones',)
 	funcion = models.ForeignKey(Funcion, on_delete=models.PROTECT, related_name='asignaciones_cargos')
 
 	class Meta:
@@ -83,7 +74,7 @@ class CargoFuncion(models.Model):
 		return f'{self.cargo} - {self.funcion}'
 
 
-#Modelo Periodo
+#Modelo : Periodo (OK)
 class Periodo(models.Model):
 	class Estado(models.TextChoices):
 		ABIERTO = 'abierto', 'Abierto'
@@ -109,41 +100,129 @@ class Periodo(models.Model):
 	def __str__(self):
 		return self.nombre
 
-#Modelo Desempeño
+#Modelo : PeriodoSemana (OK)
+class PeriodoSemana(models.Model):
+	class Estado(models.TextChoices):
+		ABIERTO = 'abierto','Abierto'
+		CERRADO = 'cerrado','Cerrado'
+
+	nombre = models.CharField(max_length=100, db_column='NOMBRE')
+	fecha_inicio = models.DateTimeField(null=True, blank=True, db_column='FECHA_INICIO')
+	fecha_fin = models.DateTimeField(null=True, blank=True, db_column='FECHA_FIN')
+	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.ABIERTO)
+	periodo = models.ForeignKey('Periodo', on_delete=models.PROTECT, db_column='PERIODO')
+
+	class Meta:
+		db_table = 'periodo_semana'
+		ordering = ['-fecha_inicio']
+		verbose_name = "Semana del Periodo"
+		verbose_name_plural = "Semanas del Periodo"
+
+#Modelo : Desempeño (OK)
 class Desempeno(models.Model):
 	
-	usuario = models.ForeignKey(
-		settings.AUTH_USER_MODEL,
-		on_delete=models.PROTECT,
-		related_name='desempenos',
-	)
-	funcion = models.ForeignKey(
-		Funcion, on_delete=models.PROTECT, related_name='desempenos', null=True, blank=True
-	)
+	usuario = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='desempenos',)
 	item = models.ForeignKey(Item, on_delete=models.PROTECT, related_name='desempenos')
 	meta = models.DecimalField(max_digits=12, decimal_places=2)
 	avance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-	ponderacion = models.DecimalField(max_digits=5, decimal_places=2)
 	ultimo_registro = models.DateField(null=True, blank=True)
 	periodo = models.ForeignKey(Periodo, on_delete=models.PROTECT, related_name='desempenos')
+	dias_libres = models.IntegerField(null=True, blank=True, db_column='DIAS_LIBRES')
+	vacaciones = models.IntegerField(null=True, blank=True, db_column='VACACIONES')
+	dias_adm = models.IntegerField(null=True, blank=True, db_column='DIAS_ADM')
 
 	class Meta:
-		ordering = ['periodo', 'usuario', 'item','funcion']
+		ordering = ['periodo', 'usuario', 'item']
 		db_table = "desempeño"
 		verbose_name = 'Desempeño'
 		verbose_name_plural = 'Desempeños'
 		constraints = [
 			models.UniqueConstraint(
-				fields=['usuario', 'item', 'periodo','funcion'],
+				fields=['usuario', 'item', 'periodo'],
 				name='desempeno_unico_por_usuario_item_periodo',
 			),
 			models.CheckConstraint(condition=models.Q(meta__gt=0), name='desempeno_meta_positiva'),
 			models.CheckConstraint(condition=models.Q(avance__gte=0), name='desempeno_avance_no_negativo'),
-			models.CheckConstraint(
-				condition=models.Q(ponderacion__gte=0, ponderacion__lte=100),
-				name='desempeno_ponderacion_entre_0_y_100',
-			),
 		]
 
 	def __str__(self):
 		return f'{self.usuario} - {self.item} - {self.periodo}'
+
+
+#Modelo : GestionAtencion (OK)
+class GestionAtencion(models.Model):
+	codigo = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+	numero_gestion = models.PositiveSmallIntegerField(db_column='NUMERO_GESTION')
+	fecha = models.DateField(db_column='FECHA')
+	observaciones = models.TextField(blank=True, db_column='OBSERVACIONES')
+
+	class Meta:
+		ordering = ['fecha', 'numero_gestion']
+		constraints = [
+			models.CheckConstraint(
+				condition=models.Q(numero_gestion__gte=1, numero_gestion__lte=3),
+				name='gestion_numero_entre_1_y_3',
+			),
+		]
+		db_table = 'gestion_atencion'
+		verbose_name = 'gestión de atención'
+		verbose_name_plural = 'gestiones de atenciones'
+
+	def __str__(self):
+		return f'Gestión {self.numero_gestion} de atención {self.atencion}'
+
+	def save(self, *args, **kwargs):
+		if self.pk:
+			original_code = type(self).objects.filter(pk=self.pk).values_list(
+				'codigo', flat=True,
+			).first()
+			if original_code and original_code != self.codigo:
+				raise ValueError('El código de atención es inmutable.')
+		return super().save(*args, **kwargs)
+
+#Modelo : AtencionSocial (OK)
+class AtencionSocial(models.Model):
+	
+	fecha = models.DateTimeField(db_column='FECHA')
+	resultado = models.TextField(blank=True)
+	observaciones = models.TextField(blank=True)
+	autor = models.ForeignKey('Usuario', on_delete=models.PROTECT, db_column='AUTOR')
+	beneficiado = models.ForeignKey('Beneficiado', on_delete=models.PROTECT, db_column='BENEFICIADO')
+	tipo_atencion = models.ForeignKey('TipoAtencion', on_delete=models.PROTECT, db_column='TIPO_ATENCION')
+	gestion_atencion = models.ForeignKey(GestionAtencion, on_delete=models.PROTECT, db_column='GESTION_ATENCION')
+	creado = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		ordering = ['-fecha']
+		db_table = 'atencion_social'
+		verbose_name = 'atención social'
+		verbose_name_plural = 'atenciones sociales'
+
+	def __str__(self):
+		return f'Atención {self.pk} - {self.tipo_atencion}'
+
+	def clean(self):
+		errors = {}
+		if bool(self.tipo_atencion_catalogo_id) != bool(self.sub_atencion_id):
+			errors['sub_atencion'] = 'El tipo y la Sub Atención deben seleccionarse juntos.'
+		elif (
+			self.tipo_atencion_catalogo_id
+			and self.sub_atencion.tipo_atencion_id != self.tipo_atencion_catalogo_id
+		):
+			errors['sub_atencion'] = 'La Sub Atención no corresponde al tipo seleccionado.'
+
+		if bool(self.solicitante_id) != bool(self.delegacion_id):
+			errors['delegacion'] = 'El solicitante y la delegación deben asociarse juntos.'
+		elif (
+			self.solicitante_id
+			and self.solicitante.delegacion_id != self.delegacion_id
+		):
+			errors['solicitante'] = 'El solicitante no pertenece a la delegación seleccionada.'
+
+		if errors:
+			raise ValidationError(errors)
+
+	def save(self, *args, **kwargs):
+		if self.usuario_id and not self.autor_id:
+			self.autor_id = self.usuario_id
+		return super().save(*args, **kwargs)

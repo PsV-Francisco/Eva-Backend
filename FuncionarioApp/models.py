@@ -1,38 +1,35 @@
 import uuid
 import re
-
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
 
+
 def normalizar_telefono(value):
 	return re.sub(r'\D', '', value or '')
 
-#Modelo del Registro
+#Modelo : Registro (OK)
 class Registro(models.Model):
 	class Estado(models.TextChoices):
 		PENDIENTE = 'pendiente', 'Pendiente'
 		VALIDADA = 'validada', 'Validada'
 		OBSERVADA = 'observada', 'Observada'
 		ANULADA = 'anulada', 'Anulada'
-
 	codigo = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
 	fecha = models.DateField()
-	item = models.ForeignKey('CoordinadorApp.Item', on_delete=models.PROTECT, related_name='registros')
-	periodo = models.ForeignKey('CoordinadorApp.Periodo', on_delete=models.PROTECT, related_name='registros')
+	item = models.ForeignKey('CoordinadorApp.Item',on_delete=models.PROTECT,db_column='ITEM',related_name='registros',)
+	periodo = models.ForeignKey('CoordinadorApp.Periodo',on_delete=models.PROTECT,db_column='PERIODO',related_name='registros',)
 	descripcion = models.CharField(max_length=240)
 	contacto = models.CharField(max_length=160, blank=True)
 	telefono = models.IntegerField(blank=True, null=True)
 	accion = models.TextField(blank=True)
-	autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='registros')
+	autor = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,db_column='AUTOR',related_name='registros',)
 	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.PENDIENTE)
 	incluir_en_agenda = models.BooleanField(default=False)
 	creado = models.DateTimeField(auto_now_add=True)
-	catalogo = models.ForeignKey(
-		'AdminApp.Catalogo', on_delete=models.PROTECT, related_name='registros_catalogo',
-		null=True,
-	)
+	fecha_cierre = models.DateTimeField(db_column='FECHA_CIERRE')
+	genera_puntaje = models.CharField(max_length=45, null=True, blank=True, db_column='GENERA_PUNTAJE')
 
 	class Meta:
 		ordering = ['-fecha', '-creado']
@@ -52,60 +49,36 @@ class Registro(models.Model):
 				raise ValueError('El código de registro es inmutable.')
 		return super().save(*args, **kwargs)
 
-
-#Modelo Atención Social
-class Solicitante(models.Model):
-	identificador = models.CharField(max_length=32)
-	nombre = models.CharField(max_length=160)
-	delegacion = models.ForeignKey(
-		'AdminApp.Delegacion',
-		on_delete=models.PROTECT,
-		related_name='solicitantes',
-	)
+#Modelo Beneficiado (EX Solicitante) (OK)
+class Beneficiado(models.Model):
+	nombre = models.CharField(max_length=50, db_column='NOMBRE')
+	apellido = models.CharField(max_length=50, db_column='APELLIDO')
+	telefono = models.IntegerField(db_column='TELEFONO')
+	email = models.CharField(max_length=90, null=True, blank=True, db_column='EMAIL')
 
 	class Meta:
-		ordering = ['nombre', 'identificador']
-		constraints = [
-			models.UniqueConstraint(
-				fields=['delegacion', 'identificador'],
-				name='solicitante_identificador_unico_por_delegacion',
-			),
-		]
-		verbose_name = 'solicitante'
-		verbose_name_plural = 'solicitantes'
+		ordering = ['nombre']
+		db_table = 'beneficiado'
+		verbose_name = "beneficiado"
+		verbose_name_plural = "Beneficiados"
 
-	def save(self, *args, **kwargs):
-		self.identificador = self.identificador.strip().upper()
-		self.nombre = self.nombre.strip()
-		return super().save(*args, **kwargs)
-
-	def __str__(self):
-		return f'{self.nombre} ({self.identificador})'
-
-
+#Modelo : Vecino (OK)
 class Vecino(models.Model):
-	nombre = models.CharField(max_length=160)
-	telefono = models.CharField(max_length=32)
-	direccion = models.CharField(max_length=255, blank=True)
-	territorio = models.CharField(max_length=160)
-	delegacion = models.ForeignKey(
-		'AdminApp.Delegacion',
-		on_delete=models.PROTECT,
-		related_name='vecinos',
-	)
-	solicitante = models.OneToOneField(
-		Solicitante,
-		on_delete=models.SET_NULL,
-		null=True,
-		blank=True,
-		related_name='vecino',
-	)
+	nombre = models.CharField(max_length=100, db_column='NOMBRE')
+	telefono = models.CharField(max_length=15, null=True, blank=True, db_column='TELEFONO')
+	direccion = models.CharField(max_length=250, null=True, blank=True, db_column='DIRECCION')
+	territorio = models.ForeignKey('Territorio',on_delete=models.PROTECT,db_column='TERRITORIO',related_name='vecinos',)
+	delegacion = models.ForeignKey('AdminApp.Delegacion',on_delete=models.PROTECT,db_column='DELEGACION',related_name='vecinos',)
+	cargo_jv = models.ForeignKey('CargoJV',on_delete=models.PROTECT,db_column='CARGO_JV',related_name='vecinos',)
+	junta_vecino = models.ForeignKey('JuntaVecino',on_delete=models.PROTECT,db_column='JUNTA_VECINO',related_name='vecinos',)
+	solicitante = models.OneToOneField(Beneficiado,on_delete=models.PROTECT,null=True,blank=True,related_name='vecino',)
 	activo = models.BooleanField(default=True)
 	creado = models.DateTimeField(auto_now_add=True)
 	actualizado = models.DateTimeField(auto_now=True)
 
 	class Meta:
-		ordering = ['nombre', 'pk']
+		db_table = 'vecino'
+		ordering = ['nombre']
 		indexes = [
 			models.Index(fields=['delegacion', 'activo', 'nombre']),
 			models.Index(fields=['delegacion', 'telefono']),
@@ -116,50 +89,64 @@ class Vecino(models.Model):
 	def clean(self):
 		errors = {}
 		self.nombre = self.nombre.strip()
-		self.telefono = self.telefono.strip()
-		self.territorio = self.territorio.strip()
 		if len(self.nombre) < 2:
 			errors['nombre'] = 'Ingresa un nombre válido.'
-		phone_digits = normalizar_telefono(self.telefono)
-		if not 7 <= len(phone_digits) <= 15:
-			errors['telefono'] = 'Ingresa un teléfono válido.'
-		if not self.territorio:
+		if self.telefono:
+			self.telefono = self.telefono.strip()
+			phone_digits = normalizar_telefono(self.telefono)
+			if not 7 <= len(phone_digits) <= 15:
+				errors['telefono'] = 'Ingresa un teléfono válido.'
+		if not self.territorio_id:
 			errors['territorio'] = 'Ingresa un territorio.'
 		if self.solicitante_id and self.solicitante.delegacion_id != self.delegacion_id:
 			errors['solicitante'] = 'El solicitante debe pertenecer a la misma delegación.'
+		if self.territorio_id and self.territorio.delegacion_id != self.delegacion_id:
+			errors['territorio'] = 'El territorio debe pertenecer a la misma delegación.'
+		if self.cargo_jv_id and self.junta_vecino_id:
+			if self.cargo_jv.junta_vecino_id != self.junta_vecino_id:
+				errors['cargo_jv'] = 'El cargo debe pertenecer a la junta seleccionada.'
 		if errors:
 			raise ValidationError(errors)
 
 	def save(self, *args, **kwargs):
 		self.nombre = self.nombre.strip()
-		self.telefono = self.telefono.strip()
-		self.territorio = self.territorio.strip()
+		if self.telefono:
+			self.telefono = self.telefono.strip()
 		return super().save(*args, **kwargs)
 
 	def __str__(self):
 		return self.nombre
 
-
-class JuntaVecinos(models.Model):
-	nombre = models.CharField(max_length=160)
-	domicilio_legal = models.CharField(max_length=255)
-	territorio = models.CharField(max_length=160)
-	delegacion = models.ForeignKey(
-		'AdminApp.Delegacion',
-		on_delete=models.PROTECT,
-		related_name='juntas_vecinos',
-	)
-	cantidad_socios_activos = models.PositiveIntegerField(null=True, blank=True)
-	fecha_constitucion = models.DateField()
-	numero_personalidad_juridica = models.CharField(max_length=80)
-	fecha_inscripcion = models.DateField()
-	numero_registro = models.CharField(max_length=80)
-	activo = models.BooleanField(default=True)
-	creado = models.DateTimeField(auto_now_add=True)
-	actualizado = models.DateTimeField(auto_now=True)
+#Modelo : Territorio (OK)
+class Territorio(models.Model):
+	nombre = models.CharField(max_length=100, db_column='NOMBRE')
+	delegacion = models.ForeignKey('AdminApp.Delegacion',on_delete=models.PROTECT,db_column='DELEGACION',related_name='territorios',)
 
 	class Meta:
-		ordering = ['nombre', 'pk']
+		db_table = 'territorio'
+		ordering = ['nombre']
+		verbose_name = 'territorio'
+		verbose_name_plural = 'territorios'
+
+	def __str__(self):
+		return self.nombre
+
+#Modelo : JuntaVecino (OK)
+class JuntaVecino(models.Model):
+	nombre = models.CharField(max_length=100, db_column='NOMBRE')
+	domicilio_legal = models.CharField(max_length=100, db_column='DOMICILIO_LEGAL')
+	socios_activos = models.IntegerField(null=True, blank=True, db_column='SOCIOS_ACTIVOS')
+	fecha_constitucion = models.DateTimeField(null=True, blank=True, db_column='FECHA_CONSTITUCION',)
+	numero_rpj = models.IntegerField(db_column='NUMERO_RPJ')
+	fecha_ingreso = models.DateTimeField(null=True, blank=True, db_column='FECHA_INGRESO')
+	numero_registro = models.IntegerField(null=True, blank=True, db_column='NUMERO_REGISTRO')
+	territorio = models.ForeignKey(Territorio,on_delete=models.PROTECT,db_column='TERRITORIO',related_name='juntas_vecinos',)
+	delegacion = models.ForeignKey('AdminApp.Delegacion',on_delete=models.PROTECT,db_column='DELEGACION',related_name='juntas_vecinos',)
+	creado = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		db_table = 'junta_vecino'
+		ordering = ['nombre']
 		indexes = [
 			models.Index(fields=['delegacion', 'activo', 'nombre']),
 			models.Index(fields=['numero_personalidad_juridica']),
@@ -171,14 +158,18 @@ class JuntaVecinos(models.Model):
 		errors = {}
 		self.nombre = self.nombre.strip()
 		self.domicilio_legal = self.domicilio_legal.strip()
-		self.territorio = self.territorio.strip()
 		self.numero_personalidad_juridica = self.numero_personalidad_juridica.strip()
-		self.numero_registro = self.numero_registro.strip()
 		if len(self.nombre) < 2:
 			errors['nombre'] = 'Ingresa un nombre válido.'
 		if self.cantidad_socios_activos is not None and self.cantidad_socios_activos < 0:
 			errors['cantidad_socios_activos'] = 'La cantidad no puede ser negativa.'
-		if self.fecha_inscripcion and self.fecha_constitucion and self.fecha_inscripcion < self.fecha_constitucion:
+		if self.territorio_id and self.territorio.delegacion_id != self.delegacion_id:
+			errors['territorio'] = 'El territorio debe pertenecer a la misma delegación.'
+		if (
+			self.fecha_inscripcion
+			and self.fecha_constitucion
+			and self.fecha_inscripcion < self.fecha_constitucion.date()
+		):
 			errors['fecha_inscripcion'] = 'La inscripción no puede ser anterior a la constitución.'
 		if errors:
 			raise ValidationError(errors)
@@ -186,172 +177,26 @@ class JuntaVecinos(models.Model):
 	def save(self, *args, **kwargs):
 		self.nombre = self.nombre.strip()
 		self.domicilio_legal = self.domicilio_legal.strip()
-		self.territorio = self.territorio.strip()
 		self.numero_personalidad_juridica = self.numero_personalidad_juridica.strip()
-		self.numero_registro = self.numero_registro.strip()
 		return super().save(*args, **kwargs)
 
 	def __str__(self):
 		return self.nombre
 
-
-class VecinoJunta(models.Model):
-	vecino = models.ForeignKey(
-		Vecino,
-		on_delete=models.PROTECT,
-		related_name='juntas_relacionadas',
-	)
-	junta = models.ForeignKey(
-		JuntaVecinos,
-		on_delete=models.PROTECT,
-		related_name='vecinos_relacionados',
-	)
-	es_dirigente = models.BooleanField(default=False)
-	creado = models.DateTimeField(auto_now_add=True)
-	actualizado = models.DateTimeField(auto_now=True)
+#Modelo : CargoJv (OK)
+class CargoJv(models.Model):
+	nombre = models.CharField(max_length=100, db_column='NOMBRE')
+	permisos = models.CharField(max_length=500, db_column='PERMISOS')
+	junta_vecino = models.ForeignKey(JuntaVecino,on_delete=models.PROTECT,db_column='JUNTA_VECINO',related_name='cargos',)
 
 	class Meta:
-		ordering = ['vecino__nombre', 'junta__nombre', 'pk']
-		constraints = [
-			models.UniqueConstraint(
-				fields=['vecino', 'junta'],
-				name='vecino_junta_unica',
-			),
-		]
-		verbose_name = 'relación vecino-junta'
-		verbose_name_plural = 'relaciones vecino-junta'
-
-
-class AtencionSocial(models.Model):
-	usuario = models.ForeignKey(
-		settings.AUTH_USER_MODEL,
-		on_delete=models.PROTECT,
-		related_name='atenciones_sociales',
-	)
-	solicitante = models.ForeignKey(
-		Solicitante,
-		on_delete=models.PROTECT,
-		related_name='atenciones',
-		null=True,
-		blank=True,
-	)
-	delegacion = models.ForeignKey(
-		'AdminApp.Delegacion',
-		on_delete=models.PROTECT,
-		related_name='atenciones_sociales',
-		null=True,
-		blank=True,
-	)
-	tipo_atencion = models.CharField(max_length=120)
-	tipo_atencion_catalogo = models.ForeignKey(
-		'AdminApp.TipoAtencion',
-		on_delete=models.PROTECT,
-		related_name='atenciones_sociales',
-		null=True,
-		blank=True,
-	)
-	sub_atencion = models.ForeignKey(
-		'AdminApp.SubAtencion',
-		on_delete=models.PROTECT,
-		related_name='atenciones_sociales',
-		null=True,
-		blank=True,
-	)
-	descripcion = models.TextField(blank=True)
-	fecha = models.DateField()
-	resultado = models.TextField(blank=True)
-	observaciones = models.TextField(blank=True)
-	creado = models.DateTimeField(auto_now_add=True)
-
-	class Meta:
-		ordering = ['-fecha']
-		db_table = "atencion_social"
-		verbose_name = "Atención_Social"
-		verbose_name_plural = "Atenciones_Sociales"
+		db_table = 'cargo_jv'
+		ordering = ['nombre']
+		verbose_name = 'cargo de junta de vecinos'
+		verbose_name_plural = 'cargos de junta de vecinos'
 
 	def __str__(self):
-		return f'Atención {self.pk} - {self.tipo_atencion}'
-
-	def clean(self):
-		errors = {}
-		if bool(self.tipo_atencion_catalogo_id) != bool(self.sub_atencion_id):
-			errors['sub_atencion'] = 'El tipo y la Sub Atención deben seleccionarse juntos.'
-		elif (
-			self.tipo_atencion_catalogo_id
-			and self.sub_atencion.tipo_atencion_id != self.tipo_atencion_catalogo_id
-		):
-			errors['sub_atencion'] = 'La Sub Atención no corresponde al tipo seleccionado.'
-
-		if bool(self.solicitante_id) != bool(self.delegacion_id):
-			errors['delegacion'] = 'El solicitante y la delegación deben asociarse juntos.'
-		elif (
-			self.solicitante_id
-			and self.solicitante.delegacion_id != self.delegacion_id
-		):
-			errors['solicitante'] = 'El solicitante no pertenece a la delegación seleccionada.'
-
-		if errors:
-			raise ValidationError(errors)
+		return self.nombre
 
 
-class CasoSocial(models.Model):
-	codigo = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-	atencion_social = models.OneToOneField(
-		AtencionSocial,
-		on_delete=models.CASCADE,
-		related_name='caso_social',
-	)
 
-	class Meta:
-		ordering = ['-atencion_social__fecha', '-pk']
-		verbose_name = 'caso social'
-		verbose_name_plural = 'casos sociales'
-
-	def __str__(self):
-		return f'Caso {self.codigo} - {self.atencion_social.tipo_atencion}'
-
-	def save(self, *args, **kwargs):
-		if self.pk:
-			original_code = type(self).objects.filter(pk=self.pk).values_list(
-				'codigo', flat=True,
-			).first()
-			if original_code and original_code != self.codigo:
-				raise ValueError('El código de caso social es inmutable.')
-		return super().save(*args, **kwargs)
-
-
-#Modelo Gestion Atención
-class GestionAtencion(models.Model):
-	codigo = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-	atencion = models.ForeignKey(AtencionSocial, on_delete=models.CASCADE, related_name='gestiones')
-	numero_gestion = models.PositiveSmallIntegerField()
-	fecha = models.DateField()
-	observaciones = models.TextField(blank=True)
-
-	class Meta:
-		ordering = ['atencion', 'numero_gestion']
-		constraints = [
-			models.UniqueConstraint(
-				fields=['atencion', 'numero_gestion'],
-				name='gestion_numero_unico_por_atencion',
-			),
-			models.CheckConstraint(
-				condition=models.Q(numero_gestion__gte=1, numero_gestion__lte=3),
-				name='gestion_numero_entre_1_y_3',
-			),
-		]
-		db_table = "gestion_atencion"
-		verbose_name = "Gestión Atención"
-		verbose_name_plural = "Gestión de Atenciones"
-
-	def __str__(self):
-		return f'Gestión {self.numero_gestion} de atención {self.atencion}'
-
-	def save(self, *args, **kwargs):
-		if self.pk:
-			original_code = type(self).objects.filter(pk=self.pk).values_list(
-				'codigo', flat=True,
-			).first()
-			if original_code and original_code != self.codigo:
-				raise ValueError('El código de atención es inmutable.')
-		return super().save(*args, **kwargs)

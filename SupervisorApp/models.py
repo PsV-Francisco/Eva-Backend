@@ -1,11 +1,11 @@
 import uuid
 from pathlib import Path
 from typing import Optional
-
 from django.conf import settings
 from django.db import models
 from DelegadoApp.models import Compromiso
-from FuncionarioApp.models import GestionAtencion, Registro
+from CoordinadorApp.models import GestionAtencion
+from FuncionarioApp.models import Registro
 from SupervisorApp.files import validate_evidence_file
 
 
@@ -14,31 +14,34 @@ def evidence_upload_path(instance, filename):
 	return f'evidencias/{uuid.uuid4().hex}{extension}'
 
 
-#Modelo Evidencia
+#Modelo : Evidencia (OK)
 class Evidencia(models.Model):
 	#Creación de la clase Estado para tener un seleccionable en el atributo estado.
 	class Estado(models.TextChoices):
 		PENDIENTE = 'pendiente', 'Pendiente'
 		APROBADA = 'aprobada', 'Aprobada'
 		RECHAZADA = 'rechazada', 'Rechazada'
-
 	codigo = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
 	archivo = models.FileField(upload_to=evidence_upload_path)
-	registro = models.ForeignKey('FuncionarioApp.Registro', on_delete=models.CASCADE, related_name='evidencias_registros', null=True, blank=True)
-	compromiso = models.ForeignKey('DelegadoApp.Compromiso',on_delete=models.CASCADE, related_name='evidencias_compromiso', null=True, blank=True)
-	gestion_atencion = models.ForeignKey(
-		'FuncionarioApp.GestionAtencion',
-		on_delete=models.CASCADE,
-		related_name='evidencias',
-		null=True,
-		blank=True,
-	)
-	supervisor = models.ForeignKey(
-		settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
-		related_name='evidencias_supervisor', null=True, blank=True,
-	)
+	tipo_archivo = models.CharField(max_length=50, blank=True, db_column='TIPO_ARCHIVO')
 	fecha = models.DateTimeField(auto_now_add=True)
 	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.PENDIENTE)
+	#FK del Registro
+	registro = models.ForeignKey('FuncionarioApp.Registro', on_delete=models.CASCADE, related_name='evidencias_registros', null=True, blank=True)
+	autor_registro = models.IntegerField(null=True, blank=True, db_column='AUTOR_REGISTRO')
+	item_registro = models.IntegerField(null=True, blank=True, db_column='ITEM_REGISTRO')
+	periodo_registro = models.IntegerField(null=True, blank=True, db_column='PERIODO_REGISTRO')
+	#FK del Compromiso
+	compromiso = models.ForeignKey('DelegadoApp.Compromiso',on_delete=models.CASCADE, related_name='evidencias_compromiso', null=True, blank=True)
+	responsable_compromiso = models.IntegerField(null=True, blank=True, db_column='RESPONSABLE_COMPROMISO',)
+	agenda_compromiso = models.IntegerField(null=True, blank=True, db_column='AGENDA_COMPROMISO')
+	agenda_periodo_compromiso = models.IntegerField(null=True, blank=True, db_column='AGENDA_PERIODO_COMPROMISO',)
+	agenda_delegacion_compromiso = models.IntegerField(null=True, blank=True, db_column='AGENDA_DELEGACION_COMPROMISO',)
+	supervisor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,related_name='evidencias_supervisor', null=True, blank=True,)
+	autor = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,db_column='AUTOR',related_name='evidencias_autor',null=True,blank=True,)
+	
+	
+	
 
 	class Meta:
 		ordering = ['-fecha']
@@ -82,22 +85,31 @@ class Evidencia(models.Model):
 		return super().save(*args, **kwargs)
 	
 
-#Modelo de Revisión de Evidencia
+#Modelo : RevisionEvidencia (OK)
 class RevisionEvidencia(models.Model):
 	class Decision(models.TextChoices):
 		APROBADA = 'aprobada', 'Aprobada'
 		RECHAZADA = 'rechazada', 'Rechazada'
 		CORRECCION = 'correccion', 'Solicitar corrección'
 
-	evidencia = models.ForeignKey(Evidencia, on_delete=models.CASCADE, related_name='revisiones')
-	verificador = models.ForeignKey(
-		settings.AUTH_USER_MODEL,
-		on_delete=models.PROTECT,
-		related_name='revisiones_evidencia',
-	)
-	decision = models.CharField(max_length=16, choices=Decision.choices)
-	observaciones = models.TextField(blank=True)
+	verificador = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='revisiones_evidencia',)
+	decision = models.CharField(max_length=100, choices=Decision.choices, db_column='DECISION',)
+	observaciones = models.CharField(max_length=200, blank=True, db_column='OBSERVACIONES',)
 	fecha = models.DateTimeField(auto_now_add=True)
+	#FK de Evidencia
+	evidencia = models.ForeignKey(Evidencia, on_delete=models.CASCADE, related_name='revisiones')
+	autor_evidencia = models.IntegerField(null=True, blank=True, db_column='AUTOR_EVIDENCIA')
+	#FK del registro en la evidencia
+	registro_evidencia = models.IntegerField(null=True, blank=True, db_column='REGISTRO_EVIDENCIA',)
+	registro_autor_evidencia = models.IntegerField(null=True, blank=True, db_column='REGISTRO_AUTOR_EVIDENCIA',)
+	registro_item_evidencia = models.IntegerField(null=True, blank=True, db_column='REGISTRO_ITEM_EVIDENCIA',)
+	registro_periodo_evidencia = models.IntegerField(null=True, blank=True, db_column='REGISTRO_PERIODO_EVIDENCIA',)
+	#FK del Compromiso en la Evidencia
+	compromiso_evidencia = models.IntegerField(null=True, blank=True, db_column='COMPROMISO_EVIDENCIA',)
+	compromiso_responsable_evidencia = models.IntegerField(null=True, blank=True, db_column='COMPROMISO_RESPONSABLE_EVIDENCIA',)
+	compromiso_agenda_evidencia = models.IntegerField(null=True, blank=True, db_column='COMPROMISO_AGENDA_EVIDENCIA',)
+	compromiso_periodo_agenda_evidencia = models.IntegerField(null=True, blank=True, db_column='COMPROMISO_PERIODO_AGENDA_EVIDENCIA',)
+	compromiso_delegacion_agenda_evidencia = models.IntegerField(null=True, blank=True, db_column='COMPROMISO_DELEGACION_AGENDA_EVIDENCIA',)
 
 	class Meta:
 		ordering = ['-fecha']
