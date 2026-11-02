@@ -67,6 +67,9 @@ h1, h2, h3 { font-family: Arial, Helvetica, sans-serif; letter-spacing: 0; }
 .maintainer-pagination { justify-content: center; margin-top: 1rem; color: var(--muted); font-size: .82rem; }
 .maintainer-pagination .btn { text-decoration: none; }
 .table td { overflow-wrap: anywhere; }
+.coordinator-table-scroll { width: 100%; max-width: 100%; overflow-x: auto; }
+.coordinator-table { width: max-content; min-width: 100%; }
+.coordinator-table th, .coordinator-table td { white-space: nowrap; overflow-wrap: normal; word-break: normal; }
 .form-label { color: #333; font-size: .82rem; font-weight: 700; }
 .form-control, .form-select { border-color: #ccc; border-radius: .3rem; }
 .form-control:focus, .form-select:focus { border-color: var(--accent); box-shadow: 0 0 0 .2rem #ad000026; }

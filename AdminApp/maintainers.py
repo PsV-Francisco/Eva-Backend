@@ -822,9 +822,9 @@ def maintainer(
             if closed_period_authorization and selected_period and selected_period.estado == 'cerrado':
                 authorization = authorization_for(request.user, selected_period, funcionario=selected_user)
                 if not authorization:
-                    form.add_error(None, 'El perÃ­odo estÃ¡ cerrado y no existe una autorizaciÃ³n vigente para este funcionario.')
+                    form.add_error(None, 'El período está cerrado y no existe una autorización vigente para este funcionario.')
             if form.errors:
-                messages.error(request, 'No existe una autorizaciÃ³n vigente para modificar esta meta.')
+                messages.error(request, 'No existe una autorización vigente para modificar esta meta.')
             else:
                 with transaction.atomic():
                     record = form.save()
@@ -844,7 +844,7 @@ def maintainer(
                     total = Desempeno.objects.filter(usuario_id=record.usuario_id, periodo_id=record.periodo_id).aggregate(total=Sum('ponderacion'))['total'] or 0
                     if total != 100:
                         relation = 'menor' if total < 100 else 'mayor'
-                        messages.warning(request, f'Advertencia: la suma de ponderaciones de este funcionario en el perÃ­odo es {total:.2f}%, {relation} a 100%.')
+                        messages.warning(request, f'Advertencia: la suma de ponderaciones de este funcionario en el período es {total:.2f}%, {relation} a 100%.')
                 messages.success(request, 'Los cambios se guardaron correctamente.')
                 return redirect(request.path)
         messages.error(request, 'Revisa los campos obligatorios y sus valores.')

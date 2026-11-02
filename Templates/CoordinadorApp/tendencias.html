@@ -15,7 +15,7 @@
     .trend-label { fill: #333; font-size: 12px; }
     .trend-legend { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: .75rem; }
 </style>
-<div class="dashboard-layout"><div class="dashboard-main">
+<div class="dashboard-layout">{% include 'includes/role_sidebar.html' %}<div class="dashboard-main">
 <section class="content-section">
     <div class="section-head">
         <div>
@@ -92,8 +92,8 @@
 </section>
 <section class="content-section">
     <h2>Datos por período</h2>
-    <div class="table-responsive">
-        <table class="table">
+    <div class="table-responsive coordinator-table-scroll">
+        <table class="table coordinator-table">
             <caption>Promedio de avance real y porcentaje sobre el umbral. Los funcionarios sin ítems no entran en los promedios y se contabilizan aparte.</caption>
             <thead><tr><th>Período</th><th>Funcionarios considerados</th><th>Promedio de avance real</th><th>Funcionarios sobre el umbral</th><th>Funcionarios sin ítems</th></tr></thead>
             <tbody>

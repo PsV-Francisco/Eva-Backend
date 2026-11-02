@@ -182,7 +182,7 @@ class UsuarioUpdateForm(BootstrapFormMixin, forms.ModelForm):
 
 class ParametroSistemaForm(BootstrapFormMixin, forms.Form):
     max_dias_autorizacion = forms.IntegerField(
-        label='MÃ¡ximo de dÃ­as de autorizaciÃ³n', min_value=1, max_value=365,
+        label='Máximo de días de autorización', min_value=1, max_value=365,
         required=False,
     )
     tope_cumplimiento = forms.DecimalField(

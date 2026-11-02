@@ -168,10 +168,7 @@ def _periods_view(request):
         'editing_period': instance if is_coordinator else None,
         'can_manage_periods': is_coordinator,
         'can_reopen_periods': can_reopen,
-        'sidebar_modules': (
-            'Metas e indicadores', 'Avance esperado', 'Informes de gestión',
-            'Tendencias históricas', 'Actividades', 'Gestión de periodos',
-        ),
+        'sidebar_modules': _coordinator_management_modules(),
         'periodo_count': periodos.count(), 'periodos_abiertos': periodos.filter(estado=Periodo.Estado.ABIERTO).count(),
         'desempeno_count': Desempeno.objects.count(),
     })
@@ -215,10 +212,10 @@ def home(request):
     summary = resumen_cumplimiento(performances)
     has_items = bool(summary['items'])
     return render(request, 'FuncionarioApp/cumplimiento.html', {
-        'sgr_role': 'CoordinaciÃ³n',
+        'sgr_role': 'Coordinación',
         'sidebar_modules': (
             {'label': 'Tablero Personal', 'url_name': 'coordinador:home'},
-            {'label': 'GestiÃ³n de perÃ­odos', 'url_name': 'coordinador:periodos'},
+            {'label': 'Gestión de períodos', 'url_name': 'coordinador:periodos'},
         ),
         'periodos': assigned_periods,
         'periodo_seleccionado': period,
@@ -238,7 +235,7 @@ def _coordinator_management_modules():
         {'label': 'Gestión de metas', 'url_name': 'coordinador:metas'},
         {'label': 'Funciones por cargo', 'url_name': 'coordinador:cargos_funciones'},
         {'label': 'Ponderaciones', 'url_name': 'coordinador:ponderaciones'},
-        {'label': 'Informes consolidados', 'url_name': 'coordinador:informes'},
+        {'label': 'Informes de gestión', 'url_name': 'coordinador:informes'},
         {'label': 'Tendencias históricas', 'url_name': 'coordinador:tendencias'},
         {'label': 'Solicitar autorización', 'url_name': 'coordinador:solicitudes_autorizacion'},
     )
@@ -263,7 +260,7 @@ def solicitudes_autorizacion(request):
             solicitud.save(update_fields=['estado', 'decidida_en'])
             registrar_historial(
                 actor=request.user,
-                action='Cancelar solicitud de autorizaciÃ³n',
+                action='Cancelar solicitud de autorización',
                 entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}',
                 before=before,
                 after=_authorization_snapshot(solicitud),
@@ -280,7 +277,7 @@ def solicitudes_autorizacion(request):
             form.save_m2m()
             registrar_historial(
                 actor=request.user,
-                action='Solicitar autorizaciÃ³n de perÃ­odo',
+                action='Solicitar autorización de período',
                 entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}',
                 after=_authorization_snapshot(solicitud),
                 period=solicitud.periodo,
@@ -293,7 +290,7 @@ def solicitudes_autorizacion(request):
         solicitante=request.user,
     ).select_related('periodo').prefetch_related('funcionarios')
     return render(request, 'CoordinadorApp/solicitudes_autorizacion.html', {
-        'sgr_role': 'CoordinaciÃ³n',
+        'sgr_role': 'Coordinación',
         'form': form,
         'solicitudes': solicitudes,
         'sidebar_modules': _coordinator_management_modules(),
@@ -455,7 +452,7 @@ def _consolidated_report_rows(request):
         classification = clasificar_umbral(
             summary['avance_real'], tiene_items=bool(summary['items']), umbral=threshold,
         )
-        delegation = user.delegacion.nombre if user.delegacion_id else 'Sin delegaciÃ³n'
+        delegation = user.delegacion.nombre if user.delegacion_id else 'Sin delegación'
         cargo = user.cargo.nombre if user.cargo_id else 'Sin cargo'
         group = summaries[(delegation, cargo)]
         group['delegacion'] = delegation
@@ -493,20 +490,20 @@ def informes(request):
         output = StringIO(newline='')
         writer = csv.writer(output)
         writer.writerow(['Informe consolidado'])
-        writer.writerow(['PerÃ­odo', period.nombre if period else ''])
+        writer.writerow(['Período', period.nombre if period else ''])
         writer.writerow([])
-        writer.writerow(['Detalle', 'DelegaciÃ³n', 'Cargo', 'Funcionario', 'Avance real', 'Avance esperado', 'ClasificaciÃ³n', 'Ãtems'])
+        writer.writerow(['Detalle', 'Delegación', 'Cargo', 'Funcionario', 'Avance real', 'Avance esperado', 'Clasificación', 'Ítems'])
         for row in rows:
             summary = row['summary']
             writer.writerow([
                 _csv_safe(''), _csv_safe(row['delegacion']), _csv_safe(row['cargo']),
                 _csv_safe(row['usuario'].get_full_name() or row['usuario'].email),
                 summary['avance_real'], summary['avance_esperado'],
-                _csv_safe(row['clasificacion'] or 'Sin Ã­tems'), len(summary['items']),
+                _csv_safe(row['clasificacion'] or 'Sin ítems'), len(summary['items']),
             ])
         writer.writerow([])
         writer.writerow(['Resumen consolidado'])
-        writer.writerow(['DelegaciÃ³n', 'Cargo', 'Promedio avance real', 'Sobre umbral', 'Bajo umbral', 'Sin Ã­tems'])
+        writer.writerow(['Delegación', 'Cargo', 'Promedio avance real', 'Sobre umbral', 'Bajo umbral', 'Sin ítems'])
         for summary in summaries:
             writer.writerow([_csv_safe(summary['delegacion']), _csv_safe(summary['cargo']), summary['promedio_avance_real'], summary['sobre'], summary['bajo'], summary['sin_items']])
         registrar_historial(
@@ -524,7 +521,7 @@ def informes(request):
         return response
     page = Paginator(rows, 25).get_page(request.GET.get('page'))
     return render(request, 'CoordinadorApp/informes.html', {
-        'sgr_role': 'CoordinaciÃ³n',
+        'sgr_role': 'Coordinación',
         'sidebar_modules': _coordinator_management_modules(),
         'page_obj': page,
         'summaries': summaries,

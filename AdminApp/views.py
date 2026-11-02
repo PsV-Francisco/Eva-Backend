@@ -367,7 +367,7 @@ def solicitudes_autorizacion(request):
                 solicitud.vence_en = form.cleaned_data['vence_en']
                 solicitud.decidida_en = timezone.now()
                 solicitud.save(update_fields=['estado', 'aprobador', 'comentario_aprobador', 'vence_en', 'decidida_en'])
-                registrar_historial(actor=request.user, action='Aprobar autorizaciÃ³n de perÃ­odo', entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}', before=before, after=_authorization_snapshot(solicitud), period=solicitud.periodo)
+                registrar_historial(actor=request.user, action='Aprobar autorización de período', entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}', before=before, after=_authorization_snapshot(solicitud), period=solicitud.periodo)
                 messages.success(request, 'La autorización quedó vigente hasta la fecha indicada.')
                 return redirect('administracion:solicitudes-autorizacion')
             messages.error(request, 'Revisa la fecha de vencimiento y el comentario.')
@@ -379,7 +379,7 @@ def solicitudes_autorizacion(request):
                 solicitud.comentario_aprobador = form.cleaned_data['comentario']
                 solicitud.decidida_en = timezone.now()
                 solicitud.save(update_fields=['estado', 'aprobador', 'comentario_aprobador', 'decidida_en'])
-                registrar_historial(actor=request.user, action='Rechazar autorizaciÃ³n de perÃ­odo', entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}', before=before, after=_authorization_snapshot(solicitud), period=solicitud.periodo)
+                registrar_historial(actor=request.user, action='Rechazar autorización de período', entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}', before=before, after=_authorization_snapshot(solicitud), period=solicitud.periodo)
                 messages.success(request, 'La solicitud fue rechazada.')
                 return redirect('administracion:solicitudes-autorizacion')
             messages.error(request, 'El rechazo requiere un comentario.')
@@ -392,7 +392,7 @@ def solicitudes_autorizacion(request):
                 solicitud.revocada_en = timezone.now()
                 solicitud.decidida_en = timezone.now()
                 solicitud.save(update_fields=['estado', 'aprobador', 'comentario_aprobador', 'revocada_en', 'decidida_en'])
-                registrar_historial(actor=request.user, action='Revocar autorizaciÃ³n de perÃ­odo', entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}', before=before, after=_authorization_snapshot(solicitud), period=solicitud.periodo)
+                registrar_historial(actor=request.user, action='Revocar autorización de período', entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}', before=before, after=_authorization_snapshot(solicitud), period=solicitud.periodo)
                 messages.success(request, 'La autorización fue revocada.')
                 return redirect('administracion:solicitudes-autorizacion')
             messages.error(request, 'La revocación requiere un comentario.')
@@ -406,11 +406,11 @@ def solicitudes_autorizacion(request):
             and solicitud.creada_en <= now - timedelta(days=3)
         )
     return render(request, 'AdminApp/solicitudes_autorizacion.html', {
-        'sgr_role': 'AdministraciÃ³n',
+        'sgr_role': 'Administración',
         'solicitudes': solicitudes,
         'sidebar_modules': (
             {'label': 'Usuarios', 'url_name': 'administracion:home'},
-            {'label': 'Solicitudes de autorizaciÃ³n', 'url_name': 'administracion:solicitudes-autorizacion'},
+            {'label': 'Solicitudes de autorización', 'url_name': 'administracion:solicitudes-autorizacion'},
         ),
     })
 

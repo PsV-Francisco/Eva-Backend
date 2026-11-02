@@ -46,7 +46,7 @@ def expire_authorizations():
         authorization.save(update_fields=['estado'])
         registrar_historial(
             actor=authorization.aprobador or authorization.solicitante,
-            action='Vencer autorizaciÃ³n de perÃ­odo',
+            action='Vencer autorización de período',
             entity=f'SolicitudAutorizacionPeriodo:{authorization.pk}',
             before=before,
             after=_authorization_snapshot(authorization),
@@ -79,7 +79,7 @@ def record_authorization_use(authorization, actor):
         authorization.save(update_fields=['usada_en'])
         registrar_historial(
             actor=actor,
-            action='Usar autorizaciÃ³n de perÃ­odo por primera vez',
+            action='Usar autorización de período por primera vez',
             entity=f'SolicitudAutorizacionPeriodo:{authorization.pk}',
             before=before,
             after=_authorization_snapshot(authorization),

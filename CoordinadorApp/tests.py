@@ -162,8 +162,8 @@ class ConsolidatedReportTests(TestCase):
         User = get_user_model()
         self.coordinator = User.objects.create_user(email='report-coord@test', password='password', cargo=Cargo.objects.create(nombre='coordinador'))
         self.cargo = Cargo.objects.create(nombre='analista')
-        self.delegation = Delegacion.objects.create(nombre='DelegaciÃ³n Informe')
-        self.period = Periodo.objects.create(nombre='PerÃ­odo informe abierto', fecha_inicio='2026-01-01', fecha_fin='2026-01-31')
+        self.delegation = Delegacion.objects.create(nombre='Delegación Informe')
+        self.period = Periodo.objects.create(nombre='Período informe abierto', fecha_inicio='2026-01-01', fecha_fin='2026-01-31')
         self.client.force_login(self.coordinator)
 
     def create_employee(self, index, **extra):
@@ -173,15 +173,30 @@ class ConsolidatedReportTests(TestCase):
 
     def test_default_period_and_filters_render_consolidated_summary(self):
         employee = self.create_employee(1)
-        function = Funcion.objects.create(nombre='FunciÃ³n informe')
-        item = Item.objects.create(funcion=function, nombre='Ãtem informe')
+        function = Funcion.objects.create(nombre='Función informe')
+        item = Item.objects.create(funcion=function, nombre='Ítem informe')
         Desempeno.objects.create(usuario=employee, item=item, periodo=self.period, meta=10, ponderacion=100)
         response = self.client.get(reverse('coordinador:informes'), {'delegacion': self.delegation.pk})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, self.period.nombre)
         self.assertContains(response, 'Resumen consolidado')
-        self.assertContains(response, 'DelegaciÃ³n Informe')
+        self.assertContains(response, 'Delegación Informe')
         self.assertContains(response, 'Bajo umbral')
+
+    def test_report_includes_sidebar_and_coordinator_routes_are_enabled_without_permissions(self):
+        response = self.client.get(reverse('coordinador:informes'))
+        self.assertContains(response, 'Menú principal')
+        self.assertContains(response, 'Informes de gestión')
+        self.assertContains(response, 'href="/coordinador/informes/"')
+        self.assertContains(response, 'href="/coordinador/tendencias/"')
+        self.assertNotContains(response, 'sidebar-link-disabled')
+
+    def test_report_response_contains_no_mojibake(self):
+        for url_name in ('coordinador:informes', 'coordinador:tendencias'):
+            with self.subTest(url_name=url_name):
+                response = self.client.get(reverse(url_name))
+                self.assertEqual(response.status_code, 200)
+                self.assertNotIn(chr(0xc3), response.content.decode('utf-8'))
 
     def test_html_table_is_paginated(self):
         for index in range(30):
@@ -304,6 +319,12 @@ class HistoricalTrendsTests(TestCase):
         )
         self.client.force_login(employee)
         self.assertEqual(self.client.get(url).status_code, 403)
+
+    def test_trends_includes_sidebar_and_coordinator_link_is_enabled_without_permission(self):
+        response = self.client.get(reverse('coordinador:tendencias'))
+        self.assertContains(response, 'Menú principal')
+        self.assertContains(response, 'href="/coordinador/tendencias/"')
+        self.assertNotContains(response, 'sidebar-link-disabled')
 
     def test_permission_catalog_allows_access_and_menu_visibility_by_permission(self):
         definition = next(

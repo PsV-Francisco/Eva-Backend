@@ -15,8 +15,8 @@ class PermissionDefinition:
 PERMISSION_CATALOG = (
     PermissionDefinition('Coordinador', 'view_coordinator_reports', 'Consultar informes consolidados', 'coordinador:informes', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'view_coordinator_trends', 'Consultar tendencias históricas de cumplimiento', 'coordinador:tendencias', ('coordinador', 'admin', 'administrador')),
-    PermissionDefinition('Coordinador', 'request_closed_period_authorization', 'Solicitar autorizaciÃ³n para modificar perÃ­odos cerrados', 'coordinador:solicitudes_autorizacion', ('coordinador', 'admin', 'administrador')),
-    PermissionDefinition('AdministraciÃ³n', 'review_closed_period_authorizations', 'Resolver solicitudes de autorizaciÃ³n de perÃ­odos cerrados', 'administracion:solicitudes-autorizacion', ('admin', 'administrador')),
+    PermissionDefinition('Coordinador', 'request_closed_period_authorization', 'Solicitar autorización para modificar períodos cerrados', 'coordinador:solicitudes_autorizacion', ('coordinador', 'admin', 'administrador')),
+    PermissionDefinition('Administración', 'review_closed_period_authorizations', 'Resolver solicitudes de autorización de períodos cerrados', 'administracion:solicitudes-autorizacion', ('admin', 'administrador')),
     PermissionDefinition('Coordinador', 'manage_coordinator_goals', 'Administrar metas desde Coordinaci\u00f3n', 'coordinador:metas', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'manage_coordinator_position_functions', 'Asignar funciones a cargos desde Coordinaci\u00f3n', 'coordinador:cargos_funciones', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'view_coordinator_weights', 'Consultar ponderaciones por cargo o funcionario', 'coordinador:ponderaciones', ('coordinador', 'admin', 'administrador')),
@@ -116,10 +116,10 @@ PERMISSION_DESCRIPTIONS['manage_coordinator_periods'] = 'Crear, editar, cerrar y
 PERMISSION_DESCRIPTIONS['manage_coordinator_goals'] = 'Crear, modificar y eliminar metas desde Coordinación.'
 PERMISSION_DESCRIPTIONS['manage_coordinator_position_functions'] = 'Asignar funciones a cargos desde Coordinación.'
 PERMISSION_DESCRIPTIONS['view_coordinator_weights'] = 'Consultar ponderaciones por cargo o funcionario.'
-PERMISSION_DESCRIPTIONS['view_coordinator_reports'] = 'Consultar informes consolidados por perÃ­odo, delegaciÃ³n, cargo y funcionario.'
+PERMISSION_DESCRIPTIONS['view_coordinator_reports'] = 'Consultar informes consolidados por período, delegación, cargo y funcionario.'
 PERMISSION_DESCRIPTIONS['view_coordinator_trends'] = 'Consultar la evolución histórica del cumplimiento por período, con filtros por delegación, cargo y funcionario.'
-PERMISSION_DESCRIPTIONS['request_closed_period_authorization'] = 'Solicitar cambios acotados de metas en perÃ­odos cerrados.'
-PERMISSION_DESCRIPTIONS['review_closed_period_authorizations'] = 'Aprobar o rechazar solicitudes de cambios en perÃ­odos cerrados.'
+PERMISSION_DESCRIPTIONS['request_closed_period_authorization'] = 'Solicitar cambios acotados de metas en períodos cerrados.'
+PERMISSION_DESCRIPTIONS['review_closed_period_authorizations'] = 'Aprobar o rechazar solicitudes de cambios en períodos cerrados.'
 
 PERMISSION_BY_CODENAME = {
     definition.codename: definition
