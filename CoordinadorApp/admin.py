@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import CargoFuncion, Desempeno, Funcion, Item, Periodo
+from .models import CargoFuncion, Desempeno, Funcion, Item, Periodo, PeriodoSemana
 
 
 @admin.register(Funcion)
@@ -28,6 +28,13 @@ class PeriodoAdmin(admin.ModelAdmin):
 	list_display = ('nombre', 'fecha_inicio', 'fecha_fin', 'estado')
 	list_filter = ('estado',)
 	search_fields = ('nombre',)
+
+
+@admin.register(PeriodoSemana)
+class PeriodoSemanaAdmin(admin.ModelAdmin):
+	list_display = ('nombre', 'periodo', 'fecha_inicio', 'fecha_fin', 'estado')
+	list_filter = ('periodo', 'estado')
+	search_fields = ('nombre', 'periodo__nombre')
 
 
 @admin.register(Desempeno)

@@ -87,6 +87,78 @@ Los estados describen el código de esta rama; «operativo» no significa que ya
 | Datos de demostración | Simulado | Los datos del prototipo son ficticios; no los uses como información municipal real. |
 | Despliegue en EC2 | Pendiente | Requiere configurar infraestructura, secretos, SMTP, base de datos, migraciones y pruebas de humo. |
 
+## Evolución del esquema objetivo
+
+El esquema de referencia para la entrega está en `IP-EstructuraDB_29.10.sql`. Su
+DDL es una referencia de estructura, no un script para ejecutar: **no ejecutes
+su `DROP TABLE` ni lo apliques directamente a una base existente**.
+
+La evolución se hará de forma aditiva y por fases aprobadas:
+
+1. **Documentar decisiones:** mantener `AdminApp.Usuario` basado en
+   `AbstractUser` y `AUTH_USER_MODEL`. Los campos requeridos por Django que no
+   aparecen en el DDL se conservarán como extensión documentada.
+2. **Agregar entidades faltantes del SQL:** crear tablas nuevas para
+   `territorio`, `hito`, `felicitacion`, `ausencia`, `reclamo`, `licencia`,
+   `informe`, `alertas`, `comentarios`, `periodo_semana`, `cargo_jv` y
+   `beneficiado`. Estas tablas usarán los nombres físicos de tabla y columna
+   del DDL mediante `db_table` y `db_column`. Las tablas existentes en
+   producción conservarán sus nombres y columnas; no se renombrarán en estas
+   fases.
+3. **Agregar relaciones explícitas de usuario:** crear `UsuarioRol`,
+   `UsuarioCargo` y `UsuarioDelegacion` con `through=`, PK simple y fechas de
+   vigencia. La delegación principal actual se conservará como una marca en su
+   relación. La copia de datos debe ser idempotente y tener operación inversa.
+4. **Sincronizar las escrituras:** un único servicio o mecanismo de señales
+   será responsable de mantener las asignaciones de roles, cargo y
+   delegaciones; formularios, vistas y administración no duplicarán esa
+   lógica. Las estructuras actuales permanecerán durante esta etapa.
+5. **Validar sin corte:** probar las migraciones en MySQL local restaurado
+   desde un `mysqldump`. No se retirarán tablas ni columnas existentes ni se
+   cambiará la aplicación a un esquema de corte como parte de este plan.
+
+Todas las tablas nuevas usarán una PK simple compatible con Django. Las PK y
+FK compuestas del DDL se representarán con FK simples y restricciones
+`UniqueConstraint` donde corresponda. Esta normalización, y las estructuras
+actuales que el DDL no contempla —por ejemplo `ParametroSistema`,
+`CasoSocial` y `Solicitante`— se conservarán como extensiones documentadas;
+no se eliminarán para hacer coincidir literalmente el DDL.
+
+`Beneficiado` se incorpora como entidad paralela a `Solicitante`; no los
+fusiona ni reemplaza. Su teléfono se almacena como texto (`VARCHAR(20)` vía
+`CharField`) en vez del `INT` del DDL para preservar ceros iniciales y admitir
+prefijos internacionales.
+
+En las entidades del Bloque B, `Reclamo.EVIDENCIA` se amplía de
+`VARCHAR(100)` a `VARCHAR(1000)`; `Felicitacion.UBICACION` y
+`Reclamo.UBICACION` se amplían de `VARCHAR(100)` a `VARCHAR(255)`; y
+`Informe.FILTROS` usa `TextField` en lugar de `VARCHAR(200)` para admitir
+filtros extensos. Las columnas `DESEMPEÑO` mantienen exactamente la tilde del
+DDL en `db_column`. En las relaciones originalmente compuestas, las columnas
+dimensionales se mantienen como FKs simples, se completan desde el desempeño o
+registro padre al guardar y se validan en `clean()`; esto conserva los datos y
+la coherencia de aplicación sin imponer PK compuestas en Django.
+
+En el Bloque C, `Alerta.ENLACE` se amplía de `VARCHAR(200)` a
+`VARCHAR(500)`, y `Comentarios.TEXTO` usa `TextField` en lugar de
+`VARCHAR(200)`. En `Comentarios`, los grupos de columnas asociados a registro
+y compromiso son anulables (a diferencia del DDL); `clean()` exige al menos
+uno de los dos padres. Sus dimensiones se completan desde el padre relacionado
+al guardar. La columna de responsable de compromiso se rellena solo cuando ese
+compromiso tiene exactamente un responsable; con cero o varios responsables
+queda nula.
+
+La base de datos real es MySQL. Las pruebas de migración se ejecutarán sobre
+una base MySQL local vacía para validar migraciones desde cero, y en una copia
+restaurada desde `mysqldump` antes de la Fase 2; nunca directamente sobre
+producción.
+Después de cada fase se ejecutarán `python manage.py check`,
+`python manage.py makemigrations --check --dry-run` y la suite completa con
+`DB_ENGINE=sqlite`. Después de cada fase que cree migraciones, también se
+validarán esas migraciones en la instancia MySQL local correspondiente a esa
+fase. Cada fase requiere
+aprobación antes de implementarse; no se crearán commits como parte del plan.
+
 ## Rutas principales
 
 - `FuncionarioApp`: `/funcionario/`, `/funcionario/cumplimiento/`, `/funcionario/atencion-social/` y `/funcionario/agenda-colectiva/`.

@@ -708,3 +708,215 @@ class ParametroSistema(models.Model):
         }
         value = cls.objects.filter(clave=clave).values_list('valor', flat=True).first()
         return value if value is not None else defaults[clave]
+
+
+class Alerta(models.Model):
+    id = models.AutoField(primary_key=True, db_column='ID')
+    motivo = models.CharField(max_length=100, db_column='MOTIVO')
+    fecha = models.DateTimeField(db_column='FECHA')
+    estado = models.CharField(max_length=50, db_column='ESTADO')
+    enlace = models.CharField(
+        max_length=500, null=True, blank=True, db_column='ENLACE',
+    )
+    destinatario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='alertas_recibidas',
+        db_column='DESTINATARIO',
+    )
+
+    class Meta:
+        db_table = 'alertas'
+        verbose_name = 'alerta'
+        verbose_name_plural = 'alertas'
+
+    def __str__(self):
+        return self.motivo
+
+
+class Comentarios(models.Model):
+    id = models.AutoField(primary_key=True, db_column='ID')
+    texto = models.TextField(db_column='TEXTO')
+    fecha = models.DateTimeField(db_column='FECHA')
+    autor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='comentarios_escritos',
+        db_column='AUTOR',
+    )
+    registro = models.ForeignKey(
+        'FuncionarioApp.Registro',
+        on_delete=models.PROTECT,
+        related_name='comentarios_objetivo',
+        db_column='REGISTRO',
+        null=True,
+        blank=True,
+    )
+    autor_registro = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='comentarios_como_autor_registro',
+        db_column='AUTOR_REGISTRO',
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    item_registro = models.ForeignKey(
+        'CoordinadorApp.Item',
+        on_delete=models.PROTECT,
+        related_name='comentarios_registro',
+        db_column='ITEM_REGISTRO',
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    periodo_registro = models.ForeignKey(
+        'CoordinadorApp.Periodo',
+        on_delete=models.PROTECT,
+        related_name='comentarios_registro',
+        db_column='PERIODO_REGISTRO',
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    compromiso = models.ForeignKey(
+        'DelegadoApp.Compromiso',
+        on_delete=models.PROTECT,
+        related_name='comentarios_objetivo',
+        db_column='COMPROMISO',
+        null=True,
+        blank=True,
+    )
+    responsable_compromiso = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='comentarios_como_responsable',
+        db_column='RESPONSABLE_COMPROMISO',
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    agenda_compromiso = models.ForeignKey(
+        'DelegadoApp.Agenda',
+        on_delete=models.PROTECT,
+        related_name='comentarios_compromiso',
+        db_column='AGENDA_COMPROMISO',
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    periodo_agenda_compromiso = models.ForeignKey(
+        'CoordinadorApp.Periodo',
+        on_delete=models.PROTECT,
+        related_name='comentarios_agenda_compromiso',
+        db_column='PERIODO_AGENDA_COMPROMISO',
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    agenda_delegacion_compromiso = models.ForeignKey(
+        'AdminApp.Delegacion',
+        on_delete=models.PROTECT,
+        related_name='comentarios_agenda_compromiso',
+        db_column='AGENDA_DELEGACION_COMPROMISO',
+        null=True,
+        blank=True,
+        editable=False,
+    )
+
+    class Meta:
+        db_table = 'comentarios'
+        verbose_name = 'comentario'
+        verbose_name_plural = 'comentarios'
+
+    def clean(self):
+        super().clean()
+        if not self.registro_id and not self.compromiso_id:
+            raise ValidationError(
+                'El comentario debe estar asociado a un registro o compromiso.'
+            )
+
+        errors = {}
+        registro_dimensions = {
+            'autor_registro': self.registro.autor_id if self.registro_id else None,
+            'item_registro': self.registro.item_id if self.registro_id else None,
+            'periodo_registro': self.registro.periodo_id if self.registro_id else None,
+        }
+        for field_name, expected_id in registro_dimensions.items():
+            value_id = getattr(self, f'{field_name}_id')
+            if value_id is not None and value_id != expected_id:
+                errors[field_name] = 'Debe coincidir con el registro relacionado.'
+
+        if self.compromiso_id:
+            compromiso = self.compromiso
+            responsables = list(
+                compromiso.responsables.values_list('pk', flat=True)[:2]
+            )
+            expected_responsable = responsables[0] if len(responsables) == 1 else None
+            agenda = compromiso.agenda
+            commitment_dimensions = {
+                'responsable_compromiso': expected_responsable,
+                'agenda_compromiso': agenda.pk,
+                'periodo_agenda_compromiso': agenda.periodo_id,
+                'agenda_delegacion_compromiso': agenda.delegacion_id,
+            }
+        else:
+            commitment_dimensions = {
+                'responsable_compromiso': None,
+                'agenda_compromiso': None,
+                'periodo_agenda_compromiso': None,
+                'agenda_delegacion_compromiso': None,
+            }
+
+        for field_name, expected_id in commitment_dimensions.items():
+            value_id = getattr(self, f'{field_name}_id')
+            if value_id is not None and value_id != expected_id:
+                errors[field_name] = 'Debe coincidir con el compromiso relacionado.'
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        derived_fields = (
+            'autor_registro',
+            'item_registro',
+            'periodo_registro',
+            'responsable_compromiso',
+            'agenda_compromiso',
+            'periodo_agenda_compromiso',
+            'agenda_delegacion_compromiso',
+        )
+        if self.registro_id:
+            self.autor_registro_id = self.registro.autor_id
+            self.item_registro_id = self.registro.item_id
+            self.periodo_registro_id = self.registro.periodo_id
+        else:
+            self.autor_registro_id = None
+            self.item_registro_id = None
+            self.periodo_registro_id = None
+
+        if self.compromiso_id:
+            compromiso = self.compromiso
+            responsables = list(
+                compromiso.responsables.values_list('pk', flat=True)[:2]
+            )
+            self.responsable_compromiso_id = (
+                responsables[0] if len(responsables) == 1 else None
+            )
+            self.agenda_compromiso_id = compromiso.agenda_id
+            self.periodo_agenda_compromiso_id = compromiso.agenda.periodo_id
+            self.agenda_delegacion_compromiso_id = compromiso.agenda.delegacion_id
+        else:
+            self.responsable_compromiso_id = None
+            self.agenda_compromiso_id = None
+            self.periodo_agenda_compromiso_id = None
+            self.agenda_delegacion_compromiso_id = None
+
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            kwargs['update_fields'] = set(update_fields).union(derived_fields)
+        self.clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'Comentario {self.pk}'

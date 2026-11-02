@@ -9,6 +9,8 @@ from .models import (
 	Cargo,
 	Catalogo,
 	Delegacion,
+	Alerta,
+	Comentarios,
 	Historial,
 	ParametroSistema,
 	PasswordResetAuditEvent,
@@ -206,3 +208,31 @@ class PasswordResetAuditEventAdmin(admin.ModelAdmin):
 
 	def has_delete_permission(self, request, obj=None):
 		return False
+
+
+@admin.register(Alerta)
+class AlertaAdmin(admin.ModelAdmin):
+	list_display = ('motivo', 'fecha', 'estado', 'destinatario')
+	list_filter = ('estado', 'fecha')
+	search_fields = ('motivo', 'destinatario__email')
+
+
+@admin.register(Comentarios)
+class ComentariosAdmin(admin.ModelAdmin):
+	list_display = ('fecha', 'autor', 'registro', 'compromiso')
+	list_filter = ('fecha',)
+	search_fields = (
+		'texto',
+		'autor__email',
+		'registro__descripcion',
+		'compromiso__descripcion',
+	)
+	readonly_fields = (
+		'autor_registro',
+		'item_registro',
+		'periodo_registro',
+		'responsable_compromiso',
+		'agenda_compromiso',
+		'periodo_agenda_compromiso',
+		'agenda_delegacion_compromiso',
+	)

@@ -109,6 +109,29 @@ class Periodo(models.Model):
 	def __str__(self):
 		return self.nombre
 
+
+class PeriodoSemana(models.Model):
+	id = models.AutoField(primary_key=True, db_column='ID')
+	nombre = models.CharField(max_length=100, db_column='NOMBRE')
+	fecha_inicio = models.DateTimeField(null=True, blank=True, db_column='FECHA_INICIO')
+	fecha_fin = models.DateTimeField(null=True, blank=True, db_column='FECHA_FIN')
+	estado = models.CharField(max_length=50, null=True, blank=True, db_column='ESTADO')
+	periodo = models.ForeignKey(
+		Periodo,
+		on_delete=models.PROTECT,
+		related_name='semanas_objetivo',
+		db_column='PERIODO',
+	)
+
+	class Meta:
+		db_table = 'periodo_semana'
+		verbose_name = 'semana de período'
+		verbose_name_plural = 'semanas de período'
+
+	def __str__(self):
+		return self.nombre
+
+
 #Modelo Desempeño
 class SolicitudAutorizacionPeriodo(models.Model):
 	class Estado(models.TextChoices):

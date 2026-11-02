@@ -9,7 +9,15 @@ from django.utils import timezone
 from django.urls import reverse
 
 from AdminApp.models import Cargo, Delegacion, Historial, ParametroSistema
-from CoordinadorApp.models import Desempeno, Funcion, Item, Periodo, SolicitudAutorizacionPeriodo
+from CoordinadorApp.models import (
+    Desempeno,
+    Funcion,
+    Item,
+    Periodo,
+    PeriodoSemana,
+    SolicitudAutorizacionPeriodo,
+)
+from django.db.models.deletion import ProtectedError
 from CoordinadorApp.services import _semaforo, authorization_for, max_dias_autorizacion, porcentaje_esperado, record_authorization_use, resumen_cumplimiento, tendencias_cumplimiento, validate_authorization_expiry
 from FuncionarioApp.models import Registro
 from SupervisorApp.models import Evidencia
@@ -96,6 +104,57 @@ class ClosedPeriodAuthorizationTests(TestCase):
         self.assertIsNone(authorization_for(self.coordinator, self.period, funcionario=self.employee))
         other = get_user_model().objects.create_user(email='other-auth@test', password='password')
         self.assertIsNone(authorization_for(self.coordinator, self.period, funcionario=other))
+
+
+class TargetSchemaPeriodoSemanaTests(TestCase):
+    def setUp(self):
+        self.periodo = Periodo.objects.create(
+            nombre='Período con semanas',
+            fecha_inicio='2026-01-01',
+            fecha_fin='2026-12-31',
+        )
+
+    def test_periodo_semana_creation_and_periodo_relation(self):
+        semana = PeriodoSemana.objects.create(
+            nombre='Primera semana',
+            fecha_inicio='2026-01-05T00:00:00Z',
+            fecha_fin='2026-01-11T23:59:59Z',
+            estado='planificada',
+            periodo=self.periodo,
+        )
+
+        semana.refresh_from_db()
+        self.assertEqual(semana.periodo, self.periodo)
+        self.assertEqual(self.periodo.semanas_objetivo.get(), semana)
+
+    def test_periodo_semana_nullable_fields_accept_null(self):
+        semana = PeriodoSemana.objects.create(
+            nombre='Semana sin fechas',
+            fecha_inicio=None,
+            fecha_fin=None,
+            estado=None,
+            periodo=self.periodo,
+        )
+
+        semana.refresh_from_db()
+        self.assertIsNone(semana.fecha_inicio)
+        self.assertIsNone(semana.fecha_fin)
+        self.assertIsNone(semana.estado)
+
+    def test_periodo_with_semana_is_protected(self):
+        PeriodoSemana.objects.create(
+            nombre='Semana protegida',
+            periodo=self.periodo,
+        )
+
+        with self.assertRaises(ProtectedError):
+            self.periodo.delete()
+
+    def test_periodo_semanas_have_distinct_primary_keys(self):
+        first = PeriodoSemana.objects.create(nombre='Semana A', periodo=self.periodo)
+        second = PeriodoSemana.objects.create(nombre='Semana B', periodo=self.periodo)
+
+        self.assertNotEqual(first.pk, second.pk)
 
 
 class ConsolidatedReportTests(TestCase):

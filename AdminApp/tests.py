@@ -3,7 +3,9 @@ from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
+from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db.models.deletion import ProtectedError
 from django.test import Client, TestCase, override_settings
 from django.urls import resolve, reverse
 
@@ -11,6 +13,8 @@ from AdminApp.models import (
 	Cargo,
 	Catalogo,
 	Delegacion,
+	Alerta,
+	Comentarios,
 	Historial,
 	ParametroSistema,
 	Rol,
@@ -18,7 +22,7 @@ from AdminApp.models import (
 from AdminApp.roles import ensure_role_group
 from AdminApp.forms import RolForm
 from config.permissions import PERMISSION_CATALOG
-from CoordinadorApp.models import Funcion, Item, Periodo
+from CoordinadorApp.models import Desempeno, Funcion, Item, Periodo
 from DelegadoApp.models import Agenda, Compromiso
 from FuncionarioApp.models import Registro
 from SupervisorApp.models import Evidencia, RevisionEvidencia
@@ -712,3 +716,178 @@ class RolePortalTests(TestCase):
 		})
 		self.assertEqual(response.status_code, 302)
 		self.assertFalse(Compromiso.objects.filter(pk=commitment.pk).exists())
+
+
+class TargetSchemaAdminModelTests(TestCase):
+	def setUp(self):
+		self.autor = get_user_model().objects.create_user(
+			email='autor-comentario@sgr.test',
+			password='Sgr-Test-Password-418!',
+		)
+		self.destinatario = get_user_model().objects.create_user(
+			email='destinatario-alerta@sgr.test',
+			password='Sgr-Test-Password-418!',
+		)
+		self.periodo = Periodo.objects.create(
+			nombre='Período comentarios',
+			fecha_inicio='2026-01-01',
+			fecha_fin='2026-12-31',
+		)
+		self.funcion = Funcion.objects.create(nombre='Función comentarios')
+		self.item = Item.objects.create(
+			funcion=self.funcion,
+			nombre='Ítem comentarios',
+		)
+		self.registro = Registro.objects.create(
+			fecha='2026-05-01',
+			item=self.item,
+			periodo=self.periodo,
+			descripcion='Registro para comentario',
+			autor=self.autor,
+		)
+		self.delegacion = Delegacion.objects.create(nombre='Delegación comentarios')
+		self.agenda = Agenda.objects.create(
+			delegacion=self.delegacion,
+			periodo=self.periodo,
+		)
+		self.compromiso = Compromiso.objects.create(
+			agenda=self.agenda,
+			descripcion='Compromiso para comentario',
+			fecha='2026-05-02',
+		)
+		self.compromiso.responsables.add(self.autor)
+
+	def create_comment(self, **overrides):
+		values = {
+			'texto': 'Comentario de prueba',
+			'fecha': '2026-05-03T12:00:00Z',
+			'autor': self.autor,
+		}
+		values.update(overrides)
+		return Comentarios.objects.create(**values)
+
+	def test_alerta_creation_and_nullable_link(self):
+		alerta = Alerta.objects.create(
+			motivo='Aviso',
+			fecha='2026-05-03T12:00:00Z',
+			estado='pendiente',
+			enlace=None,
+			destinatario=self.destinatario,
+		)
+
+		alerta.refresh_from_db()
+		self.assertEqual(alerta.destinatario, self.destinatario)
+		self.assertIsNone(alerta.enlace)
+		self.assertEqual(self.destinatario.alertas_recibidas.get(), alerta)
+
+	def test_alerta_protects_its_recipient(self):
+		Alerta.objects.create(
+			motivo='Aviso protegido',
+			fecha='2026-05-03T12:00:00Z',
+			estado='pendiente',
+			destinatario=self.destinatario,
+		)
+
+		with self.assertRaises(ProtectedError):
+			self.destinatario.delete()
+
+	def test_comment_with_registration_copies_registration_dimensions(self):
+		comentario = self.create_comment(registro=self.registro)
+
+		comentario.refresh_from_db()
+		self.assertEqual(comentario.autor_registro, self.autor)
+		self.assertEqual(comentario.item_registro, self.item)
+		self.assertEqual(comentario.periodo_registro, self.periodo)
+		self.assertIsNone(comentario.compromiso_id)
+		self.assertIsNone(comentario.responsable_compromiso_id)
+		self.assertIsNone(comentario.agenda_compromiso_id)
+		self.assertIsNone(comentario.periodo_agenda_compromiso_id)
+		self.assertIsNone(comentario.agenda_delegacion_compromiso_id)
+
+	def test_comment_with_commitment_copies_commitment_dimensions(self):
+		comentario = self.create_comment(compromiso=self.compromiso)
+
+		comentario.refresh_from_db()
+		self.assertIsNone(comentario.registro_id)
+		self.assertIsNone(comentario.autor_registro_id)
+		self.assertIsNone(comentario.item_registro_id)
+		self.assertIsNone(comentario.periodo_registro_id)
+		self.assertEqual(comentario.responsable_compromiso, self.autor)
+		self.assertEqual(comentario.agenda_compromiso, self.agenda)
+		self.assertEqual(comentario.periodo_agenda_compromiso, self.periodo)
+		self.assertEqual(comentario.agenda_delegacion_compromiso, self.delegacion)
+
+	def test_comment_with_both_parents_copies_both_dimension_groups(self):
+		comentario = self.create_comment(
+			registro=self.registro,
+			compromiso=self.compromiso,
+		)
+
+		comentario.refresh_from_db()
+		self.assertEqual(comentario.autor_registro, self.autor)
+		self.assertEqual(comentario.item_registro, self.item)
+		self.assertEqual(comentario.periodo_registro, self.periodo)
+		self.assertEqual(comentario.agenda_compromiso, self.agenda)
+
+	def test_comment_without_either_parent_is_rejected(self):
+		comentario = Comentarios(
+			texto='Comentario sin relación',
+			fecha='2026-05-03T12:00:00Z',
+			autor=self.autor,
+		)
+
+		with self.assertRaises(ValidationError):
+			comentario.save()
+
+	def test_comment_with_multiple_commitment_responsibles_keeps_responsible_null(self):
+		other_user = get_user_model().objects.create_user(
+			email='otro-responsable@sgr.test',
+			password='Sgr-Test-Password-418!',
+		)
+		self.compromiso.responsables.add(other_user)
+
+		comentario = self.create_comment(compromiso=self.compromiso)
+
+		comentario.refresh_from_db()
+		self.assertIsNone(comentario.responsable_compromiso_id)
+
+	def test_comment_clean_rejects_inconsistent_registration_dimensions(self):
+		comentario = Comentarios(
+			texto='Comentario inconsistente',
+			fecha='2026-05-03T12:00:00Z',
+			autor=self.autor,
+			registro=self.registro,
+			autor_registro=self.destinatario,
+		)
+
+		with self.assertRaises(ValidationError) as raised:
+			comentario.clean()
+
+		self.assertIn('autor_registro', raised.exception.error_dict)
+
+	def test_comment_save_with_update_fields_persists_derived_dimensions(self):
+		comentario = self.create_comment(registro=self.registro)
+		comentario.registro = None
+		comentario.compromiso = self.compromiso
+		comentario.save(update_fields=['registro', 'compromiso'])
+		comentario.refresh_from_db()
+
+		self.assertIsNone(comentario.autor_registro_id)
+		self.assertIsNone(comentario.item_registro_id)
+		self.assertEqual(comentario.agenda_compromiso, self.agenda)
+
+	def test_comment_protects_related_records_and_commitment_graph(self):
+		self.create_comment(registro=self.registro, compromiso=self.compromiso)
+
+		for related in (
+			self.registro,
+			self.item,
+			self.periodo,
+			self.compromiso,
+			self.agenda,
+			self.delegacion,
+			self.autor,
+		):
+			with self.subTest(model=type(related).__name__):
+				with self.assertRaises(ProtectedError):
+					related.delete()

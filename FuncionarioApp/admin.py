@@ -1,6 +1,35 @@
 from django.contrib import admin
 
-from .models import AtencionSocial, CasoSocial, GestionAtencion, Registro, Solicitante
+from .models import (
+    AtencionSocial,
+    Beneficiado,
+    CargoJv,
+    CasoSocial,
+    GestionAtencion,
+    Registro,
+    Solicitante,
+    Territorio,
+)
+
+
+@admin.register(Territorio)
+class TerritorioAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'delegacion')
+    list_filter = ('delegacion',)
+    search_fields = ('nombre', 'delegacion__nombre')
+
+
+@admin.register(CargoJv)
+class CargoJvAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'junta_vecino')
+    list_filter = ('junta_vecino',)
+    search_fields = ('nombre', 'permisos', 'junta_vecino__nombre')
+
+
+@admin.register(Beneficiado)
+class BeneficiadoAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'apellido', 'telefono', 'email')
+    search_fields = ('nombre', 'apellido', 'telefono', 'email')
 
 
 @admin.register(Registro)

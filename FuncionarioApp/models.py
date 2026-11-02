@@ -222,6 +222,61 @@ class VecinoJunta(models.Model):
 		verbose_name_plural = 'relaciones vecino-junta'
 
 
+class Territorio(models.Model):
+	id = models.AutoField(primary_key=True, db_column='ID')
+	nombre = models.CharField(max_length=100, db_column='NOMBRE')
+	delegacion = models.ForeignKey(
+		'AdminApp.Delegacion',
+		on_delete=models.PROTECT,
+		related_name='territorios_objetivo',
+		db_column='DELEGACION',
+	)
+
+	class Meta:
+		db_table = 'territorio'
+		verbose_name = 'territorio'
+		verbose_name_plural = 'territorios'
+
+	def __str__(self):
+		return self.nombre
+
+
+class CargoJv(models.Model):
+	id = models.AutoField(primary_key=True, db_column='ID')
+	nombre = models.CharField(max_length=100, db_column='NOMBRE')
+	permisos = models.CharField(max_length=500, db_column='PERMISOS')
+	junta_vecino = models.ForeignKey(
+		JuntaVecinos,
+		on_delete=models.PROTECT,
+		related_name='cargos_objetivo',
+		db_column='JUNTA_VECINO',
+	)
+
+	class Meta:
+		db_table = 'cargo_jv'
+		verbose_name = 'cargo de junta de vecinos'
+		verbose_name_plural = 'cargos de junta de vecinos'
+
+	def __str__(self):
+		return self.nombre
+
+
+class Beneficiado(models.Model):
+	id = models.AutoField(primary_key=True, db_column='ID')
+	nombre = models.CharField(max_length=50, db_column='NOMBRE')
+	apellido = models.CharField(max_length=50, db_column='APELLIDO')
+	telefono = models.CharField(max_length=20, db_column='TELEFONO')
+	email = models.EmailField(max_length=90, null=True, blank=True, db_column='EMAIL')
+
+	class Meta:
+		db_table = 'beneficiado'
+		verbose_name = 'beneficiado'
+		verbose_name_plural = 'beneficiados'
+
+	def __str__(self):
+		return f'{self.nombre} {self.apellido}'
+
+
 class AtencionSocial(models.Model):
 	usuario = models.ForeignKey(
 		settings.AUTH_USER_MODEL,
