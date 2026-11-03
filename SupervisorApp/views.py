@@ -16,8 +16,7 @@ def _evidencias_visibles(request):
     user = request.user
     delegation = active_delegation(request)
     evidences = Evidencia.objects.select_related(
-        'registro', 'compromiso', 'supervisor',
-        'gestion_atencion', 'gestion_atencion__atencion',
+        'registro', 'compromiso', 'supervisor', 'autor', 'gestion_atencion',
     )
     if delegation:
         delegation_id = delegation.pk
@@ -26,11 +25,15 @@ def _evidencias_visibles(request):
     else:
         return evidences.none()
     return evidences.filter(
-        Q(registro__autor__delegacion_id=delegation_id)
-        | Q(registro__autor__delegaciones_autorizadas__pk=delegation_id)
+        Q(
+            registro__autor__usuariodelegacion__delegacion_id=delegation_id,
+            registro__autor__usuariodelegacion__fecha_fin__isnull=True,
+        )
         | Q(compromiso__agenda__delegacion_id=delegation_id)
-        | Q(gestion_atencion__atencion__usuario__delegacion_id=delegation_id)
-        | Q(gestion_atencion__atencion__usuario__delegaciones_autorizadas__pk=delegation_id)
+        | Q(
+            gestion_atencion__atencionsocial__autor__usuariodelegacion__delegacion_id=delegation_id,
+            gestion_atencion__atencionsocial__autor__usuariodelegacion__fecha_fin__isnull=True,
+        )
     ).distinct()
 
 

@@ -3,11 +3,47 @@ import re
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 
 
 def normalizar_telefono(value):
 	return re.sub(r'\D', '', value or '')
+
+#Modelo : Tipo (OK)
+class Tipo(models.Model):
+	class Estado(models.TextChoices):
+		ACTIVADO = 'activado','Activado'
+		DESACTIVADO = 'desactivado','Desactivado'
+	nombre = models.CharField(max_length=100,db_column='NOMBRE')
+	estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.ACTIVADO)
+	
+	class Meta:
+			ordering = ['-nombre', '-estado']
+			db_table = "tipo"
+			verbose_name = "Tipo"
+			verbose_name_plural = "Tipos"
+	
+	def __str__(self):
+		return f'{self.nombre} - {self.estado}'
+	
+#Modelo : Subtipo (OK)
+class Subtipo(models.Model):
+	class Estado(models.TextChoices):
+		ACTIVADO = 'activado','Activado'
+		DESACTIVADO = 'desactivado','Desactivado'
+	nombre = models.CharField(max_length=100,db_column='NOMBRE')
+	estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.ACTIVADO,db_column='ESTADO')
+	tipo = models.ForeignKey(Tipo,on_delete=models.PROTECT,db_column='TIPO',related_name='subtipos')
+	
+	class Meta:
+			ordering = ['-nombre', '-estado']
+			db_table = "subtipo"
+			verbose_name = "subtipo"
+			verbose_name_plural = "Subtipos"
+	
+	def __str__(self):
+		return f'{self.nombre} - {self.estado}'
 
 #Modelo : Registro (OK)
 class Registro(models.Model):
@@ -28,8 +64,10 @@ class Registro(models.Model):
 	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.PENDIENTE)
 	incluir_en_agenda = models.BooleanField(default=False)
 	creado = models.DateTimeField(auto_now_add=True)
-	fecha_cierre = models.DateTimeField(db_column='FECHA_CIERRE')
+	fecha_cierre = models.DateTimeField(default=timezone.now, db_column='FECHA_CIERRE')
 	genera_puntaje = models.CharField(max_length=45, null=True, blank=True, db_column='GENERA_PUNTAJE')
+	tipo = models.ForeignKey(Tipo,on_delete=models.PROTECT,db_column='TIPO',related_name='registros')
+	subtipo = models.ForeignKey(Subtipo,on_delete=models.PROTECT,db_column='SUBTIPO',related_name='registros')
 
 	class Meta:
 		ordering = ['-fecha', '-creado']
@@ -61,6 +99,9 @@ class Beneficiado(models.Model):
 		db_table = 'beneficiado'
 		verbose_name = "beneficiado"
 		verbose_name_plural = "Beneficiados"
+
+	def __str__(self):
+		return f'{self.nombre} {self.apellido}'
 
 #Modelo : Vecino (OK)
 class Vecino(models.Model):
@@ -98,8 +139,6 @@ class Vecino(models.Model):
 				errors['telefono'] = 'Ingresa un teléfono válido.'
 		if not self.territorio_id:
 			errors['territorio'] = 'Ingresa un territorio.'
-		if self.solicitante_id and self.solicitante.delegacion_id != self.delegacion_id:
-			errors['solicitante'] = 'El solicitante debe pertenecer a la misma delegación.'
 		if self.territorio_id and self.territorio.delegacion_id != self.delegacion_id:
 			errors['territorio'] = 'El territorio debe pertenecer a la misma delegación.'
 		if self.cargo_jv_id and self.junta_vecino_id:
@@ -116,7 +155,6 @@ class Vecino(models.Model):
 
 	def __str__(self):
 		return self.nombre
-
 #Modelo : Territorio (OK)
 class Territorio(models.Model):
 	nombre = models.CharField(max_length=100, db_column='NOMBRE')
@@ -148,8 +186,8 @@ class JuntaVecino(models.Model):
 		db_table = 'junta_vecino'
 		ordering = ['nombre']
 		indexes = [
-			models.Index(fields=['delegacion', 'activo', 'nombre']),
-			models.Index(fields=['numero_personalidad_juridica']),
+			models.Index(fields=['delegacion','nombre']),
+			models.Index(fields=['numero_rpj']),
 		]
 		verbose_name = 'junta de vecinos'
 		verbose_name_plural = 'juntas de vecinos'
@@ -158,26 +196,24 @@ class JuntaVecino(models.Model):
 		errors = {}
 		self.nombre = self.nombre.strip()
 		self.domicilio_legal = self.domicilio_legal.strip()
-		self.numero_personalidad_juridica = self.numero_personalidad_juridica.strip()
 		if len(self.nombre) < 2:
 			errors['nombre'] = 'Ingresa un nombre válido.'
-		if self.cantidad_socios_activos is not None and self.cantidad_socios_activos < 0:
-			errors['cantidad_socios_activos'] = 'La cantidad no puede ser negativa.'
+		if self.socios_activos is not None and self.socios_activos < 0:
+			errors['socios_activos'] = 'La cantidad no puede ser negativa.'
 		if self.territorio_id and self.territorio.delegacion_id != self.delegacion_id:
 			errors['territorio'] = 'El territorio debe pertenecer a la misma delegación.'
 		if (
-			self.fecha_inscripcion
+			self.fecha_ingreso
 			and self.fecha_constitucion
-			and self.fecha_inscripcion < self.fecha_constitucion.date()
+			and self.fecha_ingreso < self.fecha_constitucion
 		):
-			errors['fecha_inscripcion'] = 'La inscripción no puede ser anterior a la constitución.'
+			errors['fecha_ingreso'] = 'La fecha de ingreso no puede ser anterior a la constitución.'
 		if errors:
 			raise ValidationError(errors)
 
 	def save(self, *args, **kwargs):
 		self.nombre = self.nombre.strip()
 		self.domicilio_legal = self.domicilio_legal.strip()
-		self.numero_personalidad_juridica = self.numero_personalidad_juridica.strip()
 		return super().save(*args, **kwargs)
 
 	def __str__(self):
@@ -199,4 +235,15 @@ class CargoJv(models.Model):
 		return self.nombre
 
 
-
+def tipo_subtipo_predeterminados(tipo=None):
+	if tipo is None:
+		tipo, _ = Tipo.objects.get_or_create(
+			nombre='Sin tipo',
+			defaults={'estado': Tipo.Estado.ACTIVADO},
+		)
+	subtipo, _ = Subtipo.objects.get_or_create(
+		nombre='Sin subtipo',
+		tipo=tipo,
+		defaults={'estado': Subtipo.Estado.ACTIVADO},
+	)
+	return tipo, subtipo

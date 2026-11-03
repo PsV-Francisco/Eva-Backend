@@ -1,6 +1,5 @@
 import uuid
 from django.conf import settings
-from django.core.exceptions import ValidationError
 from django.db import models
 
 #Modelo : Funcion (OK)
@@ -100,6 +99,59 @@ class Periodo(models.Model):
 	def __str__(self):
 		return self.nombre
 
+
+class SolicitudAutorizacionPeriodo(models.Model):
+	class Estado(models.TextChoices):
+		PENDIENTE = 'pendiente', 'Pendiente'
+		APROBADA = 'aprobada', 'Aprobada'
+		RECHAZADA = 'rechazada', 'Rechazada'
+		CANCELADA = 'cancelada', 'Cancelada'
+		REVOCADA = 'revocada', 'Revocada'
+		VENCIDA = 'vencida', 'Vencida'
+
+	periodo = models.ForeignKey(
+		Periodo,
+		on_delete=models.PROTECT,
+		related_name='solicitudes_autorizacion',
+	)
+	solicitante = models.ForeignKey(
+		settings.AUTH_USER_MODEL,
+		on_delete=models.PROTECT,
+		related_name='solicitudes_autorizacion_periodo',
+	)
+	aprobador = models.ForeignKey(
+		settings.AUTH_USER_MODEL,
+		on_delete=models.PROTECT,
+		null=True,
+		blank=True,
+		related_name='autorizaciones_periodo_resueltas',
+	)
+	funcionarios = models.ManyToManyField(
+		settings.AUTH_USER_MODEL,
+		related_name='autorizaciones_periodo_funcionario',
+	)
+	alcances = models.JSONField(default=list)
+	motivo = models.TextField()
+	comentario_aprobador = models.TextField(blank=True)
+	estado = models.CharField(
+		max_length=16,
+		choices=Estado.choices,
+		default=Estado.PENDIENTE,
+	)
+	creada_en = models.DateTimeField(auto_now_add=True)
+	decidida_en = models.DateTimeField(null=True, blank=True)
+	vence_en = models.DateTimeField(null=True, blank=True)
+	usada_en = models.DateTimeField(null=True, blank=True)
+	revocada_en = models.DateTimeField(null=True, blank=True)
+
+	class Meta:
+		db_table = 'solicitud_autorizacion_periodo'
+		ordering = ['-creada_en']
+
+	def __str__(self):
+		return f'Autorización de {self.periodo} solicitada por {self.solicitante}'
+
+
 #Modelo : PeriodoSemana (OK)
 class PeriodoSemana(models.Model):
 	class Estado(models.TextChoices):
@@ -169,7 +221,7 @@ class GestionAtencion(models.Model):
 		verbose_name_plural = 'gestiones de atenciones'
 
 	def __str__(self):
-		return f'Gestión {self.numero_gestion} de atención {self.atencion}'
+		return f'Gestión {self.numero_gestion} - {self.fecha:%Y-%m-%d}'
 
 	def save(self, *args, **kwargs):
 		if self.pk:
@@ -182,13 +234,14 @@ class GestionAtencion(models.Model):
 
 #Modelo : AtencionSocial (OK)
 class AtencionSocial(models.Model):
-	
+
 	fecha = models.DateTimeField(db_column='FECHA')
 	resultado = models.TextField(blank=True)
 	observaciones = models.TextField(blank=True)
-	autor = models.ForeignKey('Usuario', on_delete=models.PROTECT, db_column='AUTOR')
-	beneficiado = models.ForeignKey('Beneficiado', on_delete=models.PROTECT, db_column='BENEFICIADO')
-	tipo_atencion = models.ForeignKey('TipoAtencion', on_delete=models.PROTECT, db_column='TIPO_ATENCION')
+	autor = models.ForeignKey('AdminApp.Usuario', on_delete=models.PROTECT, db_column='AUTOR')
+	beneficiado = models.ForeignKey('FuncionarioApp.Beneficiado', on_delete=models.PROTECT, db_column='BENEFICIADO')
+	tipo = models.ForeignKey('FuncionarioApp.Tipo',on_delete=models.PROTECT,db_column='TIPO',related_name='Atencion_Social')
+	subtipo = models.ForeignKey('FuncionarioApp.Subtipo',on_delete=models.PROTECT,db_column='SUBTIPO',related_name='Atencion_Social')
 	gestion_atencion = models.ForeignKey(GestionAtencion, on_delete=models.PROTECT, db_column='GESTION_ATENCION')
 	creado = models.DateTimeField(auto_now_add=True)
 
@@ -199,30 +252,4 @@ class AtencionSocial(models.Model):
 		verbose_name_plural = 'atenciones sociales'
 
 	def __str__(self):
-		return f'Atención {self.pk} - {self.tipo_atencion}'
-
-	def clean(self):
-		errors = {}
-		if bool(self.tipo_atencion_catalogo_id) != bool(self.sub_atencion_id):
-			errors['sub_atencion'] = 'El tipo y la Sub Atención deben seleccionarse juntos.'
-		elif (
-			self.tipo_atencion_catalogo_id
-			and self.sub_atencion.tipo_atencion_id != self.tipo_atencion_catalogo_id
-		):
-			errors['sub_atencion'] = 'La Sub Atención no corresponde al tipo seleccionado.'
-
-		if bool(self.solicitante_id) != bool(self.delegacion_id):
-			errors['delegacion'] = 'El solicitante y la delegación deben asociarse juntos.'
-		elif (
-			self.solicitante_id
-			and self.solicitante.delegacion_id != self.delegacion_id
-		):
-			errors['solicitante'] = 'El solicitante no pertenece a la delegación seleccionada.'
-
-		if errors:
-			raise ValidationError(errors)
-
-	def save(self, *args, **kwargs):
-		if self.usuario_id and not self.autor_id:
-			self.autor_id = self.usuario_id
-		return super().save(*args, **kwargs)
+		return f'Atención {self.pk} - {self.tipo}'

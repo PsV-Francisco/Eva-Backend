@@ -6,7 +6,7 @@ from django.db import models
 from DelegadoApp.models import Compromiso
 from CoordinadorApp.models import GestionAtencion
 from FuncionarioApp.models import Registro
-from SupervisorApp.files import validate_evidence_file
+#from SupervisorApp.files import validate_evidence_file
 
 
 def evidence_upload_path(instance, filename):
@@ -33,15 +33,19 @@ class Evidencia(models.Model):
 	periodo_registro = models.IntegerField(null=True, blank=True, db_column='PERIODO_REGISTRO')
 	#FK del Compromiso
 	compromiso = models.ForeignKey('DelegadoApp.Compromiso',on_delete=models.CASCADE, related_name='evidencias_compromiso', null=True, blank=True)
+	gestion_atencion = models.ForeignKey(
+		'CoordinadorApp.GestionAtencion',
+		on_delete=models.CASCADE,
+		related_name='evidencias',
+		null=True,
+		blank=True,
+	)
 	responsable_compromiso = models.IntegerField(null=True, blank=True, db_column='RESPONSABLE_COMPROMISO',)
 	agenda_compromiso = models.IntegerField(null=True, blank=True, db_column='AGENDA_COMPROMISO')
 	agenda_periodo_compromiso = models.IntegerField(null=True, blank=True, db_column='AGENDA_PERIODO_COMPROMISO',)
 	agenda_delegacion_compromiso = models.IntegerField(null=True, blank=True, db_column='AGENDA_DELEGACION_COMPROMISO',)
 	supervisor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,related_name='evidencias_supervisor', null=True, blank=True,)
 	autor = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,db_column='AUTOR',related_name='evidencias_autor',null=True,blank=True,)
-	
-	
-	
 
 	class Meta:
 		ordering = ['-fecha']
@@ -52,14 +56,14 @@ class Evidencia(models.Model):
 			models.Q(registro__isnull=False, compromiso__isnull=True, gestion_atencion__isnull=True)
 			| models.Q(registro__isnull=True, compromiso__isnull=False, gestion_atencion__isnull=True)
 			| models.Q(registro__isnull=True, compromiso__isnull=True, gestion_atencion__isnull=False)),
-            name='evidencia_asociada_a_registro_o_compromiso')]
+            name='evidencia_asociada_a_un_solo_origen')]
 
 	def __str__(self):
 		return f'Evidencia {self.codigo} ({self.get_estado_display()})'
 
-	def clean(self):
-		if self.archivo and not self.archivo._committed:
-			validate_evidence_file(self.archivo.file)
+	# def clean(self):
+		# if self.archivo and not self.archivo._committed:
+			# validate_evidence_file(self.archivo.file)
 
 	def asignarEvidencia(
 		self,

@@ -3,154 +3,67 @@
 {% block page_title %}Atención social{% endblock %}
 {% block content %}
 <div class="dashboard-layout">
-{% include 'includes/role_sidebar.html' %}
-<div class="dashboard-main">
-<div class="metric-grid"><article class="metric"><span>Mis casos</span><strong>{{ case_count }}</strong></article><article class="metric"><span>Máximo de atenciones</span><strong>3</strong></article><article class="metric"><span>Evidencia</span><strong>Obligatoria</strong></article></div>
-<section class="content-section split-layout">
-  <div><p class="eyebrow">NUEVO CASO</p><h2>Abrir caso social</h2>
-    {% if not active_delegation %}<div class="alert alert-warning">No tienes una delegación activa autorizada. Solicita que te asignen una antes de registrar atenciones.</div>{% endif %}
-    <form method="post" data-loading data-single-submit data-attention-intake
-      data-solicitantes-url="{% url 'funcionario:buscar_solicitantes' %}"
-      data-subatenciones-url="{% url 'funcionario:subatenciones_tipo' 0 %}" novalidate>
-      {% csrf_token %}<input type="hidden" name="action" value="crear_caso">
-      {{ case_form.solicitante_registrado }}
-      {% for error in case_form.solicitante_registrado.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
-      <div class="form-grid">
-        {% for field in case_form %}
-        {% if not field.is_hidden %}
-        <div class="mb-3 {% if field.name == 'descripcion' or field.name == 'resultado' or field.name == 'observaciones' %}field-wide{% endif %}">
-          <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="required-mark" aria-hidden="true">*</span>{% endif %}</label>
-          {{ field }}
-          {% if field.name == 'identificador' or field.name == 'nombre_solicitante' %}<div class="form-text">Escribe al menos dos caracteres para buscar en los solicitantes de esta delegación.</div>{% endif %}
-          {% if field.name == 'sub_atencion' %}<div class="form-text" data-subtype-error role="status"></div>{% endif %}
-          {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
-        </div>
-        {% endif %}
-        {% endfor %}
-        <div class="field-wide" data-solicitante-results role="listbox" aria-label="Solicitantes coincidentes" aria-live="polite"></div>
-        <div class="field-wide"><p class="form-text mb-0">Fecha: <strong>automática</strong> · Responsable: <strong>{{ request.user.get_full_name|default:request.user.email }}</strong> · Delegación activa: <strong>{% if active_delegation %}{{ active_delegation.codigo }} · {{ active_delegation.nombre }}{% else %}Sin delegación{% endif %}</strong>.</p></div>
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+    <section class="content-section split-layout">
+      <div>
+        <p class="eyebrow">NUEVA ATENCIÓN</p>
+        <h2>Registrar atención social</h2>
+        <p class="section-note">Selecciona un beneficiado existente o ingresa sus datos para crear uno nuevo. Cada atención registra una gestión y requiere evidencia.</p>
+        <form method="post" enctype="multipart/form-data" data-loading data-single-submit novalidate>
+          {% csrf_token %}
+          {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+          <div class="form-grid">
+            {% for field in form %}
+            <div class="mb-3 {% if field.name == 'observaciones' or field.name == 'observaciones_gestion' or field.name == 'resultado' or field.name == 'evidencia' %}field-wide{% endif %}">
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="required-mark" aria-hidden="true">*</span>{% endif %}</label>
+              {{ field }}
+              {% if field.name == 'beneficiado' %}<div class="form-text">Si no seleccionas uno, completa los campos de creación de beneficiado.</div>{% endif %}
+              {% if field.name == 'evidencia' %}<div class="form-text">JPG, PNG o PDF; máximo 5 MB.</div>{% endif %}
+              {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+            {% endfor %}
+          </div>
+          <button class="btn btn-primary" type="submit">Registrar atención</button>
+        </form>
       </div>
-      <button class="btn btn-primary" type="submit"{% if not active_delegation %} disabled{% endif %}>Crear caso</button>
-      <a class="btn btn-outline-secondary" href="{% url 'funcionario:atencion_social' %}">Cancelar</a>
-    </form>
+      <aside class="side-note">
+        <span class="side-note-mark">i</span>
+        <h3>Registro de gestiones</h3>
+        <p>Indica manualmente el número de gestión (del 1 al 3), su fecha y detalle. La evidencia queda asociada a esa gestión.</p>
+      </aside>
+    </section>
+
+    <section class="content-section">
+      <div class="section-head">
+        <div><p class="eyebrow">HISTORIAL</p><h2>Atenciones registradas</h2></div>
+        <span class="count-pill">{{ atencion_count }} atenciones</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead><tr><th>Fecha</th><th>Beneficiado</th><th>Tipo / Subtipo</th><th>Gestión</th><th>Resultado y observaciones</th><th>Evidencia</th></tr></thead>
+          <tbody>
+            {% for atencion in atenciones %}
+            <tr>
+              <td>{{ atencion.fecha|date:'d/m/Y H:i' }}</td>
+              <td>{{ atencion.beneficiado.nombre }} {{ atencion.beneficiado.apellido }}</td>
+              <td>{{ atencion.tipo.nombre }} / {{ atencion.subtipo.nombre }}</td>
+              <td>N.º {{ atencion.gestion_atencion.numero_gestion }} · {{ atencion.gestion_atencion.fecha|date:'d/m/Y' }}{% if atencion.gestion_atencion.observaciones %}<small class="d-block text-muted">{{ atencion.gestion_atencion.observaciones }}</small>{% endif %}</td>
+              <td>{% if atencion.resultado %}<p>{{ atencion.resultado }}</p>{% endif %}{{ atencion.observaciones|default:'—' }}</td>
+              <td>
+                {% for evidencia in atencion.gestion_atencion.evidencias.all %}
+                <a href="{{ evidencia.archivo.url }}" target="_blank" rel="noopener">{{ evidencia.codigo|slice:':8' }}</a>
+                <span class="tag">{{ evidencia.get_estado_display }}</span>
+                {% empty %}—{% endfor %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="empty-state">Todavía no hay atenciones sociales registradas.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
   </div>
-  <aside class="side-note"><span class="side-note-mark">i</span><h3>Seguimiento seguro</h3><p>Cada caso admite hasta tres atenciones. Cada atención recibe un código inmutable y debe incluir evidencia JPG, PNG o PDF de hasta 5 MB. El ingreso conserva el tipo y subtipo asociados al catálogo activo.</p></aside>
-</section>
-<section class="content-section"><div class="section-head"><div><p class="eyebrow">CASOS SOCIALES</p><h2>Mis casos</h2></div><span class="count-pill">{{ case_count }} casos</span></div>
-{% for caso in cases %}
-<article class="content-section">
-  <div class="section-head"><div><h3>{{ caso.atencion_social.tipo_atencion }}</h3><p class="section-note mb-0">Código {{ caso.codigo }} · Apertura {{ caso.atencion_social.fecha|date:'d/m/Y' }}{% if caso.atencion_social.delegacion %} · {{ caso.atencion_social.delegacion.codigo }}{% endif %}</p></div><span class="count-pill">{{ caso.atencion_social.gestiones.count }}/3 atenciones</span></div>
-  <p><strong>Solicitante:</strong> {{ caso.atencion_social.solicitante.nombre|default:'No informado' }}{% if caso.atencion_social.solicitante %} · {{ caso.atencion_social.solicitante.identificador }}{% endif %}</p>
-  {% if caso.atencion_social.sub_atencion %}<p><strong>Sub Atención:</strong> {{ caso.atencion_social.sub_atencion.nombre }}</p>{% endif %}
-  {% if caso.atencion_social.descripcion %}<p>{{ caso.atencion_social.descripcion }}</p>{% endif %}
-  {% if caso.atencion_social.resultado %}<p>{{ caso.atencion_social.resultado }}</p>{% endif %}
-  {% if caso.atencion_social.gestiones.count < 3 and not selected_case or caso.atencion_social.gestiones.count < 3 and selected_case.pk == caso.pk %}
-  <form method="post" enctype="multipart/form-data" data-loading class="mb-3">{% csrf_token %}<input type="hidden" name="action" value="agregar_atencion"><input type="hidden" name="caso_id" value="{{ caso.pk }}">
-    <div class="form-grid">{% for field in attention_form %}<div class="mb-3 {% if field.name == 'observaciones' or field.name == 'evidencia' %}field-wide{% endif %}"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.name == 'evidencia' %}<div class="form-text">JPG, PNG o PDF; máximo 5 MB.</div>{% endif %}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}</div>
-    <button class="btn btn-primary" type="submit">Registrar atención {{ caso.atencion_social.gestiones.count|add:1 }}</button>
-  </form>
-  {% else %}<div class="alert alert-info">El caso alcanzó el máximo de tres atenciones.</div>{% endif %}
-  <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Código de atención</th><th>N.º</th><th>Fecha</th><th>Detalle</th><th>Evidencia</th><th>Estado</th></tr></thead><tbody>
-    {% for atencion in caso.atencion_social.gestiones.all %}<tr><td><code>{{ atencion.codigo }}</code></td><td>{{ atencion.numero_gestion }}</td><td>{{ atencion.fecha|date:'d/m/Y' }}</td><td>{{ atencion.observaciones|default:'—' }}</td><td>{% for evidencia in atencion.evidencias.all %}<a href="{{ evidencia.archivo.url }}" target="_blank" rel="noopener">{{ evidencia.codigo|slice:':8' }}</a>{% endfor %}</td><td>{% for evidencia in atencion.evidencias.all %}<span class="tag">{{ evidencia.get_estado_display }}</span>{% endfor %}</td></tr>{% empty %}<tr><td colspan="6" class="empty-state">Aún no hay atenciones registradas.</td></tr>{% endfor %}
-  </tbody></table></div>
-</article>
-{% empty %}<div class="empty-state">Todavía no tienes casos sociales.</div>{% endfor %}
-</section>
-</div></div>
-{% endblock %}
-{% block extra_js %}
-<script>
-(() => {
-  const form = document.querySelector('[data-attention-intake]');
-  if (!form) return;
-
-  const applicantId = form.querySelector('[name="solicitante_registrado"]');
-  const identifier = form.querySelector('[data-solicitante-identificador]');
-  const name = form.querySelector('[data-solicitante-nombre]');
-  const results = form.querySelector('[data-solicitante-results]');
-  const subtypeError = form.querySelector('[data-subtype-error]');
-  const typeSelect = form.querySelector('[name="tipo_atencion_catalogo"]');
-  const subtypeSelect = form.querySelector('[name="sub_atencion"]');
-  let searchTimeout;
-
-  const clearResults = () => results.replaceChildren();
-  const showError = (message) => {
-    clearResults();
-    const error = document.createElement('p');
-    error.className = 'text-danger small';
-    error.textContent = message;
-    results.append(error);
-  };
-
-  async function searchApplicants(query) {
-    if (query.trim().length < 2) {
-      clearResults();
-      return;
-    }
-    try {
-      const response = await fetch(
-        `${form.dataset.solicitantesUrl}?q=${encodeURIComponent(query.trim())}`,
-        {headers: {'Accept': 'application/json'}}
-      );
-      if (!response.ok) throw new Error('No fue posible buscar solicitantes.');
-      const data = await response.json();
-      clearResults();
-      data.results.forEach((applicant) => {
-        const option = document.createElement('button');
-        option.type = 'button';
-        option.className = 'solicitante-option';
-        option.setAttribute('role', 'option');
-        option.textContent = `${applicant.nombre} · ${applicant.identificador}`;
-        option.addEventListener('click', () => {
-          applicantId.value = applicant.pk;
-          identifier.value = applicant.identificador;
-          name.value = applicant.nombre;
-          clearResults();
-        });
-        results.append(option);
-      });
-    } catch (error) {
-      showError(error.message);
-    }
-  }
-
-  [identifier, name].forEach((field) => {
-    field.addEventListener('input', () => {
-      applicantId.value = '';
-      window.clearTimeout(searchTimeout);
-      searchTimeout = window.setTimeout(() => searchApplicants(field.value), 250);
-    });
-  });
-
-  async function loadSubtypes(typeId) {
-    subtypeError.textContent = '';
-    subtypeSelect.replaceChildren(new Option('Selecciona una Sub Atención', ''));
-    subtypeSelect.disabled = !typeId;
-    if (!typeId) return;
-    try {
-      const url = form.dataset.subatencionesUrl.replace('/0/', `/${typeId}/`);
-      const response = await fetch(url, {headers: {'Accept': 'application/json'}});
-      if (!response.ok) throw new Error('No fue posible cargar las Sub Atenciones.');
-      const data = await response.json();
-      data.results.forEach((subtype) => {
-        subtypeSelect.add(new Option(`${subtype.codigo} · ${subtype.nombre}`, subtype.pk));
-      });
-      subtypeSelect.disabled = data.results.length === 0;
-      if (data.results.length === 0) {
-        subtypeError.textContent = 'No hay Sub Atenciones activas para este tipo.';
-      }
-    } catch (error) {
-      subtypeSelect.disabled = true;
-      subtypeError.textContent = error.message;
-    }
-  }
-
-  typeSelect.addEventListener('change', () => loadSubtypes(typeSelect.value));
-  if (typeSelect.value && subtypeSelect.options.length > 1) {
-    subtypeSelect.disabled = false;
-  } else {
-    subtypeSelect.disabled = true;
-  }
-})();
-</script>
+</div>
 {% endblock %}

@@ -7,12 +7,12 @@ from AdminApp.models import Rol, Usuario
 from AdminApp.roles import synchronize_user_role_groups
 
 
-@receiver(signals.m2m_changed, sender=Usuario.roles.through)
-def synchronize_role_groups(sender, instance, action, **kwargs):
-    if action not in {'post_add', 'post_remove', 'post_clear'}:
-        return
+#@receiver(signals.m2m_changed, sender=Usuario.roles.through)
+# def synchronize_role_groups(sender, instance, action, **kwargs):
+    #if action not in {'post_add', 'post_remove', 'post_clear'}:
+        #return
 
-    synchronize_user_role_groups(instance)
+    #synchronize_user_role_groups(instance)
 
 
 @receiver(signals.post_save, sender=Rol)

@@ -4,6 +4,7 @@ from uuid import uuid4
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db.models.deletion import ProtectedError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -14,10 +15,13 @@ from django.test import Client
 from DelegadoApp.models import Agenda, Compromiso, HistorialEstadoCompromiso
 from FuncionarioApp.models import (
     AtencionSocial,
+    Beneficiado,
+    CargoJv,
     CasoSocial,
     GestionAtencion,
     JuntaVecinos,
     Solicitante,
+    Territorio,
     Vecino,
     VecinoJunta,
 )
@@ -853,3 +857,77 @@ class SocialCaseTests(TestCase):
         response = self.client.get(reverse('funcionario:compromiso_nuevo'))
 
         self.assertEqual(response.status_code, 200)
+
+
+class TargetSchemaFuncionarioModelTests(TestCase):
+    def setUp(self):
+        self.delegacion = Delegacion.objects.create(nombre='Delegación para territorio')
+        self.junta = JuntaVecinos.objects.create(
+            nombre='Junta para cargo',
+            domicilio_legal='Domicilio',
+            territorio='Territorio',
+            delegacion=self.delegacion,
+            fecha_constitucion='2020-01-01',
+            numero_personalidad_juridica='RPJ-001',
+            fecha_inscripcion='2020-02-01',
+            numero_registro='REG-001',
+        )
+
+    def test_territorio_creation_and_delegacion_relation(self):
+        territorio = Territorio.objects.create(
+            nombre='Sector norte',
+            delegacion=self.delegacion,
+        )
+
+        territorio.refresh_from_db()
+        self.assertEqual(territorio.delegacion, self.delegacion)
+        self.assertEqual(self.delegacion.territorios_objetivo.get(), territorio)
+
+    def test_delegacion_with_territorio_is_protected(self):
+        Territorio.objects.create(nombre='Sector protegido', delegacion=self.delegacion)
+
+        with self.assertRaises(ProtectedError):
+            self.delegacion.delete()
+
+    def test_cargo_jv_creation_and_junta_relation(self):
+        cargo = CargoJv.objects.create(
+            nombre='Tesorero',
+            permisos='Administrar fondos',
+            junta_vecino=self.junta,
+        )
+
+        cargo.refresh_from_db()
+        self.assertEqual(cargo.junta_vecino, self.junta)
+        self.assertEqual(self.junta.cargos_objetivo.get(), cargo)
+
+    def test_junta_with_cargo_is_protected(self):
+        CargoJv.objects.create(
+            nombre='Secretario',
+            permisos='Registrar actas',
+            junta_vecino=self.junta,
+        )
+
+        with self.assertRaises(ProtectedError):
+            self.junta.delete()
+
+    def test_beneficiado_accepts_null_email_and_preserves_phone_text(self):
+        beneficiado = Beneficiado.objects.create(
+            nombre='Ana',
+            apellido='Pérez',
+            telefono='+560912345678',
+            email=None,
+        )
+
+        beneficiado.refresh_from_db()
+        self.assertIsNone(beneficiado.email)
+        self.assertEqual(beneficiado.telefono, '+560912345678')
+
+    def test_new_rows_receive_distinct_primary_keys(self):
+        first = Beneficiado.objects.create(
+            nombre='María', apellido='Uno', telefono='0012345',
+        )
+        second = Beneficiado.objects.create(
+            nombre='María', apellido='Dos', telefono='0012345',
+        )
+
+        self.assertNotEqual(first.pk, second.pk)

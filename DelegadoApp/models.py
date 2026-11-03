@@ -1,9 +1,11 @@
 import secrets
 from django.conf import settings
 from django.db import models
+from FuncionarioApp.models import Tipo,Subtipo
 
 #Modelo : Agenda (OK)
 class Agenda(models.Model):
+
 	delegacion = models.ForeignKey('AdminApp.Delegacion',on_delete=models.PROTECT,related_name='agendas',)
 	periodo = models.ForeignKey('CoordinadorApp.Periodo',on_delete=models.PROTECT,related_name='agendas',)
 
@@ -44,11 +46,13 @@ class Compromiso(models.Model):
 	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.INGRESADO)
 	observaciones = models.TextField(blank=True)
 	umbral_minimo = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True, db_column='UMBRAL_MINIMO')
-	genera_puntaje = models.DecimalField(max_digits=3, decimal_places=1, db_column='GENERA_PUNTAJE')
-	periodo_agenda = models.IntegerField(db_column='PERIODO_AGENDA')
-	delegacion_agenda = models.IntegerField(db_column='DELEGACION_AGENDA')
+	genera_puntaje = models.DecimalField(max_digits=3, decimal_places=1, default=0, db_column='GENERA_PUNTAJE')
+	periodo_agenda = models.IntegerField(default=0, db_column='PERIODO_AGENDA')
+	delegacion_agenda = models.IntegerField(default=0, db_column='DELEGACION_AGENDA')
 	creado = models.DateTimeField(auto_now_add=True)
 	actualizado = models.DateTimeField(auto_now=True)
+	tipo = models.ForeignKey(Tipo,on_delete=models.PROTECT,db_column='TIPO',related_name='Compromiso')
+	subtipo = models.ForeignKey(Subtipo,on_delete=models.PROTECT,db_column='SUBTIPO',related_name='Compromiso')
 
 	class Meta:
 		ordering = ['-fecha', 'descripcion']
@@ -83,6 +87,12 @@ class Compromiso(models.Model):
 
 	def __str__(self):
 		return self.descripcion
+
+	def save(self, *args, **kwargs):
+		if self.agenda_id:
+			self.periodo_agenda = self.agenda.periodo_id
+			self.delegacion_agenda = self.agenda.delegacion_id
+		return super().save(*args, **kwargs)
 
 #Modelo : Felicitacion (OK)
 class Felicitacion(models.Model):
@@ -121,7 +131,7 @@ class Reclamo(models.Model):
 	class Estado(models.TextChoices):
 		ABIERTO = 'abierto','Abierto'
 		CERRADO = 'cerrado','Cerrado'
-	
+
 	evidencia = models.CharField(max_length=100, db_column='EVIDENCIA')
 	fecha = models.DateTimeField(null=True, blank=True, db_column='FECHA')
 	ubicacion = models.CharField(
@@ -198,7 +208,7 @@ class Hito(models.Model):
 	class Estado(models.TextChoices):
 		ABIERTO = 'operativo','Operativo'
 		CERRADO = 'cancelado','Cancelado'
-	
+
 	nombre = models.CharField(max_length=100, db_column='NOMBRE')
 	descripcion = models.CharField(
 		max_length=500, null=True, blank=True, db_column='DESCRIPCION',

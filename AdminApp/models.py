@@ -7,7 +7,7 @@ from django.db.models import Q
 from django.db.models.deletion import ProtectedError
 import uuid
 
-from config.permissions import PERMISSION_CATALOG
+# from config.permissions import PERMISSION_CATALOG
 
 
 CRITICAL_CARGO_NAMES = frozenset({
@@ -53,26 +53,28 @@ class CargoManager(models.Manager.from_queryset(CargoQuerySet)):
 
 class RolQuerySet(models.QuerySet):
     def update(self, **kwargs):
-        protected_fields = {
-            'nombre', 'descripcion', 'alcance', 'estado', 'protegido', 'grupo',
-            'grupo_id',
-        }
-        if protected_fields.intersection(kwargs) and self.filter(
-            protegido=True,
+        protected_names = Q()
+        for name in PROTECTED_ROLE_NAMES:
+            protected_names |= Q(nombre__iexact=name)
+        if set(kwargs).intersection({'nombre', 'permisos', 'estado'}) and self.filter(
+            protected_names,
         ).exists():
             raise ValidationError(
-                'Un rol protegido no se puede modificar ni desproteger.'
+                'Un rol reservado no se puede modificar.'
             )
         return super().update(**kwargs)
 
     def delete(self):
         protected_roles = [
             role for role in self
-            if role.protegido or role.usuarios.exists()
+            if (
+                role.nombre.strip().casefold() in PROTECTED_ROLE_NAMES
+                or UsuarioRol.objects.filter(rol=role, fecha_fin__isnull=True).exists()
+            )
         ]
         if protected_roles:
             raise ProtectedError(
-                'Los roles protegidos o asignados no se pueden eliminar.',
+                'Los roles reservados o asignados no se pueden eliminar.',
                 protected_roles,
             )
         return super().delete()
@@ -85,14 +87,20 @@ class RolManager(models.Manager.from_queryset(RolQuerySet)):
 def _administrator_accounts():
     return (
         Q(is_superuser=True)
-        | Q(cargo__nombre__iexact='admin')
-        | Q(cargo__nombre__iexact='administrador')
+        | Q(
+            pk__in=UsuarioCargo.objects.filter(
+                fecha_fin__isnull=True,
+            ).filter(
+                Q(cargo__nombre__iexact='admin')
+                | Q(cargo__nombre__iexact='administrador')
+            ).values('usuario_id')
+        )
     )
 
 
 class UsuarioQuerySet(models.QuerySet):
     def update(self, **kwargs):
-        protected_fields = {'cargo', 'cargo_id', 'is_active', 'is_superuser'}
+        protected_fields = {'is_active', 'is_superuser'}
         if protected_fields.intersection(kwargs) and self.filter(
             is_active=True,
         ).filter(_administrator_accounts()).exists():
@@ -126,6 +134,9 @@ class UsuarioManager(BaseUserManager):
         if not email:
             raise ValueError('El correo electrónico es obligatorio.')
         email = self.normalize_email(email)
+        extra_fields.setdefault('nombre', email.split('@', 1)[0][:50])
+        extra_fields.setdefault('estado', 'activo')
+        extra_fields.setdefault('limite_actividad', 0)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
@@ -164,14 +175,6 @@ class Delegacion(models.Model):
     def __str__(self):
         return self.nombre
 
-    def save(self, *args, **kwargs):
-        if not self.codigo and self.pk is None:
-            super().save(*args, **kwargs)
-            self.codigo = f'DEL-{self.pk:04d}'
-            super().save(using=kwargs.get('using'), update_fields=['codigo'])
-            return
-        return super().save(*args, **kwargs)
-
 #Modelo UsuarioDelegacion (OK)
 class UsuarioDelegacion(models.Model):
     usuario = models.ForeignKey('Usuario', on_delete=models.PROTECT, db_column='USUARIO')
@@ -198,6 +201,7 @@ class Cargo(models.Model):
     )
     fecha_inicio = models.DateTimeField(null=True, blank=True, db_column='FECHA_INICIO')
     fecha_fin = models.DateTimeField(null=True, blank=True, db_column='FECHA_FIN')
+    objects = CargoManager()
 
     class Meta:
         db_table = "cargo"
@@ -269,6 +273,7 @@ class Rol(models.Model):
     nombre = models.CharField(max_length=80, unique=True)
     permisos = models.CharField(blank=True,max_length=1000)
     estado = models.CharField(max_length=20,choices=Estado.choices,default=Estado.ACTIVO,)
+    objects = RolManager()
     class Meta:
         db_table = "rol"
         ordering = ['nombre']
@@ -286,19 +291,13 @@ class Rol(models.Model):
             )
         if self.pk:
             previous = type(self).objects.filter(pk=self.pk).first()
-            if previous and previous.protegido and (
-                self.nombre != previous.nombre
-                or self.descripcion != previous.descripcion
-                or self.alcance != previous.alcance
-                or self.estado != previous.estado
-                or self.protegido != previous.protegido
-                or (
-                    previous.grupo_id is not None
-                    and self.grupo_id != previous.grupo_id
-                )
+            if (
+                previous
+                and previous.nombre.strip().casefold() in PROTECTED_ROLE_NAMES
+                and self.nombre != previous.nombre
             ):
                 raise ValidationError(
-                    'Un rol protegido no se puede modificar ni desproteger.'
+                    'Un rol reservado no se puede renombrar.'
                 )
             if (
                 previous
@@ -311,9 +310,12 @@ class Rol(models.Model):
         return super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        if self.protegido or self.usuarios.exists():
+        if (
+            self.nombre.strip().casefold() in PROTECTED_ROLE_NAMES
+            or UsuarioRol.objects.filter(rol=self, fecha_fin__isnull=True).exists()
+        ):
             raise ProtectedError(
-                'Los roles protegidos o asignados no se pueden eliminar.',
+                'Los roles reservados o asignados no se pueden eliminar.',
                 [self],
             )
         return super().delete(*args, **kwargs)
@@ -334,12 +336,13 @@ class UsuarioRol(models.Model):
 #Modelo del Usuario (OK)
 class Usuario(AbstractUser):
     username = None
-    uuid = models.IntegerField(primary_key=True, db_column='UUID')
-    email = models.EmailField(max_length=50, db_column='EMAIL')
-    contraseña = models.CharField(max_length=300, db_column='CONTRASEÑA')
-    nombre = models.CharField(max_length=50, db_column='NOMBRE')
-    estado = models.CharField(max_length=30, db_column='ESTADO')
-    limite_actividad = models.IntegerField(db_column='LIMITE_ACTIVIDAD')
+    uuid = models.AutoField(primary_key=True, db_column='UUID')
+    email = models.EmailField(max_length=50, unique=True, db_column='EMAIL')
+    contraseña = models.CharField(max_length=300, blank=True, default='', db_column='CONTRASEÑA')
+    nombre = models.CharField(max_length=50, default='', db_column='NOMBRE')
+    estado = models.CharField(max_length=30, default='activo', db_column='ESTADO')
+    limite_actividad = models.IntegerField(default=0, db_column='LIMITE_ACTIVIDAD')
+    objects = UsuarioManager()
 
     #Username Email
     USERNAME_FIELD = 'email'
@@ -352,6 +355,8 @@ class Usuario(AbstractUser):
         verbose_name_plural = "Usuarios"
 
     def save(self, *args, **kwargs):
+        if self.password:
+            self.contraseña = self.password
         if self.pk:
             using = kwargs.get('using') or self._state.db or 'default'
             with transaction.atomic(using=using):
@@ -361,11 +366,13 @@ class Usuario(AbstractUser):
                 previous = administrators.filter(pk=self.pk).exists()
                 remains_administrator = self.is_active and (
                     self.is_superuser
-                    or (
-                        self.cargo
-                        and self.cargo.nombre.strip().casefold()
-                        in {'admin', 'administrador'}
-                    )
+                    or UsuarioCargo.objects.using(using).filter(
+                        usuario_id=self.pk,
+                        fecha_fin__isnull=True,
+                    ).filter(
+                        Q(cargo__nombre__iexact='admin')
+                        | Q(cargo__nombre__iexact='administrador')
+                    ).exists()
                 )
                 if previous and not remains_administrator and administrators.count() <= 1:
                     raise ValidationError(
@@ -374,6 +381,52 @@ class Usuario(AbstractUser):
                     )
                 return super().save(*args, **kwargs)
         return super().save(*args, **kwargs)
+
+    @property
+    def delegacion_actual(self):
+        return UsuarioDelegacion.objects.filter(
+            usuario=self, fecha_fin__isnull=True,
+        ).select_related('delegacion').order_by('-fecha_inicio', '-pk').first()
+
+    @property
+    def delegacion(self):
+        assignment = self.delegacion_actual
+        return assignment.delegacion if assignment else None
+
+    @property
+    def delegacion_id(self):
+        assignment = self.delegacion_actual
+        return assignment.delegacion_id if assignment else None
+
+    @property
+    def cargo_actual(self):
+        return UsuarioCargo.objects.filter(
+            usuario=self, fecha_fin__isnull=True,
+        ).select_related('cargo').order_by('-fecha_inicio', '-pk').first()
+
+    @property
+    def cargo(self):
+        assignment = self.cargo_actual
+        return assignment.cargo if assignment else None
+
+    @property
+    def cargo_id(self):
+        assignment = self.cargo_actual
+        return assignment.cargo_id if assignment else None
+
+    @property
+    def delegaciones_autorizadas(self):
+        return Delegacion.objects.filter(
+            usuariodelegacion__usuario=self,
+            usuariodelegacion__fecha_fin__isnull=True,
+        ).distinct()
+
+    @property
+    def roles(self):
+        return Rol.objects.filter(
+            usuariorol__usuario=self,
+            usuariorol__fecha_fin__isnull=True,
+        ).distinct()
 
     def delete(self, *args, **kwargs):
         using = kwargs.get('using') or self._state.db or 'default'
@@ -406,35 +459,41 @@ class Usuario(AbstractUser):
                 pk=getattr(periodo, 'pk', periodo),
             ).first()
 
-        if self.delegacion_id and periodo_actual:
+        delegacion_asignada = self.delegacion_actual
+        if delegacion_asignada and periodo_actual:
+            delegacion_id = delegacion_asignada.delegacion_id
             registros = Registro.objects.filter(
-                autor__delegacion_id=self.delegacion_id,
+                autor__usuariodelegacion__delegacion_id=delegacion_id,
+                autor__usuariodelegacion__fecha_fin__isnull=True,
                 periodo=periodo_actual,
-            ).select_related('autor', 'item', 'periodo')
+            ).select_related('autor', 'item', 'periodo').distinct()
             desempenos = Desempeno.objects.filter(
-                usuario__delegacion_id=self.delegacion_id,
+                usuario__usuariodelegacion__delegacion_id=delegacion_id,
+                usuario__usuariodelegacion__fecha_fin__isnull=True,
                 periodo=periodo_actual,
-            ).select_related('usuario', 'item', 'periodo')
+            ).select_related('usuario', 'item', 'periodo').distinct()
             compromisos = Compromiso.objects.filter(
-                agenda__delegacion_id=self.delegacion_id,
+                agenda__delegacion_id=delegacion_id,
                 agenda__periodo=periodo_actual,
-            ).select_related('agenda', 'agenda__periodo').prefetch_related('responsables')
+            ).select_related('agenda', 'agenda__periodo').prefetch_related('responsable')
             evidencias = Evidencia.objects.filter(
                 estado=Evidencia.Estado.PENDIENTE,
             ).filter(
                 Q(
-                    registro__autor__delegacion_id=self.delegacion_id,
+                    registro__autor__usuariodelegacion__delegacion_id=delegacion_id,
+                    registro__autor__usuariodelegacion__fecha_fin__isnull=True,
                     registro__periodo=periodo_actual,
                 )
                 | Q(
-                    compromiso__agenda__delegacion_id=self.delegacion_id,
+                    compromiso__agenda__delegacion_id=delegacion_id,
                     compromiso__agenda__periodo=periodo_actual,
                 )
             )
             funcionarios_activos = self.__class__.objects.filter(
-                delegacion_id=self.delegacion_id,
+                usuariodelegacion__delegacion_id=delegacion_id,
+                usuariodelegacion__fecha_fin__isnull=True,
                 is_active=True,
-            ).count()
+            ).distinct().count()
         else:
             registros = Registro.objects.none()
             desempenos = Desempeno.objects.none()
@@ -457,9 +516,9 @@ class Usuario(AbstractUser):
 
         cumplimiento_por_funcionario = {}
         for usuario_id, meta, avance, ponderacion in desempenos.values_list(
-            'usuario_id', 'meta', 'avance', 'ponderacion',
+            'usuario_id', 'meta', 'avance', 'item__ponderacion',
         ):
-            if meta:
+            if meta and ponderacion is not None:
                 aporte_ponderado = avance * ponderacion / meta
                 cumplimiento_por_funcionario[usuario_id] = (
                     cumplimiento_por_funcionario.get(usuario_id, Decimal('0'))
@@ -473,7 +532,7 @@ class Usuario(AbstractUser):
 
         return {
             'periodo': periodo_actual,
-            'delegacion': self.delegacion,
+            'delegacion': delegacion_asignada.delegacion if delegacion_asignada else None,
             'indicadores': {
                 'funcionarios_activos': funcionarios_activos,
                 'actividades': registros.count(),

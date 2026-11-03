@@ -2,18 +2,21 @@ from django import forms
 from django.contrib.auth.models import Permission
 from django.contrib.auth.password_validation import validate_password
 from decimal import Decimal
+from django.db import transaction
 from django.db.models import Q
-
+from django.utils import timezone
+from FuncionarioApp.models import Subtipo, Tipo
 from AdminApp.models import (
-    Catalogo,
     Cargo,
     Delegacion,
     ParametroSistema,
     PasswordResetAuditEvent,
     Rol,
-    SubAtencion,
     TipoAtencion,
     Usuario,
+    UsuarioCargo,
+    UsuarioDelegacion,
+    UsuarioRol,
     PROTECTED_ROLE_NAMES,
 )
 from AdminApp.roles import (
@@ -21,6 +24,7 @@ from AdminApp.roles import (
     ensure_role_group,
     is_system_administrator,
     permission_codenames_for,
+    role_group_name,
 )
 from CoordinadorApp.models import CargoFuncion, Desempeno, Funcion, Item, Periodo
 from config.forms import BootstrapFormMixin
@@ -65,50 +69,163 @@ def _configure_user_form_fields(form, actor):
     if instance.pk:
         delegations = Delegacion.objects.filter(
             Q(estado=Delegacion.Estado.ACTIVA)
-            | Q(usuarios=instance)
-            | Q(usuarios_autorizados=instance)
+            | Q(usuariodelegacion__usuario=instance)
         ).distinct()
     form.fields['delegacion'].queryset = delegations.order_by('nombre')
     form.fields['delegaciones_autorizadas'].queryset = (
         delegations.order_by('nombre')
     )
+    if instance.pk:
+        form.fields['delegacion'].initial = (
+            instance.delegacion_actual.delegacion_id
+            if instance.delegacion_actual else None
+        )
+        form.fields['delegaciones_autorizadas'].initial = (
+            UsuarioDelegacion.objects.filter(
+                usuario=instance,
+                fecha_fin__isnull=True,
+            ).values_list('delegacion_id', flat=True)
+        )
 
     cargos = Cargo.objects.filter(estado=Cargo.Estado.ACTIVO)
-    if instance.pk and instance.cargo_id:
+    if instance.pk and instance.cargo_actual:
         cargos = Cargo.objects.filter(
-            Q(estado=Cargo.Estado.ACTIVO) | Q(pk=instance.cargo_id),
+            Q(estado=Cargo.Estado.ACTIVO)
+            | Q(pk=instance.cargo_actual.cargo_id),
         )
     form.fields['cargo'].queryset = cargos.order_by('nombre')
+    if instance.pk and instance.cargo_actual:
+        form.fields['cargo'].initial = instance.cargo_actual.cargo_id
 
     roles = Rol.objects.filter(estado=Rol.Estado.ACTIVO)
     if instance.pk:
         roles = Rol.objects.filter(
-            Q(estado=Rol.Estado.ACTIVO) | Q(usuarios=instance),
+            Q(estado=Rol.Estado.ACTIVO)
+            | Q(usuariorol__usuario=instance, usuariorol__fecha_fin__isnull=True),
         ).distinct()
     assignable = assignable_role_ids(actor, instance) if actor else None
     if assignable is not None:
         roles = roles.filter(pk__in=assignable)
     form.fields['roles'].queryset = roles.order_by('nombre')
+    if instance.pk:
+        form.fields['roles'].initial = UsuarioRol.objects.filter(
+            usuario=instance,
+            fecha_fin__isnull=True,
+        ).values_list('rol_id', flat=True)
+
+
+def _sync_user_assignments(user, cleaned_data):
+    with transaction.atomic():
+        now = timezone.now()
+        main_delegation = cleaned_data.get('delegacion')
+        delegations = cleaned_data.get('delegaciones_autorizadas') or ()
+        delegation_ids = {delegation.pk for delegation in delegations}
+        if main_delegation:
+            delegation_ids.add(main_delegation.pk)
+        active_delegations = list(UsuarioDelegacion.objects.select_for_update().filter(
+            usuario=user,
+            fecha_fin__isnull=True,
+        ))
+        by_delegation = {}
+        for assignment in active_delegations:
+            by_delegation.setdefault(assignment.delegacion_id, []).append(assignment)
+        for delegation_id, assignments in by_delegation.items():
+            if delegation_id not in delegation_ids:
+                for assignment in assignments:
+                    assignment.fecha_fin = now
+                    assignment.save(update_fields=['fecha_fin'])
+            else:
+                for duplicate in assignments[1:]:
+                    duplicate.fecha_fin = now
+                    duplicate.save(update_fields=['fecha_fin'])
+        for delegation_id in delegation_ids:
+            if not by_delegation.get(delegation_id):
+                UsuarioDelegacion.objects.create(
+                    usuario=user,
+                    delegacion_id=delegation_id,
+                    fecha_inicio=now,
+                )
+        if main_delegation:
+            UsuarioDelegacion.objects.filter(
+                usuario=user,
+                delegacion=main_delegation,
+                fecha_fin__isnull=True,
+            ).update(fecha_inicio=now)
+
+        selected_cargo = cleaned_data.get('cargo')
+        cargo_assignments = list(UsuarioCargo.objects.select_for_update().filter(
+            usuario=user,
+            fecha_fin__isnull=True,
+        ))
+        keep_cargo = next(
+            (assignment for assignment in cargo_assignments
+             if selected_cargo and assignment.cargo_id == selected_cargo.pk),
+            None,
+        )
+        for assignment in cargo_assignments:
+            if assignment is not keep_cargo:
+                assignment.fecha_fin = now
+                assignment.save(update_fields=['fecha_fin'])
+        if selected_cargo and keep_cargo is None:
+            UsuarioCargo.objects.create(
+                usuario=user,
+                cargo=selected_cargo,
+                fecha_inicio=now,
+            )
+
+        selected_role_ids = {
+            role.pk for role in (cleaned_data.get('roles') or ())
+        }
+        active_roles = list(UsuarioRol.objects.select_for_update().filter(
+            usuario=user,
+            fecha_fin__isnull=True,
+        ))
+        active_role_ids = {assignment.rol_id for assignment in active_roles}
+        for assignment in active_roles:
+            if assignment.rol_id not in selected_role_ids:
+                assignment.fecha_fin = now
+                assignment.save(update_fields=['fecha_fin'])
+        for role_id in selected_role_ids - active_role_ids:
+            UsuarioRol.objects.create(
+                usuario=user,
+                rol_id=role_id,
+                fecha_inicio=now,
+            )
+        from AdminApp.roles import synchronize_user_role_groups
+        synchronize_user_role_groups(user)
 
 
 class UsuarioCreationForm(BootstrapFormMixin, forms.ModelForm):
+    delegacion = forms.ModelChoiceField(
+        queryset=Delegacion.objects.none(),
+        required=False,
+        label='Delegación principal',
+    )
+    delegaciones_autorizadas = forms.ModelMultipleChoiceField(
+        queryset=Delegacion.objects.none(),
+        required=False,
+        label='Delegaciones autorizadas',
+    )
+    cargo = forms.ModelChoiceField(
+        queryset=Cargo.objects.none(),
+        required=True,
+        label='Cargo',
+    )
+    roles = forms.ModelMultipleChoiceField(
+        queryset=Rol.objects.none(),
+        required=False,
+        label='Roles',
+    )
     password1 = forms.CharField(label='Contraseña', widget=forms.PasswordInput)
     password2 = forms.CharField(label='Confirmar contraseña', widget=forms.PasswordInput)
 
     class Meta:
         model = Usuario
-        fields = (
-            'email', 'first_name', 'last_name', 'delegacion',
-            'delegaciones_autorizadas', 'cargo', 'roles', 'is_active',
-        )
+        fields = ('email', 'nombre', 'estado', 'is_active')
         labels = {
             'email': 'Correo electrónico',
-            'first_name': 'Nombre',
-            'last_name': 'Apellido',
-            'delegacion': 'Delegación',
-            'delegaciones_autorizadas': 'Delegaciones autorizadas',
-            'cargo': 'Cargo',
-            'roles': 'Roles',
+            'nombre': 'Nombre',
+            'estado': 'Estado',
             'is_active': 'Cuenta activa',
         }
 
@@ -140,7 +257,7 @@ class UsuarioCreationForm(BootstrapFormMixin, forms.ModelForm):
         user.set_password(self.cleaned_data['password1'])
         if commit:
             user.save()
-            self.save_m2m()
+            _sync_user_assignments(user, self.cleaned_data)
         return user
 
 
@@ -176,11 +293,15 @@ class UsuarioUpdateForm(BootstrapFormMixin, forms.ModelForm):
             user.set_password(password)
         if commit:
             user.save()
-            self.save_m2m()
+            _sync_user_assignments(user, self.cleaned_data)
         return user
 
 
 class ParametroSistemaForm(BootstrapFormMixin, forms.Form):
+    max_dias_autorizacion = forms.IntegerField(
+        label='Máximo de días de autorización', min_value=1, max_value=365,
+        required=False,
+    )
     tope_cumplimiento = forms.DecimalField(
         label='Tope de cumplimiento (%)',
         min_value=Decimal('100'),
@@ -206,18 +327,25 @@ class ParametroSistemaForm(BootstrapFormMixin, forms.Form):
             'umbral_delegacion',
             ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_DELEGACION),
         )
+        initial.setdefault(
+            'max_dias_autorizacion',
+            ParametroSistema.obtener(ParametroSistema.Clave.MAX_DIAS_AUTORIZACION),
+        )
         super().__init__(*args, initial=initial, **kwargs)
+
+    def clean_max_dias_autorizacion(self):
+        return self.cleaned_data.get('max_dias_autorizacion') or ParametroSistema.obtener(
+            ParametroSistema.Clave.MAX_DIAS_AUTORIZACION,
+        )
 
 
 class DelegacionForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Delegacion
-        fields = ('codigo', 'nombre', 'direccion', 'comuna', 'estado')
+        fields = ('nombre', 'direccion', 'estado')
         labels = {
-            'codigo': 'Código',
             'nombre': 'Nombre',
             'direccion': 'Dirección',
-            'comuna': 'Comuna',
             'estado': 'Estado',
         }
 
@@ -232,15 +360,11 @@ class RolForm(BootstrapFormMixin, forms.ModelForm):
 
     class Meta:
         model = Rol
-        fields = ('nombre', 'descripcion', 'alcance', 'estado')
+        fields = ('nombre', 'permisos', 'estado')
         labels = {
             'nombre': 'Nombre',
-            'descripcion': 'Descripción',
-            'alcance': 'Alcance',
+            'permisos': 'Permisos asignados',
             'estado': 'Estado',
-        }
-        widgets = {
-            'descripcion': forms.Textarea(attrs={'rows': 3}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -254,15 +378,19 @@ class RolForm(BootstrapFormMixin, forms.ModelForm):
             content_type__app_label='AdminApp',
             codename__in=definitions_by_codename,
         ).order_by('name')
+        current_group = (
+            ensure_role_group(self.instance)
+            if self.instance.pk else None
+        )
         if self.actor and not is_system_administrator(self.actor):
             existing_codenames = (
                 set(
-                    self.instance.grupo.permissions.values_list(
+                    current_group.permissions.values_list(
                         'codename',
                         flat=True,
                     )
                 )
-                if self.instance.pk and self.instance.grupo_id else set()
+                if current_group else set()
             )
             allowed_codenames = (
                 permission_codenames_for(self.actor) | existing_codenames
@@ -298,9 +426,9 @@ class RolForm(BootstrapFormMixin, forms.ModelForm):
             (module, choices)
             for module, choices in groups.items()
         ]
-        if self.instance.pk and self.instance.grupo_id:
+        if current_group:
             self.initial['permissions'] = list(
-                self.instance.grupo.permissions.filter(
+                current_group.permissions.filter(
                     codename__in=definitions_by_codename,
                 ).values_list('pk', flat=True)
             )
@@ -321,7 +449,10 @@ class RolForm(BootstrapFormMixin, forms.ModelForm):
             }
             for module, choices, _ in widget_context['optgroups']
         ]
-        if self.instance.protegido:
+        if (
+            self.instance.pk
+            and self.instance.nombre.strip().casefold() in PROTECTED_ROLE_NAMES
+        ):
             for field in self.fields.values():
                 field.disabled = True
 
@@ -331,12 +462,12 @@ class RolForm(BootstrapFormMixin, forms.ModelForm):
             return selected
         current = (
             set(
-                self.instance.grupo.permissions.values_list(
+                ensure_role_group(self.instance).permissions.values_list(
                     'codename',
                     flat=True,
                 )
             )
-            if self.instance.pk and self.instance.grupo_id else set()
+            if self.instance.pk else set()
         )
         permitted = permission_codenames_for(self.actor) | current
         unauthorized = {
@@ -353,7 +484,10 @@ class RolForm(BootstrapFormMixin, forms.ModelForm):
         name = self.cleaned_data['nombre'].strip()
         if (
             name.casefold() in PROTECTED_ROLE_NAMES
-            and not self.instance.protegido
+            and not (
+                self.instance.pk
+                and self.instance.nombre.strip().casefold() in PROTECTED_ROLE_NAMES
+            )
         ):
             raise forms.ValidationError(
                 'Este nombre está reservado para roles críticos del sistema.'
@@ -366,30 +500,48 @@ class RolForm(BootstrapFormMixin, forms.ModelForm):
             return role
         role.save()
         group = ensure_role_group(role)
-        if not role.protegido:
-            group.permissions.set(self.cleaned_data['permissions'])
+        group.permissions.set(self.cleaned_data['permissions'])
         return role
 
 
 class CargoForm(BootstrapFormMixin, forms.ModelForm):
+    funciones = forms.ModelMultipleChoiceField(
+        queryset=Funcion.objects.none(),
+        required=False,
+        label='Funciones asociadas',
+    )
+
     class Meta:
         model = Cargo
-        fields = ('nombre', 'funciones', 'estado')
+        fields = ('nombre', 'estado')
         labels = {
             'nombre': 'Cargo',
-            'funciones': 'Función asociada',
             'estado': 'Estado',
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         functions = Funcion.objects.filter(estado=Funcion.Estado.ACTIVO)
-        if self.instance.pk and self.instance.funciones_id:
-            functions = Funcion.objects.filter(
-                Q(estado=Funcion.Estado.ACTIVO)
-                | Q(pk=self.instance.funciones_id),
-            )
         self.fields['funciones'].queryset = functions.order_by('nombre')
+        if self.instance.pk:
+            self.initial['funciones'] = CargoFuncion.objects.filter(
+                cargo=self.instance,
+            ).values_list('funcion_id', flat=True)
+
+    def save(self, commit=True):
+        cargo = super().save(commit=commit)
+        if commit:
+            selected = {
+                funcion.pk for funcion in self.cleaned_data.get('funciones', ())
+            }
+            existing = CargoFuncion.objects.filter(cargo=cargo)
+            existing.exclude(funcion_id__in=selected).delete()
+            current = set(existing.values_list('funcion_id', flat=True))
+            CargoFuncion.objects.bulk_create([
+                CargoFuncion(cargo=cargo, funcion_id=funcion_id)
+                for funcion_id in selected - current
+            ])
+        return cargo
 
 
 class FuncionForm(BootstrapFormMixin, forms.ModelForm):
@@ -428,7 +580,7 @@ class CargoFuncionForm(BootstrapFormMixin, forms.ModelForm):
         self.fields['funcion'].queryset = functions.order_by('nombre')
 
 
-class CatalogoForm(BootstrapFormMixin, forms.ModelForm):
+"""class CatalogoForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Catalogo
         fields = ('actividad', 'servicio', 'tipo', 'subtipo', 'estado')
@@ -438,66 +590,59 @@ class CatalogoForm(BootstrapFormMixin, forms.ModelForm):
             'tipo': 'Tipo',
             'subtipo': 'Subtipo',
             'estado': 'Estado',
-        }
+        }"""
 
 
 class ItemForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Item
-        fields = ('codigo', 'funcion', 'nombre', 'descripcion', 'estado')
+        fields = ('codigo', 'nombre', 'descripcion', 'ponderacion', 'estado')
         labels = {
             'codigo': 'Código',
-            'funcion': 'Función',
             'nombre': 'Nombre',
             'descripcion': 'Descripción',
+            'ponderacion': 'Ponderación (%)',
             'estado': 'Estado',
         }
         widgets = {'descripcion': forms.Textarea(attrs={'rows': 3})}
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        functions = Funcion.objects.filter(estado=Funcion.Estado.ACTIVO)
-        if self.instance.pk and self.instance.funcion_id:
-            functions = Funcion.objects.filter(
-                Q(estado=Funcion.Estado.ACTIVO)
-                | Q(pk=self.instance.funcion_id),
-            )
-        self.fields['funcion'].queryset = functions.order_by('nombre')
 
 
 class TipoAtencionForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = TipoAtencion
-        fields = ('codigo', 'nombre', 'descripcion', 'estado')
+        fields = ('nombre', 'descripcion', 'subtipo', 'estado')
         labels = {
-            'codigo': 'Código',
             'nombre': 'Nombre',
             'descripcion': 'Descripción',
+            'subtipo': 'Subtipo',
             'estado': 'Estado',
         }
         widgets = {'descripcion': forms.Textarea(attrs={'rows': 3})}
 
 
-class SubAtencionForm(BootstrapFormMixin, forms.ModelForm):
+class TipoForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
-        model = SubAtencion
-        fields = (
-            'codigo', 'nombre', 'tipo_atencion', 'descripcion', 'estado',
-        )
+        model = Tipo
+        fields = ('nombre', 'estado')
+        labels = {'nombre': 'Tipo', 'estado': 'Estado'}
+
+
+class SubtipoForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = Subtipo
+        fields = ('nombre', 'tipo', 'estado')
         labels = {
-            'codigo': 'Código',
-            'nombre': 'Nombre',
-            'tipo_atencion': 'Tipo de Atención',
-            'descripcion': 'Descripción',
+            'nombre': 'Subtipo',
+            'tipo': 'Tipo',
             'estado': 'Estado',
         }
-        widgets = {'descripcion': forms.Textarea(attrs={'rows': 3})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['tipo_atencion'].queryset = TipoAtencion.objects.order_by(
-            'nombre',
-        )
+        tipos = Tipo.objects.filter(estado=Tipo.Estado.ACTIVADO)
+        if self.instance.pk:
+            tipos = tipos | Tipo.objects.filter(pk=self.instance.tipo_id)
+        self.fields['tipo'].queryset = tipos.distinct().order_by('nombre')
 
 
 class DesempenoForm(BootstrapFormMixin, forms.ModelForm):
@@ -507,37 +652,31 @@ class DesempenoForm(BootstrapFormMixin, forms.ModelForm):
         max_digits=12,
         decimal_places=2,
     )
-    ponderacion = forms.DecimalField(
-        label='Ponderación (%)',
-        min_value=Decimal('0'),
-        max_value=Decimal('100'),
-        max_digits=5,
-        decimal_places=2,
-    )
-
     class Meta:
         model = Desempeno
-        fields = ('usuario', 'item', 'periodo', 'meta', 'ponderacion')
+        fields = ('usuario', 'item', 'periodo', 'meta')
         labels = {
             'usuario': 'Usuario',
             'item': 'Ítem',
             'periodo': 'Período',
         }
 
-    def __init__(self, *args, user=None, delegation=None, **kwargs):
+    def __init__(
+        self, *args, user=None, delegation=None, global_scope=False,
+        allow_closed_periods=False, **kwargs,
+    ):
         super().__init__(*args, **kwargs)
-        self._original_item_id = self.instance.item_id if self.instance.pk else None
-        self._original_function_id = (
-            self.instance.funcion_id if self.instance.pk else None
-        )
         usuarios = Usuario.objects.filter(is_active=True)
-        if user and user.cargo and user.cargo.nombre.strip().casefold() not in {
+        if (
+            user and not global_scope and user.cargo
+            and user.cargo.nombre.strip().casefold() not in {
             'admin', 'administrador',
-        }:
+            }
+        ):
             if delegation:
                 usuarios = usuarios.filter(
-                    Q(delegacion=delegation)
-                    | Q(delegaciones_autorizadas=delegation)
+                    usuariodelegacion__delegacion=delegation,
+                    usuariodelegacion__fecha_fin__isnull=True,
                 ).distinct()
             else:
                 usuarios = usuarios.none()
@@ -545,18 +684,15 @@ class DesempenoForm(BootstrapFormMixin, forms.ModelForm):
             usuarios = (usuarios | Usuario.objects.filter(
                 pk=self.instance.usuario_id,
             )).distinct()
-        self.fields['usuario'].queryset = usuarios.order_by(
-            'last_name', 'first_name', 'email',
-        )
+        self.fields['usuario'].queryset = usuarios.order_by('nombre', 'email')
 
         items = Item.objects.filter(
             estado=Item.Estado.ACTIVO,
-            funcion__estado=Funcion.Estado.ACTIVO,
         )
         if self.instance.pk and self.instance.item_id:
             items = (items | Item.objects.filter(pk=self.instance.item_id)).distinct()
         self.fields['item'].queryset = items.order_by('nombre')
-        periods = Periodo.objects.filter(estado=Periodo.Estado.ABIERTO)
+        periods = Periodo.objects.all() if allow_closed_periods else Periodo.objects.filter(estado=Periodo.Estado.ABIERTO)
         if self.instance.pk and self.instance.periodo_id:
             periods = (periods | Periodo.objects.filter(
                 pk=self.instance.periodo_id,
@@ -569,16 +705,10 @@ class DesempenoForm(BootstrapFormMixin, forms.ModelForm):
         item = cleaned_data.get('item')
         period = cleaned_data.get('periodo')
         if user and item and period:
-            function_id = (
-                self._original_function_id
-                if self.instance.pk and item.pk == self._original_item_id
-                else item.funcion_id
-            )
             duplicate = Desempeno.objects.filter(
                 usuario=user,
                 item=item,
                 periodo=period,
-                funcion_id=function_id,
             )
             if self.instance.pk:
                 duplicate = duplicate.exclude(pk=self.instance.pk)
@@ -590,15 +720,7 @@ class DesempenoForm(BootstrapFormMixin, forms.ModelForm):
         return cleaned_data
 
     def save(self, commit=True):
-        record = super().save(commit=False)
-        if not self.instance.pk or record.item_id != self._original_item_id:
-            record.funcion = record.item.funcion
-        else:
-            record.funcion_id = self._original_function_id
-        if commit:
-            record.save()
-            self.save_m2m()
-        return record
+        return super().save(commit=commit)
 
 
 class HistorialFilterForm(BootstrapFormMixin, forms.Form):

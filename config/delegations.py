@@ -1,6 +1,5 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -16,7 +15,8 @@ def authorized_delegations(user):
     if not user.is_authenticated:
         return Delegacion.objects.none()
     return Delegacion.objects.filter(
-        Q(usuarios=user) | Q(usuarios_autorizados=user),
+        usuariodelegacion__usuario=user,
+        usuariodelegacion__fecha_fin__isnull=True,
         estado=Delegacion.Estado.ACTIVA,
     ).distinct().order_by('nombre')
 
@@ -35,8 +35,11 @@ def active_delegation(request):
         if str(selected_id).isdecimal()
         else None
     )
-    if selected is None and request.user.delegacion_id:
-        selected = delegations.filter(pk=request.user.delegacion_id).first()
+    current_assignment = request.user.delegacion_actual
+    if selected is None and current_assignment:
+        selected = delegations.filter(
+            pk=current_assignment.delegacion_id,
+        ).first()
     if selected is None:
         selected = delegations.first()
 

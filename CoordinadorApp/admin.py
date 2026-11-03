@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import CargoFuncion, Desempeno, Funcion, Item, Periodo
+from .models import CargoFuncion, Desempeno, Funcion, Item, Periodo, PeriodoSemana
 
 
 @admin.register(Funcion)
@@ -11,9 +11,9 @@ class FuncionAdmin(admin.ModelAdmin):
 
 @admin.register(Item)
 class ItemAdmin(admin.ModelAdmin):
-	list_display = ('codigo', 'nombre', 'funcion', 'estado')
-	list_filter = ('estado', 'funcion')
-	search_fields = ('codigo', 'nombre', 'descripcion', 'funcion__nombre')
+	list_display = ('codigo', 'nombre', 'ponderacion', 'estado')
+	list_filter = ('estado',)
+	search_fields = ('codigo', 'nombre', 'descripcion')
 
 
 @admin.register(CargoFuncion)
@@ -30,8 +30,15 @@ class PeriodoAdmin(admin.ModelAdmin):
 	search_fields = ('nombre',)
 
 
+@admin.register(PeriodoSemana)
+class PeriodoSemanaAdmin(admin.ModelAdmin):
+	list_display = ('nombre', 'periodo', 'fecha_inicio', 'fecha_fin', 'estado')
+	list_filter = ('periodo', 'estado')
+	search_fields = ('nombre', 'periodo__nombre')
+
+
 @admin.register(Desempeno)
 class DesempenoAdmin(admin.ModelAdmin):
-	list_display = ('usuario', 'funcion', 'item', 'periodo', 'meta', 'avance', 'ponderacion')
-	list_filter = ('periodo', 'funcion', 'item')
-	search_fields = ('usuario__email', 'item__nombre', 'funcion__nombre')
+	list_display = ('usuario', 'item', 'periodo', 'meta', 'avance', 'ultimo_registro')
+	list_filter = ('periodo', 'item')
+	search_fields = ('usuario__email', 'item__nombre')

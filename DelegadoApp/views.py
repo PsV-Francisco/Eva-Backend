@@ -148,7 +148,7 @@ def home(request):
         commitments = Compromiso.objects.filter(
             agenda__delegacion_id=delegation_id,
         ).select_related('agenda', 'agenda__periodo').prefetch_related(
-            'responsables', 'evidencias_compromiso',
+            'responsable', 'evidencias_compromiso',
         )
 
     if request.method == 'POST' and request.POST.get('action') == 'estado':
@@ -374,10 +374,11 @@ def resumen(request):
         periodo=selected_period,
     ).order_by('-fecha', '-creado').values('fecha')[:1]
     users = list(Usuario.objects.filter(
-        Q(delegacion_id=delegation_id)
-        | Q(delegaciones_autorizadas__pk=delegation_id),
+        usuariodelegacion__delegacion_id=delegation_id,
+        usuariodelegacion__fecha_fin__isnull=True,
         is_active=True,
-        cargo__nombre__iexact='funcionario',
+        usuariocargo__cargo__nombre__iexact='funcionario',
+        usuariocargo__fecha_fin__isnull=True,
     ).distinct().annotate(
         ultimo_registro=Subquery(last_description),
         fecha_ultimo_registro=Subquery(last_date),

@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Bandeja de autorizaciones</h1>
+{% for solicitud in solicitudes %}
+<article{% if solicitud.es_antigua %} class="solicitud-antigua"{% endif %}>
+  <strong>{{ solicitud.periodo }}</strong> — {{ solicitud.solicitante }} — {{ solicitud.get_estado_display }}
+  {% if solicitud.es_antigua %}<strong> Pendiente por más de 3 días</strong>{% endif %}
+  <p>{{ solicitud.motivo }}</p>
+  {% if solicitud.estado == 'pendiente' %}
+  <form method="post">{% csrf_token %}<input type="hidden" name="solicitud_id" value="{{ solicitud.pk }}"><input type="hidden" name="action" value="aprobar"><input name="vence_en" type="datetime-local" required><textarea name="comentario" required placeholder="Comentario"></textarea><button type="submit">Aprobar</button></form>
+  <form method="post">{% csrf_token %}<input type="hidden" name="solicitud_id" value="{{ solicitud.pk }}"><input type="hidden" name="action" value="rechazar"><textarea name="comentario" required placeholder="Motivo del rechazo"></textarea><button type="submit">Rechazar</button></form>
+  {% elif solicitud.estado == 'aprobada' %}
+  <form method="post">{% csrf_token %}<input type="hidden" name="solicitud_id" value="{{ solicitud.pk }}"><input type="hidden" name="action" value="revocar"><textarea name="comentario" required placeholder="Motivo de la revocación"></textarea><button type="submit">Revocar</button></form>
+  {% endif %}
+</article>
+{% empty %}<p>No hay solicitudes.</p>{% endfor %}
+{% endblock %}

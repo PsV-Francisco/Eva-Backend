@@ -21,7 +21,7 @@ SIDEBAR_SECTIONS = (
 )
 
 CURRENT_SECTION_BY_VIEW = {
-    'coordinador:home': ('medicion', 'Metas e indicadores'),
+    'coordinador:home': ('medicion', 'Tablero Personal'),
     'vistaf:home': ('consulta', 'Búsqueda de información'),
 }
 
@@ -60,7 +60,6 @@ def _section_for(label, url_name):
     }:
         return 'operacion'
     if route in {
-        'administracion:catalogo',
         'administracion:tipos-atencion',
         'administracion:subatenciones',
     } or any(term in normalized_label for term in ('atencion', 'atención', 'subatencion', 'subatención', 'catalogo', 'catálogo')):

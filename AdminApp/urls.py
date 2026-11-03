@@ -9,7 +9,6 @@ urlpatterns = [
     path('cargos/', views.cargos, name='cargos'),
     path('funciones/', views.funciones, name='funciones'),
     path('cargos-funciones/', views.cargos_funciones, name='cargos-funciones'),
-    path('catalogo/', views.catalogo, name='catalogo'),
     path('delegaciones/', views.delegaciones, name='delegaciones'),
     path('roles/', views.roles, name='roles'),
     path('items/', views.items, name='items'),
@@ -18,6 +17,7 @@ urlpatterns = [
     path('subatenciones/', views.subatenciones, name='subatenciones'),
     path('parametros/', views.parametros, name='parametros'),
     path('historial/', views.historial, name='historial'),
+    path('solicitudes-autorizacion/', views.solicitudes_autorizacion, name='solicitudes-autorizacion'),
     path(
         'auditoria-recuperacion/',
         views.password_reset_audit,

@@ -4,14 +4,13 @@ from io import BytesIO
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.db.models.deletion import ProtectedError
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 
 from AdminApp.audit import registrar_historial
 from AdminApp.forms import (
-    CatalogoForm,
     CargoForm,
     CargoFuncionForm,
     DelegacionForm,
@@ -19,26 +18,29 @@ from AdminApp.forms import (
     FuncionForm,
     ItemForm,
     RolForm,
-    SubAtencionForm,
-    TipoAtencionForm,
+    SubtipoForm,
+    TipoForm,
 )
 from AdminApp.models import (
-    Catalogo,
     Cargo,
     Delegacion,
     Rol,
-    SubAtencion,
-    TipoAtencion,
+    UsuarioCargo,
+    UsuarioDelegacion,
+    UsuarioRol,
     is_critical_cargo_name,
 )
 from AdminApp.roles import (
     ensure_role_group,
     is_system_administrator,
     permission_codenames_for,
+    role_group_name,
 )
-from CoordinadorApp.models import CargoFuncion, Desempeno, Funcion, Item
+from CoordinadorApp.models import AtencionSocial, CargoFuncion, Desempeno, Funcion, Item
+from CoordinadorApp.services import authorization_for, record_authorization_use
 from config.delegations import active_delegation
-from FuncionarioApp.models import AtencionSocial
+from DelegadoApp.models import Compromiso
+from FuncionarioApp.models import Registro, Subtipo, Tipo
 
 
 @dataclass(frozen=True)
@@ -58,17 +60,23 @@ class MaintainerSpec:
 
 
 def _delegation_delete_block(delegation):
-    if delegation.usuarios.exists() or delegation.usuarios_autorizados.exists():
+    if UsuarioDelegacion.objects.filter(delegacion=delegation).exists():
         return 'La delegación tiene usuarios asociados. Desactívala para conservar esas relaciones.'
     return ''
 
 
 def _role_delete_block(role):
-    if role.protegido:
+    if _is_protected_role(role):
         return 'Este rol está protegido y no se puede eliminar.'
-    if role.usuarios.exists():
+    if UsuarioRol.objects.filter(rol=role).exists():
         return 'El rol está asignado a usuarios. Desactívalo para conservar esas asignaciones.'
     return ''
+
+
+def _is_protected_role(role):
+    return role.nombre.strip().casefold() in {
+        'admin', 'administrador', 'administrador del sistema',
+    }
 
 
 def _item_delete_block(item):
@@ -78,22 +86,23 @@ def _item_delete_block(item):
 
 
 def _type_delete_block(tipo):
-    if tipo.subatenciones.exists():
+    if tipo.subtipos.exists():
         return 'El tipo tiene subatenciones asociadas. Desactívalo para conservarlas.'
     if (
-        Catalogo.objects.filter(tipo__iexact=tipo.nombre).exists()
-        or AtencionSocial.objects.filter(tipo_atencion__iexact=tipo.nombre).exists()
+        Registro.objects.filter(tipo=tipo).exists()
+        or AtencionSocial.objects.filter(tipo=tipo).exists()
     ):
         return 'El tipo tiene atenciones o catálogos históricos asociados. Desactívalo para conservarlos.'
     return ''
 
 
 def _subtype_delete_block(subtype):
-    if Catalogo.objects.filter(
-        tipo__iexact=subtype.tipo_atencion.nombre,
-        subtipo__iexact=subtype.nombre,
-    ).exists():
-        return 'La sub atención tiene catálogos históricos asociados. Desactívala para conservarlos.'
+    if (
+        Registro.objects.filter(subtipo=subtype).exists()
+        or AtencionSocial.objects.filter(subtipo=subtype).exists()
+        or Compromiso.objects.filter(subtipo=subtype).exists()
+    ):
+        return 'El subtipo tiene registros asociados. Desactívalo para conservarlos.'
     return ''
 
 
@@ -103,27 +112,37 @@ def _meta_delete_block(record):
     return ''
 
 
+def _coordinator_meta_delete_block(record):
+    if record.periodo.estado != 'abierto':
+        return 'Una meta de un período cerrado no se puede eliminar.'
+    if record.avance or record.ultimo_registro:
+        return 'La meta tiene avance registrado y no se puede eliminar.'
+    activities = Registro.objects.filter(
+        autor_id=record.usuario_id,
+        item_id=record.item_id,
+        periodo_id=record.periodo_id,
+    )
+    if activities.exists():
+        if activities.filter(evidencias_registros__isnull=False).exists():
+            return 'La meta tiene actividades y evidencias asociadas; no se puede eliminar.'
+        return 'La meta tiene actividades asociadas; no se puede eliminar.'
+    return ''
+
+
 def _cargo_delete_block(cargo):
     if is_critical_cargo_name(cargo.nombre):
         return 'Este cargo se usa en el control de acceso y no se puede eliminar.'
-    if cargo.usuarios.exists() or cargo.asignaciones_funciones.exists():
+    if (
+        UsuarioCargo.objects.filter(cargo=cargo).exists()
+        or cargo.asignaciones_funciones.exists()
+    ):
         return 'El cargo tiene usuarios o asignaciones asociadas. Desactívalo para conservarlas.'
     return ''
 
 
 def _function_delete_block(function):
-    if (
-        function.items.exists()
-        or function.asignaciones_cargos.exists()
-        or Cargo.objects.filter(funciones=function).exists()
-    ):
+    if function.asignaciones_cargos.exists():
         return 'La función tiene ítems o cargos asociados. Desactívala para conservarlos.'
-    return ''
-
-
-def _catalog_delete_block(catalog):
-    if catalog.registros_catalogo.exists():
-        return 'El catálogo tiene actividades asociadas. Desactívalo para conservarlas.'
     return ''
 
 
@@ -133,15 +152,15 @@ SPECS = {
         title='Cargos',
         model=Cargo,
         form_class=CargoForm,
-        search_fields=('nombre', 'funciones__nombre'),
+        search_fields=('nombre', 'asignaciones_funciones__funcion__nombre'),
         display_fields=(
             ('Cargo', 'nombre'),
-            ('Función asociada', 'funciones__nombre'),
+            ('Funciones asociadas', 'funciones_asignadas'),
             ('Estado', 'estado'),
         ),
         export_fields=(
             ('Cargo', 'nombre'),
-            ('Función asociada', 'funciones__nombre'),
+            ('Funciones asociadas', 'funciones_asignadas'),
             ('Estado', 'estado'),
         ),
         ordering=('nombre',),
@@ -186,48 +205,20 @@ SPECS = {
         status_field=None,
         status_filter_field=None,
     ),
-    'catalogo': MaintainerSpec(
-        key='catalogo',
-        title='Catálogo de actividades',
-        model=Catalogo,
-        form_class=CatalogoForm,
-        search_fields=('actividad', 'servicio', 'tipo', 'subtipo'),
-        display_fields=(
-            ('Actividad', 'actividad'),
-            ('Servicio', 'servicio'),
-            ('Tipo', 'tipo'),
-            ('Subtipo', 'subtipo'),
-            ('Estado', 'estado'),
-        ),
-        export_fields=(
-            ('Actividad', 'actividad'),
-            ('Servicio', 'servicio'),
-            ('Tipo', 'tipo'),
-            ('Subtipo', 'subtipo'),
-            ('Estado', 'estado'),
-        ),
-        ordering=('actividad', 'servicio', 'tipo', 'subtipo'),
-        active_value=Catalogo.Estado.ACTIVO,
-        inactive_value=Catalogo.Estado.INACTIVO,
-    ),
     'delegaciones': MaintainerSpec(
         key='delegaciones',
         title='Delegaciones',
         model=Delegacion,
         form_class=DelegacionForm,
-        search_fields=('codigo', 'nombre', 'direccion', 'comuna'),
+        search_fields=('nombre', 'direccion'),
         display_fields=(
-            ('Código', 'codigo'),
             ('Nombre', 'nombre'),
             ('Dirección', 'direccion'),
-            ('Comuna', 'comuna'),
             ('Estado', 'estado'),
         ),
         export_fields=(
-            ('Código', 'codigo'),
             ('Nombre', 'nombre'),
             ('Dirección', 'direccion'),
-            ('Comuna', 'comuna'),
             ('Estado', 'estado'),
         ),
         ordering=('nombre',),
@@ -239,22 +230,16 @@ SPECS = {
         title='Roles y permisos',
         model=Rol,
         form_class=RolForm,
-        search_fields=(
-            'nombre', 'descripcion', 'grupo__permissions__name', 'alcance',
-        ),
+        search_fields=('nombre', 'permisos'),
         display_fields=(
             ('Nombre', 'nombre'),
-            ('Descripción', 'descripcion'),
             ('Permisos', 'permisos_resumen'),
-            ('Alcance', 'alcance'),
             ('Estado', 'estado'),
             ('Protegido', 'protegido'),
         ),
         export_fields=(
             ('Nombre', 'nombre'),
-            ('Descripción', 'descripcion'),
             ('Permisos', 'permisos_resumen'),
-            ('Alcance', 'alcance'),
             ('Estado', 'estado'),
             ('Protegido', 'protegido'),
         ),
@@ -267,74 +252,64 @@ SPECS = {
         title='Ítems y metas',
         model=Item,
         form_class=ItemForm,
-        search_fields=('codigo', 'nombre', 'descripcion', 'funcion__nombre'),
+        search_fields=('codigo', 'nombre', 'descripcion'),
         display_fields=(
             ('Código', 'codigo'),
             ('Ítem', 'nombre'),
-            ('Función', 'funcion__nombre'),
             ('Descripción', 'descripcion'),
+            ('Ponderación (%)', 'ponderacion'),
             ('Metas asignadas', 'metas_asignadas'),
             ('Estado', 'estado'),
         ),
         export_fields=(
             ('Código', 'codigo'),
             ('Ítem', 'nombre'),
-            ('Función', 'funcion__nombre'),
             ('Descripción', 'descripcion'),
+            ('Ponderación (%)', 'ponderacion'),
             ('Metas asignadas', 'metas_asignadas'),
             ('Estado', 'estado'),
         ),
-        ordering=('funcion__nombre', 'nombre'),
+        ordering=('nombre',),
         active_value=Item.Estado.ACTIVO,
         inactive_value=Item.Estado.INACTIVO,
     ),
     'tipos-atencion': MaintainerSpec(
         key='tipos-atencion',
-        title='Tipo de Atención',
-        model=TipoAtencion,
-        form_class=TipoAtencionForm,
-        search_fields=('codigo', 'nombre', 'descripcion'),
+        title='Tipos',
+        model=Tipo,
+        form_class=TipoForm,
+        search_fields=('nombre',),
         display_fields=(
-            ('Código', 'codigo'),
             ('Nombre', 'nombre'),
-            ('Descripción', 'descripcion'),
             ('Estado', 'estado'),
         ),
         export_fields=(
-            ('Código', 'codigo'),
             ('Nombre', 'nombre'),
-            ('Descripción', 'descripcion'),
             ('Estado', 'estado'),
         ),
         ordering=('nombre',),
-        active_value=TipoAtencion.Estado.ACTIVO,
-        inactive_value=TipoAtencion.Estado.INACTIVO,
+        active_value=Tipo.Estado.ACTIVADO,
+        inactive_value=Tipo.Estado.DESACTIVADO,
     ),
     'subatenciones': MaintainerSpec(
         key='subatenciones',
-        title='Sub Atención',
-        model=SubAtencion,
-        form_class=SubAtencionForm,
-        search_fields=(
-            'codigo', 'nombre', 'descripcion', 'tipo_atencion__nombre',
-        ),
+        title='Subtipos',
+        model=Subtipo,
+        form_class=SubtipoForm,
+        search_fields=('nombre', 'tipo__nombre'),
         display_fields=(
-            ('Código', 'codigo'),
             ('Nombre', 'nombre'),
-            ('Tipo de Atención', 'tipo_atencion__nombre'),
-            ('Descripción', 'descripcion'),
+            ('Tipo', 'tipo__nombre'),
             ('Estado', 'estado'),
         ),
         export_fields=(
-            ('Código', 'codigo'),
             ('Nombre', 'nombre'),
-            ('Tipo de Atención', 'tipo_atencion__nombre'),
-            ('Descripción', 'descripcion'),
+            ('Tipo', 'tipo__nombre'),
             ('Estado', 'estado'),
         ),
-        ordering=('tipo_atencion__nombre', 'nombre'),
-        active_value=SubAtencion.Estado.ACTIVO,
-        inactive_value=SubAtencion.Estado.INACTIVO,
+        ordering=('tipo__nombre', 'nombre'),
+        active_value=Subtipo.Estado.ACTIVADO,
+        inactive_value=Subtipo.Estado.DESACTIVADO,
     ),
     'metas': MaintainerSpec(
         key='metas',
@@ -342,7 +317,7 @@ SPECS = {
         model=Desempeno,
         form_class=DesempenoForm,
         search_fields=(
-            'usuario__email', 'usuario__first_name', 'usuario__last_name',
+            'usuario__email', 'usuario__nombre',
             'item__codigo', 'item__nombre', 'periodo__nombre',
         ),
         display_fields=(
@@ -351,7 +326,7 @@ SPECS = {
             ('Período', 'periodo'),
             ('Meta', 'meta'),
             ('Avance', 'avance'),
-            ('Ponderación (%)', 'ponderacion'),
+            ('Ponderación (%)', 'item__ponderacion'),
         ),
         export_fields=(
             ('Correo electrónico', 'usuario__email'),
@@ -361,7 +336,7 @@ SPECS = {
             ('Período', 'periodo__nombre'),
             ('Meta', 'meta'),
             ('Avance', 'avance'),
-            ('Ponderación (%)', 'ponderacion'),
+            ('Ponderación (%)', 'item__ponderacion'),
         ),
         ordering=('periodo__nombre', 'usuario__email', 'item__nombre'),
         status_field=None,
@@ -423,21 +398,32 @@ def _safe_spreadsheet_value(value):
 def display_value(record, field_name):
     if field_name == 'roles':
         return ', '.join(sorted(role.nombre for role in record.roles.all()))
+    if field_name == 'funciones_asignadas':
+        return ', '.join(
+            assignment.funcion.nombre
+            for assignment in record.asignaciones_funciones.select_related('funcion')
+        )
     if field_name == 'permisos_resumen':
-        if not record.grupo_id:
+        group = ensure_role_group(record)
+        if not group:
             return 'Sin permisos'
         return ', '.join(
-            record.grupo.permissions.order_by('codename').values_list(
+            group.permissions.order_by('codename').values_list(
                 'name', flat=True,
             )
         ) or 'Sin permisos'
     if field_name == 'protegido':
-        return 'Sí' if record.protegido else 'No'
+        return (
+            'Sí'
+            if record.nombre.strip().casefold()
+            in {'admin', 'administrador', 'administrador del sistema'}
+            else 'No'
+        )
     if field_name == 'delegaciones_autorizadas':
         return ', '.join(
             sorted(
                 delegation.nombre
-                for delegation in record.delegaciones_autorizadas.all()
+                for delegation in record.delegaciones_autorizadas
             )
         )
     if field_name == 'is_active':
@@ -457,8 +443,10 @@ def display_value(record, field_name):
     return '' if value is None else str(value)
 
 
-def _queryset_for(spec, request):
-    queryset = _authorized_queryset(spec, request)
+def _queryset_for(spec, request, *, global_scope=False):
+    queryset = _authorized_queryset(
+        spec, request, global_scope=global_scope,
+    )
     query = request.GET.get('q', '').strip()
     if query:
         search = Q()
@@ -480,38 +468,39 @@ def _queryset_for(spec, request):
     return queryset.order_by(*spec.ordering)
 
 
-def _authorized_queryset(spec, request):
+def _authorized_queryset(spec, request, *, global_scope=False):
     if spec.key == 'items':
-        return Item.objects.select_related('funcion').annotate(
+        return Item.objects.annotate(
             metas_asignadas=Count('desempenos'),
         )
     if spec.key == 'metas':
         queryset = Desempeno.objects.select_related(
-            'usuario', 'item', 'periodo', 'funcion',
+            'usuario', 'item', 'periodo',
         )
-        if request.user.cargo and request.user.cargo.nombre.strip().casefold() not in {
+        if (not global_scope and request.user.cargo
+                and request.user.cargo.nombre.strip().casefold() not in {
             'admin', 'administrador',
-        }:
+        }):
             delegation = active_delegation(request)
             if delegation is None:
                 return queryset.none()
             queryset = queryset.filter(
-                Q(usuario__delegacion=delegation)
-                | Q(usuario__delegaciones_autorizadas=delegation)
+                usuario__usuariodelegacion__delegacion=delegation,
+                usuario__usuariodelegacion__fecha_fin__isnull=True,
             ).distinct()
         return queryset
     if spec.key == 'subatenciones':
-        return SubAtencion.objects.select_related('tipo_atencion')
+        return Subtipo.objects.select_related('tipo')
+    if spec.key == 'tipos-atencion':
+        return Tipo.objects.all()
     return spec.model.objects.all()
 
 
-def _delete_block(spec, record):
+def _delete_block(spec, record, *, coordinator_meta_delete=False):
     if spec.key == 'cargos':
         return _cargo_delete_block(record)
     if spec.key == 'funciones':
         return _function_delete_block(record)
-    if spec.key == 'catalogo':
-        return _catalog_delete_block(record)
     if spec.key == 'delegaciones':
         return _delegation_delete_block(record)
     if spec.key == 'roles':
@@ -523,6 +512,8 @@ def _delete_block(spec, record):
     if spec.key == 'subatenciones':
         return _subtype_delete_block(record)
     if spec.key == 'metas':
+        if coordinator_meta_delete:
+            return _coordinator_meta_delete_block(record)
         return _meta_delete_block(record)
     return ''
 
@@ -534,13 +525,15 @@ def _snapshot(spec, record):
     }
 
 
-def _form_kwargs(spec, request):
+def _form_kwargs(spec, request, *, global_scope=False, allow_closed_periods=False):
     if spec.key == 'roles':
         return {'actor': request.user}
     if spec.key == 'metas':
         return {
             'user': request.user,
             'delegation': active_delegation(request),
+            'global_scope': global_scope,
+            'allow_closed_periods': allow_closed_periods,
         }
     return {}
 
@@ -561,7 +554,11 @@ def _pagination_query(request):
     return parameters.urlencode()
 
 
-def _maintainer_context(spec, request, form, editing, queryset, base_count):
+def _maintainer_context(
+    spec, request, form, editing, queryset, base_count, *,
+    route_name=None, sgr_role=None, sidebar_modules=(),
+    coordinator_meta_delete=False,
+):
     page_obj = Paginator(queryset, 25).get_page(request.GET.get('page'))
     rows = [
         {
@@ -570,15 +567,17 @@ def _maintainer_context(spec, request, form, editing, queryset, base_count):
                 display_value(record, field)
                 for _, field in spec.display_fields
             ],
-            'can_delete': not bool(_delete_block(spec, record)),
+            'can_delete': not bool(_delete_block(
+                spec, record, coordinator_meta_delete=coordinator_meta_delete,
+            )),
             'can_edit': not (
-                spec.key == 'roles' and record.protegido
+                spec.key == 'roles' and _is_protected_role(record)
             ),
             'can_change_status': not (
-                spec.key == 'roles' and record.protegido
+                spec.key == 'roles' and _is_protected_role(record)
             ),
             'can_duplicate': (
-                spec.key == 'roles' and not record.protegido
+                spec.key == 'roles' and not _is_protected_role(record)
             ),
         }
         for record in page_obj.object_list
@@ -587,6 +586,7 @@ def _maintainer_context(spec, request, form, editing, queryset, base_count):
     status = request.GET.get('estado', '')
     return {
         'sgr_role': 'Administración',
+        'sgr_role': sgr_role or 'Administraci\u00f3n',
         'maintainer_title': spec.title,
         'form': form,
         'editing_object': editing,
@@ -602,13 +602,19 @@ def _maintainer_context(spec, request, form, editing, queryset, base_count):
         'base_count': base_count,
         'has_status': spec.status_field is not None,
         'is_item_maintainer': spec.key == 'items',
-        'route_name': f'administracion:{spec.key}',
+        'route_name': route_name or f'administracion:{spec.key}',
         'is_meta_maintainer': spec.key == 'metas',
         'is_role_maintainer': spec.key == 'roles',
+        'sidebar_modules': sidebar_modules,
     }
 
 
-def maintainer(request, key):
+def maintainer(
+    request, key, *, route_name=None, sgr_role=None, sidebar_modules=(),
+    protect_closed_periods=False, global_scope=False,
+    coordinator_meta_delete=False, warn_weight_total=False,
+    closed_period_authorization=False,
+):
     spec = SPECS[key]
     status = request.GET.get('estado', '')
     valid_statuses = {
@@ -620,8 +626,12 @@ def maintainer(request, key):
         return HttpResponseBadRequest('Filtro de estado no válido.')
     if request.GET.get('export', '') not in {'', 'excel'}:
         return HttpResponseBadRequest('Formato de exportación no válido.')
-    authorized_queryset = _authorized_queryset(spec, request)
-    queryset = _queryset_for(spec, request)
+    authorized_queryset = _authorized_queryset(
+        spec, request, global_scope=global_scope,
+    )
+    queryset = _queryset_for(
+        spec, request, global_scope=global_scope,
+    )
     base_count = authorized_queryset.count()
     editing = None
     form = None
@@ -635,17 +645,17 @@ def maintainer(request, key):
             if spec.key != 'roles':
                 return HttpResponseBadRequest('La duplicación no está disponible.')
             source = get_object_or_404(authorized_queryset, pk=object_id)
-            if source.protegido:
+            if _is_protected_role(source):
                 messages.error(request, 'No se puede duplicar un rol protegido.')
                 return redirect(request.path)
             source_permissions = (
                 set(
-                    source.grupo.permissions.values_list(
+                    ensure_role_group(source).permissions.values_list(
                         'codename',
                         flat=True,
                     )
                 )
-                if source.grupo_id else set()
+                if source.pk else set()
             )
             if (
                 not is_system_administrator(request.user)
@@ -668,14 +678,13 @@ def maintainer(request, key):
             with transaction.atomic():
                 duplicate = Rol.objects.create(
                     nombre=duplicate_name,
-                    descripcion=source.descripcion,
-                    alcance=source.alcance,
+                    permisos=source.permisos,
                     estado=Rol.Estado.ACTIVO,
                 )
                 duplicate_group = ensure_role_group(duplicate)
                 duplicate_group.permissions.set(
-                    source.grupo.permissions.all()
-                    if source.grupo_id else []
+                    ensure_role_group(source).permissions.all()
+                    if source.pk else []
                 )
                 registrar_historial(
                     actor=request.user,
@@ -694,11 +703,20 @@ def maintainer(request, key):
                             authorized_queryset.select_for_update(),
                             pk=object_id,
                         )
-                        blocked = _delete_block(spec, record)
+                        authorization = (
+                            authorization_for(request.user, record.periodo, funcionario=record.usuario)
+                            if closed_period_authorization and record.periodo.estado == 'cerrado' else None
+                        )
+                        blocked = _delete_block(
+                            spec, record,
+                            coordinator_meta_delete=coordinator_meta_delete and not authorization,
+                        )
                         if not blocked:
                             before = _snapshot(spec, record)
                             entity = f'{spec.model.__name__}:{record.pk}'
                             record.delete()
+                            if authorization:
+                                record_authorization_use(authorization, request.user)
                             registrar_historial(
                                 actor=request.user,
                                 action=f'Eliminar {spec.title.lower()}',
@@ -724,7 +742,7 @@ def maintainer(request, key):
                     authorized_queryset.select_for_update(),
                     pk=object_id,
                 )
-                if spec.key == 'roles' and record.protegido:
+                if spec.key == 'roles' and _is_protected_role(record):
                     messages.error(request, 'Este rol protegido no se puede modificar.')
                     return redirect(request.path)
                 current_value = getattr(record, spec.status_field)
@@ -751,16 +769,35 @@ def maintainer(request, key):
             get_object_or_404(authorized_queryset, pk=object_id)
             if object_id else None
         )
+        if (
+            protect_closed_periods and editing
+            and editing.periodo.estado == 'cerrado'
+            and not (closed_period_authorization and authorization_for(request.user, editing.periodo, funcionario=editing.usuario))
+        ):
+            messages.error(request, 'El per\u00edodo est\u00e1 cerrado; la meta es de solo lectura.')
+            return redirect(request.path)
         before = _snapshot(spec, editing) if editing else None
         form = spec.form_class(
             request.POST,
             instance=editing,
-            **_form_kwargs(spec, request),
+            **_form_kwargs(spec, request, global_scope=global_scope, allow_closed_periods=closed_period_authorization),
         )
         if form.is_valid():
-            with transaction.atomic():
-                record = form.save()
-                registrar_historial(
+            authorization = None
+            selected_period = form.cleaned_data.get('periodo') if spec.key == 'metas' else None
+            selected_user = form.cleaned_data.get('usuario') if spec.key == 'metas' else None
+            if closed_period_authorization and selected_period and selected_period.estado == 'cerrado':
+                authorization = authorization_for(request.user, selected_period, funcionario=selected_user)
+                if not authorization:
+                    form.add_error(None, 'El período está cerrado y no existe una autorización vigente para este funcionario.')
+            if form.errors:
+                messages.error(request, 'No existe una autorización vigente para modificar esta meta.')
+            else:
+                with transaction.atomic():
+                    record = form.save()
+                    if authorization:
+                        record_authorization_use(authorization, request.user)
+                    registrar_historial(
                     actor=request.user,
                     action=(
                         f'Editar {spec.title.lower()}'
@@ -769,9 +806,17 @@ def maintainer(request, key):
                     entity=f'{spec.model.__name__}:{record.pk}',
                     before=before,
                     after=_snapshot(spec, record),
-                )
-            messages.success(request, 'Los cambios se guardaron correctamente.')
-            return redirect(request.path)
+                    )
+                if warn_weight_total and spec.key == 'metas':
+                    total = Desempeno.objects.filter(
+                        usuario_id=record.usuario_id,
+                        periodo_id=record.periodo_id,
+                    ).aggregate(total=Sum('item__ponderacion'))['total'] or 0
+                    if total != 100:
+                        relation = 'menor' if total < 100 else 'mayor'
+                        messages.warning(request, f'Advertencia: la suma de ponderaciones de este funcionario en el período es {total:.2f}%, {relation} a 100%.')
+                messages.success(request, 'Los cambios se guardaron correctamente.')
+                return redirect(request.path)
         messages.error(request, 'Revisa los campos obligatorios y sus valores.')
     else:
         edit_id = request.GET.get('editar')
@@ -779,9 +824,16 @@ def maintainer(request, key):
             get_object_or_404(authorized_queryset, pk=edit_id)
             if edit_id else None
         )
+        if (
+            protect_closed_periods and editing
+            and editing.periodo.estado == 'cerrado'
+            and not (closed_period_authorization and authorization_for(request.user, editing.periodo, funcionario=editing.usuario))
+        ):
+            messages.error(request, 'El per\u00edodo est\u00e1 cerrado; la meta es de solo lectura.')
+            return redirect(request.path)
         form = spec.form_class(
             instance=editing,
-            **_form_kwargs(spec, request),
+            **_form_kwargs(spec, request, global_scope=global_scope, allow_closed_periods=closed_period_authorization),
         )
 
     context = _maintainer_context(
@@ -791,6 +843,10 @@ def maintainer(request, key):
         editing,
         queryset,
         base_count,
+        route_name=route_name,
+        sgr_role=sgr_role,
+        sidebar_modules=sidebar_modules,
+        coordinator_meta_delete=coordinator_meta_delete,
     )
     if request.GET.get('export') == 'excel':
         return excel_response(

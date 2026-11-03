@@ -1,6 +1,10 @@
 from django.contrib.auth.models import Group
 
 
+def role_group_name(role):
+    return f'sgr-role-{role.pk}'
+
+
 def is_system_administrator(user):
     cargo = getattr(user, 'cargo', None)
     return bool(
@@ -32,25 +36,20 @@ def assignable_role_ids(actor, user=None):
     allowed_ids = set(existing_role_ids)
     roles = Rol.objects.filter(
         estado=Rol.Estado.ACTIVO,
-    ).prefetch_related('grupo__permissions')
+    )
     for role in roles:
-        role_permissions = (
-            {
-                permission.codename
-                for permission in role.grupo.permissions.all()
-            }
-            if role.grupo_id else set()
-        )
+        group = Group.objects.filter(name=role_group_name(role)).first()
+        role_permissions = {
+            permission.codename
+            for permission in group.permissions.all()
+        } if group else set()
         if role_permissions.issubset(actor_permissions):
             allowed_ids.add(role.pk)
     return allowed_ids
 
 
 def ensure_role_group(role):
-    group, _ = Group.objects.get_or_create(name=f'sgr-role-{role.pk}')
-    if role.grupo_id != group.pk:
-        role.grupo = group
-        role.save(update_fields=['grupo'])
+    group, _ = Group.objects.get_or_create(name=role_group_name(role))
     return group
 
 
@@ -65,7 +64,7 @@ def synchronize_user_role_groups(user):
 
     stale_role_groups = Group.objects.filter(
         user=user,
-        rol_sgr__isnull=False,
+        name__startswith='sgr-role-',
     ).exclude(pk__in=[group.pk for group in assigned_groups])
     if stale_role_groups.exists():
         user.groups.remove(*stale_role_groups)

@@ -25,7 +25,7 @@
         </svg>
         {% if active_delegation %}
         <div class="delegation-label">
-          <strong>{{ active_delegation_code }}</strong>
+          <strong>Delegación activa</strong>
           <span>{{ active_delegation.nombre }}</span>
         </div>
         {% if authorized_delegations|length > 1 %}
@@ -35,7 +35,7 @@
           <label class="visually-hidden" for="active-delegation">Delegación activa</label>
           <select id="active-delegation" name="delegacion" aria-label="Cambiar delegación activa">
             {% for delegation in authorized_delegations %}
-            <option value="{{ delegation.pk }}"{% if delegation.pk == active_delegation.pk %} selected{% endif %}>{{ delegation.codigo }} · {{ delegation.nombre }}</option>
+            <option value="{{ delegation.pk }}"{% if delegation.pk == active_delegation.pk %} selected{% endif %}>{{ delegation.nombre }}</option>
             {% endfor %}
           </select>
         </form>

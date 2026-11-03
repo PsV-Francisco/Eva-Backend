@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -8,6 +9,7 @@ from django.db.models import Q
 from django.db.models.deletion import ProtectedError
 from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from AdminApp.audit import registrar_historial
@@ -25,9 +27,14 @@ from AdminApp.models import (
     ParametroSistema,
     PasswordResetAuditEvent,
     Usuario,
+    UsuarioCargo,
+    UsuarioDelegacion,
 )
 from AdminApp.maintainers import excel_response, maintainer
 from config.decorators import cargo_required
+from CoordinadorApp.authorization_forms import AuthorizationDecisionForm, AuthorizationRevokeForm
+from CoordinadorApp.models import SolicitudAutorizacionPeriodo
+from CoordinadorApp.services import _authorization_snapshot, expire_authorizations
 
 
 def _user_snapshot(user):
@@ -51,9 +58,15 @@ def home(request):
         is_active=True,
     ).filter(
         Q(is_superuser=True)
-        | Q(cargo__nombre__iexact='admin')
-        | Q(cargo__nombre__iexact='administrador')
-    )
+        | Q(
+            usuariocargo__fecha_fin__isnull=True,
+            usuariocargo__cargo__nombre__iexact='admin',
+        )
+        | Q(
+            usuariocargo__fecha_fin__isnull=True,
+            usuariocargo__cargo__nombre__iexact='administrador',
+        )
+    ).distinct()
     administrator_ids = list(
         active_administrators.values_list('pk', flat=True)[:2]
     )
@@ -181,18 +194,24 @@ def home(request):
             if editing_user else UsuarioCreationForm(actor=request.user)
         )
 
-    users = Usuario.objects.select_related(
-        'delegacion', 'cargo',
-    ).prefetch_related('roles', 'delegaciones_autorizadas')
+    users = Usuario.objects.all()
     query = request.GET.get('q', '').strip()
     if query:
         search = Q()
         for field in (
-            'email', 'first_name', 'last_name', 'cargo__nombre',
-            'delegacion__nombre', 'roles__nombre',
-            'delegaciones_autorizadas__nombre',
+            'email', 'nombre', 'first_name', 'last_name',
+            'usuariocargo__cargo__nombre',
+            'usuariodelegacion__delegacion__nombre',
+            'usuariorol__rol__nombre',
         ):
-            search |= Q(**{f'{field}__icontains': query})
+            field_filter = {f'{field}__icontains': query}
+            if field.startswith('usuariocargo__'):
+                field_filter['usuariocargo__fecha_fin__isnull'] = True
+            elif field.startswith('usuariodelegacion__'):
+                field_filter['usuariodelegacion__fecha_fin__isnull'] = True
+            elif field.startswith('usuariorol__'):
+                field_filter['usuariorol__fecha_fin__isnull'] = True
+            search |= Q(**field_filter)
         users = users.filter(search)
     status = status_filter
     if status == 'activo':
@@ -202,8 +221,10 @@ def home(request):
     delegation_id = delegation_filter
     if delegation_id.isdecimal():
         users = users.filter(
-            Q(delegacion_id=delegation_id)
-            | Q(delegaciones_autorizadas__pk=delegation_id)
+            Q(
+                usuariodelegacion__delegacion_id=delegation_id,
+                usuariodelegacion__fecha_fin__isnull=True,
+            )
         )
     users = users.distinct().order_by('email')
     if request.GET.get('export') == 'excel':
@@ -213,8 +234,8 @@ def home(request):
                 ('Correo electrónico', 'email'),
                 ('Nombre', 'first_name'),
                 ('Apellido', 'last_name'),
-                ('Cargo', 'cargo__nombre'),
-                ('Delegación principal', 'delegacion__nombre'),
+                ('Cargo', 'cargo'),
+                ('Delegación principal', 'delegacion'),
                 ('Delegaciones autorizadas', 'delegaciones_autorizadas'),
                 ('Roles', 'roles'),
                 ('Estado', 'is_active'),
@@ -253,6 +274,7 @@ def parametros(request):
     keys = {
         'tope_cumplimiento': ParametroSistema.Clave.TOPE_CUMPLIMIENTO,
         'umbral_delegacion': ParametroSistema.Clave.UMBRAL_DELEGACION,
+        'max_dias_autorizacion': ParametroSistema.Clave.MAX_DIAS_AUTORIZACION,
     }
     form = ParametroSistemaForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
@@ -308,11 +330,6 @@ def cargos_funciones(request):
     return maintainer(request, 'cargos-funciones')
 
 
-@cargo_required('admin', 'administrador', permission='access_admin_catalog')
-def catalogo(request):
-    return maintainer(request, 'catalogo')
-
-
 @cargo_required('admin', 'administrador', permission='access_admin_roles')
 def roles(request):
     return maintainer(request, 'roles')
@@ -336,6 +353,77 @@ def subatenciones(request):
 @cargo_required('coordinador', 'admin', 'administrador', permission='access_admin_goals')
 def metas(request):
     return maintainer(request, 'metas')
+
+
+@cargo_required(
+    'admin', 'administrador', permission='review_closed_period_authorizations',
+)
+def solicitudes_autorizacion(request):
+    expire_authorizations()
+    if request.method == 'POST':
+        solicitud = get_object_or_404(
+            SolicitudAutorizacionPeriodo.objects.select_related('periodo'),
+            pk=request.POST.get('solicitud_id'),
+        )
+        action = request.POST.get('action')
+        before = _authorization_snapshot(solicitud)
+        if action in {'aprobar', 'rechazar'} and solicitud.estado != SolicitudAutorizacionPeriodo.Estado.PENDIENTE:
+            messages.error(request, 'Solo se pueden resolver solicitudes pendientes.')
+        elif action == 'aprobar':
+            form = AuthorizationDecisionForm(request.POST)
+            if form.is_valid():
+                solicitud.estado = SolicitudAutorizacionPeriodo.Estado.APROBADA
+                solicitud.aprobador = request.user
+                solicitud.comentario_aprobador = form.cleaned_data['comentario']
+                solicitud.vence_en = form.cleaned_data['vence_en']
+                solicitud.decidida_en = timezone.now()
+                solicitud.save(update_fields=['estado', 'aprobador', 'comentario_aprobador', 'vence_en', 'decidida_en'])
+                registrar_historial(actor=request.user, action='Aprobar autorización de período', entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}', before=before, after=_authorization_snapshot(solicitud), period=solicitud.periodo)
+                messages.success(request, 'La autorización quedó vigente hasta la fecha indicada.')
+                return redirect('administracion:solicitudes-autorizacion')
+            messages.error(request, 'Revisa la fecha de vencimiento y el comentario.')
+        elif action == 'rechazar':
+            form = AuthorizationDecisionForm(request.POST)
+            if form.is_valid() and form.cleaned_data['comentario'].strip():
+                solicitud.estado = SolicitudAutorizacionPeriodo.Estado.RECHAZADA
+                solicitud.aprobador = request.user
+                solicitud.comentario_aprobador = form.cleaned_data['comentario']
+                solicitud.decidida_en = timezone.now()
+                solicitud.save(update_fields=['estado', 'aprobador', 'comentario_aprobador', 'decidida_en'])
+                registrar_historial(actor=request.user, action='Rechazar autorización de período', entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}', before=before, after=_authorization_snapshot(solicitud), period=solicitud.periodo)
+                messages.success(request, 'La solicitud fue rechazada.')
+                return redirect('administracion:solicitudes-autorizacion')
+            messages.error(request, 'El rechazo requiere un comentario.')
+        elif action == 'revocar' and solicitud.estado == SolicitudAutorizacionPeriodo.Estado.APROBADA:
+            form = AuthorizationRevokeForm(request.POST)
+            if form.is_valid():
+                solicitud.estado = SolicitudAutorizacionPeriodo.Estado.REVOCADA
+                solicitud.aprobador = request.user
+                solicitud.comentario_aprobador = form.cleaned_data['comentario']
+                solicitud.revocada_en = timezone.now()
+                solicitud.decidida_en = timezone.now()
+                solicitud.save(update_fields=['estado', 'aprobador', 'comentario_aprobador', 'revocada_en', 'decidida_en'])
+                registrar_historial(actor=request.user, action='Revocar autorización de período', entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}', before=before, after=_authorization_snapshot(solicitud), period=solicitud.periodo)
+                messages.success(request, 'La autorización fue revocada.')
+                return redirect('administracion:solicitudes-autorizacion')
+            messages.error(request, 'La revocación requiere un comentario.')
+    solicitudes = SolicitudAutorizacionPeriodo.objects.select_related(
+        'periodo', 'solicitante', 'aprobador',
+    ).prefetch_related('funcionarios')
+    now = timezone.now()
+    for solicitud in solicitudes:
+        solicitud.es_antigua = (
+            solicitud.estado == SolicitudAutorizacionPeriodo.Estado.PENDIENTE
+            and solicitud.creada_en <= now - timedelta(days=3)
+        )
+    return render(request, 'AdminApp/solicitudes_autorizacion.html', {
+        'sgr_role': 'Administración',
+        'solicitudes': solicitudes,
+        'sidebar_modules': (
+            {'label': 'Usuarios', 'url_name': 'administracion:home'},
+            {'label': 'Solicitudes de autorización', 'url_name': 'administracion:solicitudes-autorizacion'},
+        ),
+    })
 
 
 @cargo_required('admin', 'administrador', permission='access_admin_history')

@@ -2,21 +2,11 @@ from django.contrib import admin
 from django import forms
 from django.contrib.admin.sites import NotRegistered
 from django.contrib.auth.models import Group
-from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 
-from .models import (
-	Cargo,
-	Catalogo,
-	Delegacion,
-	Historial,
-	ParametroSistema,
-	PasswordResetAuditEvent,
-	Rol,
-	SubAtencion,
-	TipoAtencion,
-	Usuario,
-)
+from AdminApp.models import Cargo,Delegacion,Alerta,Comentarios,Historial,ParametroSistema,PasswordResetAuditEvent,Rol,Usuario
+from FuncionarioApp.models import Tipo,Subtipo
+
 from .audit import registrar_historial
 
 
@@ -64,45 +54,27 @@ class UsuarioChangeForm(forms.ModelForm):
 
 
 @admin.register(Usuario)
-class UsuarioAdmin(UserAdmin):
+class UsuarioAdmin(admin.ModelAdmin):
 	form = UsuarioChangeForm
 	add_form = UsuarioCreationForm
-	add_fieldsets = (
-		(None, {'classes': ('wide',), 'fields': ('email', 'password1', 'password2')}),
-	)
-	fieldsets = (
-		(None, {'fields': ('email', 'password')}),
-		('Información personal', {'fields': ('first_name', 'last_name', 'delegacion', 'cargo', 'roles')}),
-		('Permisos', {'fields': ('is_active', 'is_staff', 'is_superuser')}),
-		('Fechas', {'fields': ('last_login', 'date_joined')}),
-	)
-	list_display = ('email', 'first_name', 'last_name', 'is_staff', 'is_active')
-	list_filter = ('is_staff', 'is_superuser', 'is_active', 'delegacion', 'cargo')
-	search_fields = ('email', 'first_name', 'last_name')
+	list_display = ('email', 'nombre', 'estado', 'is_staff', 'is_active')
+	list_filter = ('estado', 'is_staff', 'is_superuser', 'is_active')
+	search_fields = ('email', 'nombre', 'first_name', 'last_name')
 	ordering = ('email',)
-	filter_horizontal = ('roles',)
 
-	def save_model(self, request, obj, form, change):
-		obj._roles_before_save = (
-			set(obj.roles.values_list('pk', flat=True))
-			if change else set()
+	def get_fieldsets(self, request, obj=None):
+		if obj is None:
+			return ((None, {'fields': ('email', 'password1', 'password2')}),)
+		return (
+			(None, {'fields': ('email', 'password')}),
+			('Información personal', {'fields': ('nombre', 'first_name', 'last_name', 'estado')}),
+			('Permisos', {'fields': ('is_active', 'is_staff', 'is_superuser')}),
+			('Fechas', {'fields': ('last_login', 'date_joined')}),
 		)
-		super().save_model(request, obj, form, change)
 
-	def save_related(self, request, form, formsets, change):
-		super().save_related(request, form, formsets, change)
-		roles_after = set(
-			form.instance.roles.values_list('pk', flat=True),
-		)
-		roles_before = form.instance._roles_before_save
-		if roles_before != roles_after:
-			registrar_historial(
-				actor=request.user,
-				action='Cambiar asignación de roles',
-				entity=f'Usuario:{form.instance.pk}',
-				before={'roles': sorted(roles_before)},
-				after={'roles': sorted(roles_after)},
-			)
+	def get_form(self, request, obj=None, **kwargs):
+		kwargs['form'] = self.add_form if obj is None else self.form
+		return super().get_form(request, obj, **kwargs)
 
 	def has_module_permission(self, request):
 		return request.user.is_superuser
@@ -122,22 +94,31 @@ class UsuarioAdmin(UserAdmin):
 
 @admin.register(Delegacion)
 class DelegacionAdmin(admin.ModelAdmin):
-	list_display = ('codigo', 'nombre', 'comuna', 'estado')
+	list_display = ('nombre', 'direccion', 'estado')
 	list_filter = ('estado',)
-	search_fields = ('codigo', 'nombre', 'direccion', 'comuna')
+	search_fields = ('nombre', 'direccion')
 
 
 @admin.register(Cargo)
 class CargoAdmin(admin.ModelAdmin):
-	list_display = ('nombre', 'funciones')
-	search_fields = ('nombre', 'funciones__nombre')
+	list_display = ('nombre', 'estado', 'function_names')
+	list_filter = ('estado',)
+	search_fields = ('nombre', 'asignaciones_funciones__funcion__nombre')
+
+	@admin.display(description='Funciones')
+	def function_names(self, obj):
+		return ', '.join(
+			obj.asignaciones_funciones.select_related('funcion').values_list(
+				'funcion__nombre', flat=True,
+			)
+		)
 
 
 @admin.register(Rol)
 class RolAdmin(admin.ModelAdmin):
-	list_display = ('nombre', 'alcance', 'estado')
-	list_filter = ('alcance', 'estado')
-	search_fields = ('nombre', 'descripcion', 'permisos')
+	list_display = ('nombre', 'estado', 'permisos')
+	list_filter = ('estado',)
+	search_fields = ('nombre', 'permisos')
 
 	def has_add_permission(self, request):
 		return False
@@ -149,25 +130,18 @@ class RolAdmin(admin.ModelAdmin):
 		return False
 
 
-@admin.register(TipoAtencion)
+@admin.register(Tipo)
 class TipoAtencionAdmin(admin.ModelAdmin):
-	list_display = ('codigo', 'nombre', 'estado')
+	list_display = ('nombre', 'estado')
 	list_filter = ('estado',)
-	search_fields = ('codigo', 'nombre', 'descripcion')
+	search_fields = ('nombre',)
 
 
-@admin.register(SubAtencion)
+@admin.register(Subtipo)
 class SubAtencionAdmin(admin.ModelAdmin):
-	list_display = ('codigo', 'nombre', 'tipo_atencion', 'estado')
-	list_filter = ('tipo_atencion', 'estado')
-	search_fields = ('codigo', 'nombre', 'tipo_atencion__nombre', 'descripcion')
-
-
-@admin.register(Catalogo)
-class CatalogoAdmin(admin.ModelAdmin):
-	list_display = ('actividad', 'servicio', 'tipo', 'subtipo')
-	list_filter = ('tipo', 'subtipo')
-	search_fields = ('actividad', 'servicio', 'tipo', 'subtipo')
+	list_display = ('nombre', 'tipo', 'estado')
+	list_filter = ('tipo', 'estado')
+	search_fields = ('nombre', 'tipo__nombre')
 
 
 @admin.register(Historial)
@@ -206,3 +180,31 @@ class PasswordResetAuditEventAdmin(admin.ModelAdmin):
 
 	def has_delete_permission(self, request, obj=None):
 		return False
+
+
+@admin.register(Alerta)
+class AlertaAdmin(admin.ModelAdmin):
+	list_display = ('motivo', 'fecha', 'estado', 'destinatario')
+	list_filter = ('estado', 'fecha')
+	search_fields = ('motivo', 'destinatario__email')
+
+
+@admin.register(Comentarios)
+class ComentariosAdmin(admin.ModelAdmin):
+	list_display = ('fecha', 'autor', 'registro', 'compromiso')
+	list_filter = ('fecha',)
+	search_fields = (
+		'texto',
+		'autor__email',
+		'registro__descripcion',
+		'compromiso__descripcion',
+	)
+	readonly_fields = (
+		'autor_registro',
+		'item_registro',
+		'periodo_registro',
+		'responsable_compromiso',
+		'agenda_compromiso',
+		'periodo_agenda_compromiso',
+		'agenda_delegacion_compromiso',
+	)

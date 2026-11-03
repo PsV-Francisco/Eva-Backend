@@ -13,7 +13,6 @@ NAVIGATION_BY_CARGO = {
         ('Cargos', 'administracion:cargos'),
         ('Funciones', 'administracion:funciones'),
         ('Cargos por función', 'administracion:cargos-funciones'),
-        ('Catálogo de actividades', 'administracion:catalogo'),
         ('Delegaciones', 'administracion:delegaciones'),
         ('Roles y permisos', 'administracion:roles'),
         ('Usuarios', 'administracion:home'),
@@ -30,7 +29,6 @@ NAVIGATION_BY_CARGO = {
         ('Cargos', 'administracion:cargos'),
         ('Funciones', 'administracion:funciones'),
         ('Cargos por función', 'administracion:cargos-funciones'),
-        ('Catálogo de actividades', 'administracion:catalogo'),
         ('Delegaciones', 'administracion:delegaciones'),
         ('Roles y permisos', 'administracion:roles'),
         ('Usuarios', 'administracion:home'),
@@ -84,7 +82,6 @@ def common_header(request):
         return {
             'active_delegation': None,
             'authorized_delegations': (),
-            'active_delegation_code': '',
             'header_role': '',
             'primary_navigation': (),
             'primary_navigation_urls': (),
@@ -117,7 +114,6 @@ def common_header(request):
     return {
         'active_delegation': delegation,
         'authorized_delegations': delegations,
-        'active_delegation_code': delegation.codigo if delegation else '',
         'header_role': role,
         'primary_navigation': tuple(
             {'label': label, 'url_name': url_name}

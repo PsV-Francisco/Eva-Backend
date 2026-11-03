@@ -27,20 +27,24 @@ def home(request):
 	if delegation:
 		delegation_id = delegation.pk
 		registros = registros.filter(
-			Q(autor__delegacion_id=delegation_id)
-			| Q(autor__delegaciones_autorizadas__pk=delegation_id)
+			autor__usuariodelegacion__delegacion_id=delegation_id,
+			autor__usuariodelegacion__fecha_fin__isnull=True,
 		).distinct()
 		compromisos = compromisos.filter(agenda__delegacion_id=delegation_id)
 		evidencias = evidencias.filter(
-			Q(registro__autor__delegacion_id=delegation_id)
-			| Q(registro__autor__delegaciones_autorizadas__pk=delegation_id)
+			Q(
+				registro__autor__usuariodelegacion__delegacion_id=delegation_id,
+				registro__autor__usuariodelegacion__fecha_fin__isnull=True,
+			)
 			| Q(compromiso__agenda__delegacion_id=delegation_id)
-			| Q(gestion_atencion__atencion__usuario__delegacion_id=delegation_id)
-			| Q(gestion_atencion__atencion__usuario__delegaciones_autorizadas__pk=delegation_id)
+			| Q(
+				gestion_atencion__atencionsocial__autor__usuariodelegacion__delegacion_id=delegation_id,
+				gestion_atencion__atencionsocial__autor__usuariodelegacion__fecha_fin__isnull=True,
+			)
 		).distinct()
 		desempenos = desempenos.filter(
-			Q(usuario__delegacion_id=delegation_id)
-			| Q(usuario__delegaciones_autorizadas__pk=delegation_id)
+			usuario__usuariodelegacion__delegacion_id=delegation_id,
+			usuario__usuariodelegacion__fecha_fin__isnull=True,
 		).distinct()
 		scope_label = delegation.nombre
 	elif request.user.is_superuser:
@@ -61,8 +65,10 @@ def home(request):
 			| Q(periodo__nombre__icontains=query)
 		)
 
-	summary = desempenos.values(
-		delegacion=F('usuario__delegacion__nombre'),
+	summary = desempenos.filter(
+		usuario__usuariodelegacion__fecha_fin__isnull=True,
+	).values(
+		delegacion=F('usuario__usuariodelegacion__delegacion__nombre'),
 		periodo_nombre=F('periodo__nombre'),
 	).annotate(meta_total=Sum('meta'), avance_total=Sum('avance')).order_by(
 		'delegacion', 'periodo_nombre',

@@ -13,13 +13,20 @@ class PermissionDefinition:
 
 
 PERMISSION_CATALOG = (
+    PermissionDefinition('Coordinador', 'view_coordinator_reports', 'Consultar informes consolidados', 'coordinador:informes', ('coordinador', 'admin', 'administrador')),
+    PermissionDefinition('Coordinador', 'view_coordinator_trends', 'Consultar tendencias históricas de cumplimiento', 'coordinador:tendencias', ('coordinador', 'admin', 'administrador')),
+    PermissionDefinition('Coordinador', 'request_closed_period_authorization', 'Solicitar autorización para modificar períodos cerrados', 'coordinador:solicitudes_autorizacion', ('coordinador', 'admin', 'administrador')),
+    PermissionDefinition('Administración', 'review_closed_period_authorizations', 'Resolver solicitudes de autorización de períodos cerrados', 'administracion:solicitudes-autorizacion', ('admin', 'administrador')),
+    PermissionDefinition('Coordinador', 'manage_coordinator_goals', 'Administrar metas desde Coordinaci\u00f3n', 'coordinador:metas', ('coordinador', 'admin', 'administrador')),
+    PermissionDefinition('Coordinador', 'manage_coordinator_position_functions', 'Asignar funciones a cargos desde Coordinaci\u00f3n', 'coordinador:cargos_funciones', ('coordinador', 'admin', 'administrador')),
+    PermissionDefinition('Coordinador', 'view_coordinator_weights', 'Consultar ponderaciones por cargo o funcionario', 'coordinador:ponderaciones', ('coordinador', 'admin', 'administrador')),
+    PermissionDefinition('Coordinador', 'manage_coordinator_periods', 'Administrar períodos del Coordinador', 'coordinador:periodos', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_users', 'Administrar usuarios', 'administracion:home', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_parameters', 'Administrar parámetros del sistema', 'administracion:parametros', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_delegations', 'Administrar delegaciones', 'administracion:delegaciones', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_positions', 'Administrar cargos', 'administracion:cargos', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_functions', 'Administrar funciones', 'administracion:funciones', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_position_functions', 'Administrar cargos por función', 'administracion:cargos-funciones', ('admin', 'administrador')),
-    PermissionDefinition('Administración', 'access_admin_catalog', 'Administrar catálogo de actividades', 'administracion:catalogo', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_roles', 'Administrar roles y permisos', 'administracion:roles', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_items', 'Administrar ítems', 'administracion:items', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_attention_types', 'Administrar tipos de atención', 'administracion:tipos-atencion', ('admin', 'administrador')),
@@ -37,7 +44,6 @@ PERMISSION_CATALOG = (
     PermissionDefinition('Funcionario', 'access_funcionario_juntas', 'Consultar juntas de vecinos', 'funcionario:juntas', ('funcionario',)),
     PermissionDefinition('Administración', 'create_juntas', 'Crear juntas de vecinos', 'funcionario:junta_nueva', ('admin', 'administrador')),
     PermissionDefinition('Funcionario', 'edit_juntas', 'Modificar juntas de vecinos', 'funcionario:junta_editar', ('funcionario',), (('junta_id', 1),), False),
-    PermissionDefinition('Funcionario', 'deactivate_juntas', 'Desactivar juntas de vecinos', 'funcionario:junta_desactivar', ('funcionario',), (('junta_id', 1),), False),
     PermissionDefinition('Funcionario', 'delete_juntas', 'Eliminar juntas de vecinos sin relaciones', 'funcionario:junta_eliminar', ('funcionario',), (('junta_id', 1),), False),
     PermissionDefinition('Funcionario', 'manage_employee_compliance', 'Consultar cumplimiento', 'funcionario:cumplimiento', ('funcionario',)),
     PermissionDefinition('Funcionario', 'manage_social_care', 'Administrar atención social', 'funcionario:atencion_social', ('funcionario',)),
@@ -69,7 +75,6 @@ PERMISSION_DESCRIPTIONS = {
     'access_admin_positions': 'Crear, editar y administrar cargos.',
     'access_admin_functions': 'Crear, editar y administrar funciones.',
     'access_admin_position_functions': 'Asociar cargos con funciones.',
-    'access_admin_catalog': 'Administrar el catálogo de actividades.',
     'access_admin_roles': 'Crear roles y administrar sus permisos.',
     'access_admin_items': 'Crear, editar y administrar ítems.',
     'access_admin_attention_types': 'Administrar tipos de atención.',
@@ -103,6 +108,15 @@ PERMISSION_DESCRIPTIONS = {
     'manage_periods': 'Administrar períodos e indicadores.',
     'view_public_reports': 'Consultar los paneles de información disponibles.',
 }
+
+PERMISSION_DESCRIPTIONS['manage_coordinator_periods'] = 'Crear, editar, cerrar y reabrir períodos desde Coordinación.'
+PERMISSION_DESCRIPTIONS['manage_coordinator_goals'] = 'Crear, modificar y eliminar metas desde Coordinación.'
+PERMISSION_DESCRIPTIONS['manage_coordinator_position_functions'] = 'Asignar funciones a cargos desde Coordinación.'
+PERMISSION_DESCRIPTIONS['view_coordinator_weights'] = 'Consultar ponderaciones por cargo o funcionario.'
+PERMISSION_DESCRIPTIONS['view_coordinator_reports'] = 'Consultar informes consolidados por período, delegación, cargo y funcionario.'
+PERMISSION_DESCRIPTIONS['view_coordinator_trends'] = 'Consultar la evolución histórica del cumplimiento por período, con filtros por delegación, cargo y funcionario.'
+PERMISSION_DESCRIPTIONS['request_closed_period_authorization'] = 'Solicitar cambios acotados de metas en períodos cerrados.'
+PERMISSION_DESCRIPTIONS['review_closed_period_authorizations'] = 'Aprobar o rechazar solicitudes de cambios en períodos cerrados.'
 
 PERMISSION_BY_CODENAME = {
     definition.codename: definition

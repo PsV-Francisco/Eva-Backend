@@ -64,7 +64,7 @@
         <label class="visually-hidden" for="user-delegation">Filtrar por delegación</label>
         <select id="user-delegation" class="form-select" name="delegacion">
           <option value="">Todas las delegaciones</option>
-          {% for delegation in delegations %}<option value="{{ delegation.pk }}"{% if delegation_id == delegation.pk|stringformat:'s' %} selected{% endif %}>{{ delegation.codigo }} · {{ delegation.nombre }}</option>{% endfor %}
+          {% for delegation in delegations %}<option value="{{ delegation.pk }}"{% if delegation_id == delegation.pk|stringformat:'s' %} selected{% endif %}>{{ delegation.nombre }}</option>{% endfor %}
         </select>
         <button class="btn btn-primary" type="submit">Buscar</button>
         {% if has_filters %}<a class="btn btn-outline-secondary" href="{% url 'administracion:home' %}">Limpiar</a>{% endif %}
