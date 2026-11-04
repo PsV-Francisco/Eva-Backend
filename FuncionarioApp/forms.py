@@ -379,12 +379,35 @@ class AtencionSocialForm(TipoSubtipoFields, BootstrapFormMixin, forms.Form):
         }),
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, instance=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.instance = instance
         self.fields['beneficiado'].queryset = Beneficiado.objects.order_by(
             'nombre', 'apellido',
         )
-        self.fields['fecha'].initial = timezone.localtime().strftime('%Y-%m-%dT%H:%M')
+        if instance is not None:
+            self.fields['beneficiado'].initial = instance.beneficiado_id
+            self.fields['tipo'].initial = instance.tipo_id
+            self.fields['subtipo'].initial = instance.subtipo_id
+            self.fields['fecha'].initial = timezone.localtime(
+                instance.fecha,
+            ).strftime('%Y-%m-%dT%H:%M')
+            self.fields['resultado'].initial = instance.resultado
+            self.fields['observaciones'].initial = instance.observaciones
+            self.fields['numero_gestion'].initial = (
+                instance.gestion_atencion.numero_gestion
+            )
+            self.fields['fecha_gestion'].initial = (
+                instance.gestion_atencion.fecha
+            )
+            self.fields['observaciones_gestion'].initial = (
+                instance.gestion_atencion.observaciones
+            )
+            self.fields['evidencia'].required = False
+        if instance is None:
+            self.fields['fecha'].initial = timezone.localtime().strftime(
+                '%Y-%m-%dT%H:%M',
+            )
         _set_tipo_subtipo_choices(self)
 
     def clean(self):
@@ -396,9 +419,11 @@ class AtencionSocialForm(TipoSubtipoFields, BootstrapFormMixin, forms.Form):
         return cleaned_data
 
     def clean_evidencia(self):
-        return validate_evidence_file(self.cleaned_data['evidencia'])
+        uploaded_file = self.cleaned_data.get('evidencia')
+        return validate_evidence_file(uploaded_file) if uploaded_file else None
 
-    def save(self, *, autor):
+    def save(self, *, autor, instance=None):
+        instance = instance or self.instance
         beneficiado = self.cleaned_data.get('beneficiado')
         if beneficiado is None:
             beneficiado = Beneficiado.objects.create(
@@ -415,21 +440,49 @@ class AtencionSocialForm(TipoSubtipoFields, BootstrapFormMixin, forms.Form):
             default_tipo, default_subtipo = tipo_subtipo_predeterminados(tipo)
             tipo = tipo or default_tipo
             subtipo = subtipo or default_subtipo
-        gestion = GestionAtencion.objects.create(
-            numero_gestion=self.cleaned_data['numero_gestion'],
-            fecha=self.cleaned_data['fecha_gestion'],
-            observaciones=self.cleaned_data['observaciones_gestion'],
-        )
-        atencion = AtencionSocial.objects.create(
-            fecha=self.cleaned_data['fecha'],
-            resultado=self.cleaned_data['resultado'],
-            observaciones=self.cleaned_data['observaciones'],
-            autor=autor,
-            beneficiado=beneficiado,
-            tipo=tipo,
-            subtipo=subtipo,
-            gestion_atencion=gestion,
-        )
+        if instance is None:
+            gestion = GestionAtencion.objects.create(
+                numero_gestion=self.cleaned_data['numero_gestion'],
+                fecha=self.cleaned_data['fecha_gestion'],
+                observaciones=self.cleaned_data['observaciones_gestion'],
+            )
+            atencion = AtencionSocial.objects.create(
+                fecha=self.cleaned_data['fecha'],
+                resultado=self.cleaned_data['resultado'],
+                observaciones=self.cleaned_data['observaciones'],
+                autor=autor,
+                beneficiado=beneficiado,
+                tipo=tipo,
+                subtipo=subtipo,
+                gestion_atencion=gestion,
+            )
+        else:
+            gestion = instance.gestion_atencion
+            gestion.numero_gestion = self.cleaned_data['numero_gestion']
+            gestion.fecha = self.cleaned_data['fecha_gestion']
+            gestion.observaciones = self.cleaned_data['observaciones_gestion']
+            gestion.save(update_fields=[
+                'numero_gestion',
+                'fecha',
+                'observaciones',
+            ])
+            atencion = instance
+            atencion.fecha = self.cleaned_data['fecha']
+            atencion.resultado = self.cleaned_data['resultado']
+            atencion.observaciones = self.cleaned_data['observaciones']
+            atencion.autor = autor
+            atencion.beneficiado = beneficiado
+            atencion.tipo = tipo
+            atencion.subtipo = subtipo
+            atencion.save(update_fields=[
+                'fecha',
+                'resultado',
+                'observaciones',
+                'autor',
+                'beneficiado',
+                'tipo',
+                'subtipo',
+            ])
         return gestion, atencion
 
 

@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} | SGR{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="dashboard-layout">
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+    <section class="content-section">
+      <div class="section-head">
+        <div><p class="eyebrow">ADMINISTRACIÓN</p><h2>{{ title }}</h2></div>
+        <a class="btn btn-outline-secondary" href="{{ list_url }}?delegacion={{ selected_delegation }}">Volver al listado</a>
+      </div>
+      {% if delegation_required %}
+      <form method="get" class="maintainer-filters mb-3">
+        <label class="form-label" for="record-form-delegation">Delegación para el compromiso</label>
+        <select id="record-form-delegation" class="form-select" name="delegacion" required>
+          <option value="">Selecciona una delegación</option>
+          {% for delegation in delegaciones %}
+          <option value="{{ delegation.pk }}">{{ delegation.nombre }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-outline-primary" type="submit">Continuar</button>
+      </form>
+      <div class="alert alert-info">Selecciona la delegación antes de asignar responsables y crear el compromiso.</div>
+      {% endif %}
+      <form method="post" enctype="multipart/form-data" data-loading data-loading-title="Guardando">
+        {% csrf_token %}
+        <input type="hidden" name="delegacion" value="{{ selected_delegation }}">
+        {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+        <div class="form-grid">
+          {% for field in form %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="required-mark" aria-hidden="true">*</span>{% endif %}</label>
+            {{ field }}
+            {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+            {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+          </div>
+          {% endfor %}
+        </div>
+        <button class="btn btn-primary" type="submit">Guardar</button>
+      </form>
+    </section>
+  </div>
+</div>
+{% endblock %}

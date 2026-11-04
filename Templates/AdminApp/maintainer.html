@@ -10,6 +10,7 @@
     {% if is_meta_maintainer %}
     <p><a class="auth-link" href="{% url 'administracion:items' %}">Volver a Ítems y metas</a></p>
     {% endif %}
+    {% if not update_only or editing_object %}
     <section class="content-section split-layout">
       <div>
         <p class="eyebrow">{% if editing_object %}EDICIÓN{% else %}NUEVO REGISTRO{% endif %}</p>
@@ -58,6 +59,7 @@
         {% endif %}
       </aside>
     </section>
+    {% endif %}
 
     <section class="content-section">
       <div class="section-head">

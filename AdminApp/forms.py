@@ -663,9 +663,12 @@ class DesempenoForm(BootstrapFormMixin, forms.ModelForm):
 
     def __init__(
         self, *args, user=None, delegation=None, global_scope=False,
-        allow_closed_periods=False, **kwargs,
+        allow_closed_periods=False, meta_only=False, **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        if meta_only:
+            for field_name in ('usuario', 'item', 'periodo'):
+                self.fields[field_name].disabled = True
         usuarios = Usuario.objects.filter(is_active=True)
         if (
             user and not global_scope and user.cargo

@@ -259,6 +259,7 @@ class PermissionAndCsvTests(TestCase):
             'administracion:registros',
             'administracion:atenciones-sociales',
             'administracion:compromisos',
+            'administracion:ajustes-metas',
         ):
             self.assertContains(response, reverse(route_name))
         for route_name in (

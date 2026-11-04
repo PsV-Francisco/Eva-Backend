@@ -1,9 +1,15 @@
 from datetime import date
+from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
+from django.contrib.messages import get_messages
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db.models.deletion import ProtectedError
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from AdminApp.models import Cargo, Delegacion, Historial
 from CoordinadorApp.models import (
@@ -12,6 +18,7 @@ from CoordinadorApp.models import (
     GestionAtencion,
     Item,
     Periodo,
+    SolicitudAutorizacionPeriodo,
 )
 from DelegadoApp.models import (
     Agenda,
@@ -19,6 +26,7 @@ from DelegadoApp.models import (
     Compromiso,
     Felicitacion,
     Hito,
+    HistorialEstadoCompromiso,
     Informe,
     Reclamo,
 )
@@ -32,6 +40,7 @@ from FuncionarioApp.models import (
     Tipo,
     Vecino,
 )
+from SupervisorApp.models import Evidencia
 from test_helpers import create_user
 
 
@@ -189,6 +198,374 @@ class AdministratorRecordScreensTests(TestCase):
                 accion='Exportar CSV',
                 entidad_afectada='Listado:ausencias',
             ).exists(),
+        )
+
+    def test_absence_crud_copies_performance_relations_scopes_ids_and_audits(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse('administracion:ausencia-nueva')
+            + f'?delegacion={self.first_delegation.pk}',
+            {
+                'fecha': '2026-03-08T10:30',
+                'descripcion': 'Ausencia creada',
+                'desempeno': self.first_performance.pk,
+            },
+        )
+        self.assertRedirects(
+            response,
+            reverse('administracion:ausencias')
+            + f'?delegacion={self.first_delegation.pk}',
+        )
+        ausencia = Ausencia.objects.get(descripcion='Ausencia creada')
+        self.assertEqual(ausencia.usuario, self.employee)
+        self.assertEqual(ausencia.item, self.item)
+        self.assertEqual(ausencia.periodo, self.period)
+        self.assertTrue(
+            Historial.objects.filter(
+                autor=self.admin,
+                accion='Crear ausencia',
+                entidad_afectada=f'Ausencia:{ausencia.pk}',
+            ).exists(),
+        )
+
+        edit_url = reverse(
+            'administracion:ausencia-editar',
+            args=[ausencia.pk],
+        ) + f'?delegacion={self.first_delegation.pk}'
+        response = self.client.get(
+            reverse('administracion:ausencia-editar', args=[ausencia.pk]),
+            {'delegacion': self.second_delegation.pk},
+        )
+        self.assertEqual(response.status_code, 404)
+
+        response = self.client.post(
+            edit_url,
+            {
+                'fecha': '2026-03-09T11:00',
+                'descripcion': 'Ausencia editada',
+                'desempeno': self.first_performance.pk,
+            },
+        )
+        self.assertRedirects(
+            response,
+            reverse('administracion:ausencias')
+            + f'?delegacion={self.first_delegation.pk}',
+        )
+        ausencia.refresh_from_db()
+        self.assertEqual(ausencia.descripcion, 'Ausencia editada')
+        self.assertEqual(ausencia.usuario, self.employee)
+        self.assertEqual(ausencia.item, self.item)
+        self.assertEqual(ausencia.periodo, self.period)
+        self.assertTrue(
+            Historial.objects.filter(
+                autor=self.admin,
+                accion='Editar ausencia',
+                entidad_afectada=f'Ausencia:{ausencia.pk}',
+            ).exists(),
+        )
+
+        delete_url = reverse(
+            'administracion:ausencia-eliminar',
+            args=[ausencia.pk],
+        ) + f'?delegacion={self.first_delegation.pk}'
+        with patch(
+            'AdminApp.admin_records.Ausencia.delete',
+            side_effect=ProtectedError('referenciada', [ausencia]),
+        ):
+            response = self.client.post(delete_url)
+        self.assertRedirects(
+            response,
+            reverse('administracion:ausencias')
+            + f'?delegacion={self.first_delegation.pk}',
+        )
+        self.assertTrue(Ausencia.objects.filter(pk=ausencia.pk).exists())
+        self.assertTrue(any(
+            'registros asociados' in str(message)
+            for message in get_messages(response.wsgi_request)
+        ))
+        self.assertFalse(
+            Historial.objects.filter(
+                autor=self.admin,
+                accion='Eliminar ausencia',
+                entidad_afectada=f'Ausencia:{ausencia.pk}',
+            ).exists(),
+        )
+
+    def test_closed_period_meta_adjustment_requires_and_consumes_authorization(self):
+        closed_period = Periodo.objects.create(
+            nombre='Período cerrado para ajuste',
+            fecha_inicio='2025-01-01',
+            fecha_fin='2025-12-31',
+            estado=Periodo.Estado.CERRADO,
+        )
+        performance = Desempeno.objects.create(
+            usuario=self.employee,
+            item=self.item,
+            periodo=closed_period,
+            meta=10,
+        )
+        self.client.force_login(self.admin)
+        edit_url = reverse('administracion:ajustes-metas')
+
+        response = self.client.get(
+            edit_url,
+            {'editar': performance.pk},
+        )
+        self.assertRedirects(response, edit_url)
+        self.assertTrue(any(
+            'solo lectura' in str(message)
+            for message in get_messages(response.wsgi_request)
+        ))
+        performance.refresh_from_db()
+        self.assertEqual(performance.meta, 10)
+
+        authorization = SolicitudAutorizacionPeriodo.objects.create(
+            periodo=closed_period,
+            solicitante=self.admin,
+            alcances=['metas'],
+            motivo='Ajuste autorizado',
+            estado=SolicitudAutorizacionPeriodo.Estado.APROBADA,
+            vence_en=timezone.now() + timedelta(days=1),
+        )
+        authorization.funcionarios.add(self.employee)
+        response = self.client.post(
+            edit_url,
+            {
+                'action': 'guardar',
+                'object_id': performance.pk,
+                'meta': '20.00',
+                'usuario': self.second_employee.pk,
+                'item': self.item.pk,
+                'periodo': self.period.pk,
+            },
+        )
+        self.assertRedirects(response, edit_url)
+        performance.refresh_from_db()
+        authorization.refresh_from_db()
+        self.assertEqual(performance.meta, 20)
+        self.assertEqual(performance.usuario, self.employee)
+        self.assertEqual(performance.periodo, closed_period)
+        self.assertIsNotNone(authorization.usada_en)
+        self.assertTrue(
+            Historial.objects.filter(
+                autor=self.admin,
+                accion__contains='Editar metas',
+                entidad_afectada=f'Desempeno:{performance.pk}',
+            ).exists(),
+        )
+
+    def test_felicitations_complaints_and_milestones_support_audited_scoped_crud(self):
+        tipo = Tipo.objects.create(nombre='Tipo CRUD territorial')
+        subtipo = Subtipo.objects.create(
+            nombre='Subtipo CRUD territorial',
+            tipo=tipo,
+        )
+        territory = Territorio.objects.create(
+            nombre='Territorio CRUD',
+            delegacion=self.first_delegation,
+        )
+        registration = Registro.objects.create(
+            fecha='2026-03-01',
+            item=self.item,
+            periodo=self.period,
+            descripcion='Registro para hito',
+            autor=self.employee,
+            tipo=tipo,
+            subtipo=subtipo,
+        )
+        scope_query = f'?delegacion={self.first_delegation.pk}'
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse('administracion:felicitacion-nueva') + scope_query,
+            {
+                'evidencia': 'Evidencia inicial',
+                'fecha': '2026-03-02',
+                'ubicacion': 'Plaza inicial',
+                'estado': 'pendiente',
+                'desempeno': self.first_performance.pk,
+            },
+        )
+        self.assertRedirects(
+            response,
+            reverse('administracion:felicitaciones') + scope_query,
+        )
+        congratulations = Felicitacion.objects.get(ubicacion='Plaza inicial')
+        self.assertEqual(congratulations.usuario, self.employee)
+        self.assertEqual(congratulations.item, self.item)
+        self.assertEqual(congratulations.periodo, self.period)
+        self.assertTrue(
+            Historial.objects.filter(
+                autor=self.admin,
+                entidad_afectada=f'Felicitacion:{congratulations.pk}',
+                accion='Crear felicitación',
+            ).exists(),
+        )
+        response = self.client.post(
+            reverse(
+                'administracion:felicitacion-editar',
+                args=[congratulations.pk],
+            ) + scope_query,
+            {
+                'evidencia': 'Evidencia actualizada',
+                'fecha': '2026-03-02',
+                'ubicacion': 'Plaza actualizada',
+                'estado': 'aprobada',
+                'desempeno': self.first_performance.pk,
+            },
+        )
+        self.assertRedirects(
+            response,
+            reverse('administracion:felicitaciones') + scope_query,
+        )
+        congratulations.refresh_from_db()
+        self.assertEqual(congratulations.evidencia, 'Evidencia actualizada')
+        self.assertEqual(congratulations.usuario, self.employee)
+
+        response = self.client.post(
+            reverse('administracion:reclamo-nuevo') + scope_query,
+            {
+                'evidencia': 'Evidencia reclamo',
+                'fecha': '2026-03-03T10:00',
+                'ubicacion': 'Calle del reclamo',
+                'estado': 'abierto',
+                'desempeno': self.first_performance.pk,
+            },
+        )
+        self.assertRedirects(
+            response,
+            reverse('administracion:reclamos') + scope_query,
+        )
+        complaint = Reclamo.objects.get(ubicacion='Calle del reclamo')
+        self.assertEqual(complaint.usuario, self.employee)
+        response = self.client.post(
+            reverse('administracion:reclamo-editar', args=[complaint.pk])
+            + scope_query,
+            {
+                'evidencia': 'Evidencia reclamo editada',
+                'fecha': '2026-03-03T10:00',
+                'ubicacion': 'Calle del reclamo editada',
+                'estado': 'cerrado',
+                'desempeno': self.first_performance.pk,
+            },
+        )
+        self.assertRedirects(
+            response,
+            reverse('administracion:reclamos') + scope_query,
+        )
+        complaint.refresh_from_db()
+        self.assertEqual(complaint.estado, 'cerrado')
+
+        milestone_data = {
+            'nombre': 'Hito CRUD',
+            'descripcion': 'Descripción de hito',
+            'fecha_termino': '2026-04-01T10:00',
+            'recursos_asociados': 3,
+            'estado': Hito.Estado.ABIERTO,
+            'evento_recurrente': '1',
+            'incluir_agenda': '0',
+            'periocidad': 'mensual',
+            'territorio': territory.pk,
+            'delegacion': self.first_delegation.pk,
+            'responsable': self.employee.pk,
+            'registro': registration.pk,
+        }
+        response = self.client.post(
+            reverse('administracion:hito-nuevo') + scope_query,
+            milestone_data,
+        )
+        self.assertRedirects(
+            response,
+            reverse('administracion:hitos') + scope_query,
+        )
+        milestone = Hito.objects.get(nombre='Hito CRUD')
+        self.assertEqual(milestone.autor_registro, self.employee.pk)
+        self.assertEqual(milestone.item_registro, self.item.pk)
+        self.assertEqual(milestone.periodo_registro, self.period.pk)
+        milestone_data['nombre'] = 'Hito CRUD actualizado'
+        response = self.client.post(
+            reverse('administracion:hito-editar', args=[milestone.pk])
+            + scope_query,
+            milestone_data,
+        )
+        self.assertRedirects(
+            response,
+            reverse('administracion:hitos') + scope_query,
+        )
+        milestone.refresh_from_db()
+        self.assertEqual(milestone.nombre, 'Hito CRUD actualizado')
+
+        for route_name, instance in (
+            ('administracion:felicitacion-eliminar', congratulations),
+            ('administracion:reclamo-eliminar', complaint),
+            ('administracion:hito-eliminar', milestone),
+        ):
+            with self.subTest(route=route_name):
+                response = self.client.post(
+                    reverse(route_name, args=[instance.pk]) + scope_query,
+                )
+                self.assertRedirects(
+                    response,
+                    reverse(
+                        {
+                            'administracion:felicitacion-eliminar': 'administracion:felicitaciones',
+                            'administracion:reclamo-eliminar': 'administracion:reclamos',
+                            'administracion:hito-eliminar': 'administracion:hitos',
+                        }[route_name],
+                    ) + scope_query,
+                )
+                self.assertFalse(
+                    instance.__class__.objects.filter(pk=instance.pk).exists(),
+                )
+                self.assertTrue(
+                    Historial.objects.filter(
+                        autor=self.admin,
+                        accion__startswith='Eliminar',
+                        entidad_afectada=(
+                            f'{instance.__class__.__name__}:{instance.pk}'
+                        ),
+                    ).exists(),
+                )
+
+    def test_milestone_form_rejects_mismatched_delegation_and_territory(self):
+        tipo = Tipo.objects.create(nombre='Tipo coherencia')
+        subtipo = Subtipo.objects.create(nombre='Subtipo coherencia', tipo=tipo)
+        territory = Territorio.objects.create(
+            nombre='Territorio coherencia',
+            delegacion=self.first_delegation,
+        )
+        registration = Registro.objects.create(
+            fecha='2026-03-01',
+            item=self.item,
+            periodo=self.period,
+            descripcion='Registro coherencia',
+            autor=self.employee,
+            tipo=tipo,
+            subtipo=subtipo,
+        )
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse('administracion:hito-nuevo'),
+            {
+                'nombre': 'Hito incoherente',
+                'descripcion': '',
+                'fecha_termino': '2026-04-01T10:00',
+                'recursos_asociados': 1,
+                'estado': Hito.Estado.ABIERTO,
+                'evento_recurrente': '0',
+                'incluir_agenda': '0',
+                'periocidad': 'único',
+                'territorio': territory.pk,
+                'delegacion': self.second_delegation.pk,
+                'responsable': self.employee.pk,
+                'registro': registration.pk,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Hito.objects.filter(nombre='Hito incoherente').exists())
+        self.assertContains(
+            response,
+            'El territorio debe pertenecer a la delegación seleccionada.',
         )
 
     def test_neighbor_and_junta_crud_reuses_employee_forms_and_revalidates_ids(self):
@@ -506,11 +883,31 @@ class AdministratorRecordScreensTests(TestCase):
             'administracion:registros',
             'administracion:atenciones-sociales',
             'administracion:compromisos',
+            'administracion:ajustes-metas',
+            'administracion:ausencia-nueva',
+            'administracion:felicitacion-nueva',
+            'administracion:reclamo-nuevo',
+            'administracion:hito-nuevo',
         )
         for route_name in route_names:
             with self.subTest(route=route_name):
                 response = self.client.get(reverse(route_name))
                 self.assertNotEqual(response.status_code, 200)
+
+    def test_admin_record_mutation_routes_require_their_catalog_permission(self):
+        self.client.force_login(self.employee)
+        url = reverse('administracion:registro-nuevo')
+        scoped_url = f'{url}?delegacion={self.first_delegation.pk}'
+        self.assertEqual(self.client.get(scoped_url).status_code, 403)
+
+        permission = Permission.objects.get(
+            content_type__app_label='AdminApp',
+            codename='create_admin_records',
+        )
+        self.employee.user_permissions.add(permission)
+        response = self.client.get(scoped_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Funcionario responsable')
 
     def test_admin_read_only_lists_reuse_search_delegation_scope_and_audited_csv(self):
         tipo = Tipo.objects.create(nombre='Tipo registros de admin')
@@ -644,3 +1041,303 @@ class AdministratorRecordScreensTests(TestCase):
         self.assertTrue(AtencionSocial.objects.filter(pk=second_attention.pk).exists())
         self.assertTrue(Compromiso.objects.filter(pk=first_commitment.pk).exists())
         self.assertTrue(Compromiso.objects.filter(pk=second_commitment.pk).exists())
+
+    def test_admin_registration_create_edit_evidence_scope_and_closed_period(self):
+        tipo = Tipo.objects.create(nombre='Tipo registro administrativo')
+        subtipo = Subtipo.objects.create(
+            nombre='Subtipo registro administrativo',
+            tipo=tipo,
+        )
+        self.client.force_login(self.admin)
+        url = reverse('administracion:registro-nuevo')
+        response = self.client.post(
+            f'{url}?delegacion={self.first_delegation.pk}',
+            {
+                'fecha': '2026-03-10',
+                'periodo': self.period.pk,
+                'item': self.item.pk,
+                'descripcion': 'Registro administrativo nuevo',
+                'accion': 'Acción inicial',
+                'contacto': 'Contacto',
+                'telefono': '123456789',
+                'autor': self.employee.pk,
+                'tipo': tipo.pk,
+                'subtipo': subtipo.pk,
+                'evidencia': SimpleUploadedFile(
+                    'registro.pdf',
+                    b'%PDF-1.4 evidencia',
+                    content_type='application/pdf',
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        record = Registro.objects.get(
+            descripcion='Registro administrativo nuevo',
+        )
+        self.assertEqual(record.autor, self.employee)
+        self.assertTrue(
+            Evidencia.objects.filter(registro=record, autor=self.admin).exists(),
+        )
+        self.assertTrue(
+            Historial.objects.filter(
+                autor=self.admin,
+                accion='Crear registro',
+                entidad_afectada=f'Registro:{record.pk}',
+            ).exists(),
+        )
+
+        response = self.client.post(
+            reverse(
+                'administracion:registro-editar',
+                args=[record.pk],
+            ) + f'?delegacion={self.first_delegation.pk}',
+            {
+                'fecha': '2026-03-11',
+                'periodo': self.period.pk,
+                'item': self.item.pk,
+                'descripcion': 'Registro administrativo editado',
+                'accion': 'Acción actualizada',
+                'contacto': 'Contacto',
+                'telefono': '123456789',
+                'autor': self.employee.pk,
+                'tipo': tipo.pk,
+                'subtipo': subtipo.pk,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        record.refresh_from_db()
+        self.assertEqual(record.descripcion, 'Registro administrativo editado')
+        self.assertEqual(record.accion, 'Acción actualizada')
+        self.assertTrue(
+            Historial.objects.filter(
+                autor=self.admin,
+                accion='Editar registro',
+                entidad_afectada=f'Registro:{record.pk}',
+            ).exists(),
+        )
+
+        other_record = Registro.objects.create(
+            fecha='2026-03-12',
+            periodo=self.period,
+            item=self.item,
+            descripcion='Registro fuera del alcance',
+            autor=self.second_employee,
+            tipo=tipo,
+            subtipo=subtipo,
+        )
+        outside_scope = self.client.get(
+            reverse(
+                'administracion:registro-editar',
+                args=[other_record.pk],
+            ) + f'?delegacion={self.first_delegation.pk}',
+        )
+        self.assertEqual(outside_scope.status_code, 404)
+
+        self.period.estado = Periodo.Estado.CERRADO
+        self.period.save(update_fields=['estado'])
+        closed_period_response = self.client.get(
+            reverse(
+                'administracion:registro-editar',
+                args=[record.pk],
+            ) + f'?delegacion={self.first_delegation.pk}',
+        )
+        self.assertEqual(closed_period_response.status_code, 302)
+        record.refresh_from_db()
+        self.assertEqual(record.descripcion, 'Registro administrativo editado')
+
+    def test_admin_social_attention_create_edit_and_evidence(self):
+        tipo = Tipo.objects.create(nombre='Tipo atención administrativa')
+        subtipo = Subtipo.objects.create(
+            nombre='Subtipo atención administrativa',
+            tipo=tipo,
+        )
+        self.client.force_login(self.admin)
+        url = reverse('administracion:atencion-social-nueva')
+        response = self.client.post(
+            f'{url}?delegacion={self.first_delegation.pk}',
+            {
+                'autor': self.employee.pk,
+                'tipo': tipo.pk,
+                'subtipo': subtipo.pk,
+                'beneficiado': '',
+                'nombre': 'Beneficiario',
+                'apellido': 'Administrativo',
+                'telefono': '987654321',
+                'email': 'beneficiario@sgr.test',
+                'fecha': '2026-03-15T10:00',
+                'resultado': 'Resultado inicial',
+                'observaciones': 'Observaciones iniciales',
+                'numero_gestion': '1',
+                'fecha_gestion': '2026-03-15',
+                'observaciones_gestion': 'Detalle inicial',
+                'evidencia': SimpleUploadedFile(
+                    'atencion.pdf',
+                    b'%PDF-1.4 evidencia',
+                    content_type='application/pdf',
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        attention = AtencionSocial.objects.get(
+            resultado='Resultado inicial',
+        )
+        self.assertEqual(attention.autor, self.employee)
+        self.assertEqual(attention.gestion_atencion.observaciones, 'Detalle inicial')
+        self.assertTrue(
+            Evidencia.objects.filter(
+                gestion_atencion=attention.gestion_atencion,
+                autor=self.admin,
+            ).exists(),
+        )
+        self.assertTrue(
+            Historial.objects.filter(
+                autor=self.admin,
+                accion='Crear atención social',
+                entidad_afectada=f'AtencionSocial:{attention.pk}',
+            ).exists(),
+        )
+
+        response = self.client.post(
+            reverse(
+                'administracion:atencion-social-editar',
+                args=[attention.pk],
+            ) + f'?delegacion={self.first_delegation.pk}',
+            {
+                'autor': self.employee.pk,
+                'tipo': tipo.pk,
+                'subtipo': subtipo.pk,
+                'beneficiado': attention.beneficiado_id,
+                'nombre': '',
+                'apellido': '',
+                'telefono': '',
+                'email': '',
+                'fecha': '2026-03-16T11:00',
+                'resultado': 'Resultado actualizado',
+                'observaciones': 'Observaciones actualizadas',
+                'numero_gestion': '2',
+                'fecha_gestion': '2026-03-16',
+                'observaciones_gestion': 'Detalle actualizado',
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        attention.refresh_from_db()
+        attention.gestion_atencion.refresh_from_db()
+        self.assertEqual(attention.resultado, 'Resultado actualizado')
+        self.assertEqual(
+            attention.gestion_atencion.numero_gestion,
+            2,
+        )
+        self.assertEqual(
+            attention.gestion_atencion.observaciones,
+            'Detalle actualizado',
+        )
+        self.assertEqual(
+            Evidencia.objects.filter(
+                gestion_atencion=attention.gestion_atencion,
+            ).count(),
+            1,
+        )
+        self.assertTrue(
+            Historial.objects.filter(
+                autor=self.admin,
+                accion='Editar atención social',
+                entidad_afectada=f'AtencionSocial:{attention.pk}',
+            ).exists(),
+        )
+
+    def test_admin_commitment_create_edit_state_history_and_closed_period(self):
+        tipo = Tipo.objects.create(nombre='Tipo compromiso administrativo')
+        subtipo = Subtipo.objects.create(
+            nombre='Subtipo compromiso administrativo',
+            tipo=tipo,
+        )
+        self.client.force_login(self.admin)
+        create_url = (
+            f'{reverse("administracion:compromiso-nuevo")}'
+            f'?delegacion={self.first_delegation.pk}'
+        )
+        response = self.client.post(
+            create_url,
+            {
+                'periodo': self.period.pk,
+                'descripcion': 'Compromiso administrativo nuevo',
+                'solicitante': 'Administración',
+                'territorio': 'Territorio norte',
+                'fecha': '2026-03-20',
+                'responsable': [self.employee.pk],
+                'estado': Compromiso.Estado.INGRESADO,
+                'observaciones': 'Observación inicial',
+                'tipo': tipo.pk,
+                'subtipo': subtipo.pk,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        commitment = Compromiso.objects.get(
+            descripcion='Compromiso administrativo nuevo',
+        )
+        self.assertEqual(commitment.agenda.delegacion, self.first_delegation)
+        self.assertEqual(commitment.responsable.get(), self.employee)
+
+        response = self.client.post(
+            reverse(
+                'administracion:compromiso-editar',
+                args=[commitment.pk],
+            ) + f'?delegacion={self.first_delegation.pk}',
+            {
+                'periodo': self.period.pk,
+                'descripcion': 'Compromiso administrativo actualizado',
+                'solicitante': 'Administración',
+                'territorio': 'Territorio norte',
+                'fecha': '2026-03-21',
+                'responsable': [self.employee.pk],
+                'estado': Compromiso.Estado.EN_PROCESO,
+                'observaciones': 'Observación actualizada',
+                'tipo': tipo.pk,
+                'subtipo': subtipo.pk,
+                'evidencia': SimpleUploadedFile(
+                    'compromiso.pdf',
+                    b'%PDF-1.4 evidencia',
+                    content_type='application/pdf',
+                ),
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        commitment.refresh_from_db()
+        self.assertEqual(commitment.estado, Compromiso.Estado.EN_PROCESO)
+        self.assertEqual(
+            commitment.descripcion,
+            'Compromiso administrativo actualizado',
+        )
+        self.assertTrue(
+            HistorialEstadoCompromiso.objects.filter(
+                compromiso=commitment,
+                estado_anterior=Compromiso.Estado.INGRESADO,
+                estado_nuevo=Compromiso.Estado.EN_PROCESO,
+                autor=self.admin,
+            ).exists(),
+        )
+        self.assertTrue(
+            Evidencia.objects.filter(
+                compromiso=commitment,
+                autor=self.admin,
+            ).exists(),
+        )
+        self.assertTrue(
+            Historial.objects.filter(
+                autor=self.admin,
+                accion='Editar compromiso',
+                entidad_afectada=f'Compromiso:{commitment.pk}',
+            ).exists(),
+        )
+
+        self.period.estado = Periodo.Estado.CERRADO
+        self.period.save(update_fields=['estado'])
+        closed_period_response = self.client.get(
+            reverse(
+                'administracion:compromiso-editar',
+                args=[commitment.pk],
+            ) + f'?delegacion={self.first_delegation.pk}',
+        )
+        self.assertEqual(closed_period_response.status_code, 302)
