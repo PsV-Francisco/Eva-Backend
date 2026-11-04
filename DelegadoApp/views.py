@@ -1,26 +1,21 @@
 import secrets
 from datetime import datetime
-from decimal import Decimal
 
 from django.contrib import messages
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import OuterRef, Q, Subquery
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from AdminApp.audit import registrar_historial
-from AdminApp.models import ParametroSistema, Usuario
 from config.decorators import cargo_required
 from config.delegations import active_delegation
-from CoordinadorApp.models import Desempeno, Periodo
-from CoordinadorApp.services import clasificar_umbral, cumplimiento_por_usuario, umbral_delegacion
+from CoordinadorApp.models import Periodo
 from DelegadoApp.forms import CompromisoEstadoForm, CompromisoForm
 from DelegadoApp.models import Agenda, Compromiso, HistorialEstadoCompromiso, SeguimientoAcceso
-from DelegadoApp.services import actualizar_estado_compromiso
-from FuncionarioApp.models import Registro
+from DelegadoApp.services import actualizar_estado_compromiso, resumen_delegacion
 
 
 def _tracking_ip_key(ip_address):
@@ -340,7 +335,6 @@ def home(request):
 @cargo_required('delegado', permission='view_delegation_summary')
 def resumen(request):
     delegation = active_delegation(request)
-    delegation_id = delegation.pk if delegation else None
     period_id = request.GET.get('periodo', '')
     selected_period = (
         Periodo.objects.filter(pk=int(period_id)).first()
@@ -350,72 +344,10 @@ def resumen(request):
         ).order_by('-fecha_inicio').first()
     )
     periods = Periodo.objects.order_by('-fecha_inicio')
-    if not delegation_id:
-        return render(request, 'DelegadoApp/resumen.html', {
-            'sgr_role': 'Delegación',
-            'sidebar_modules': (
-                {'label': 'Agenda colectiva', 'url_name': 'delegado:home'},
-                {'label': 'Resumen de la delegación', 'url_name': 'delegado:resumen'},
-            ),
-            'periodos': periods,
-            'periodo_seleccionado': selected_period,
-            'funcionarios': [],
-            'below_threshold': [],
-            'threshold': umbral_delegacion(),
-            'has_delegation': False,
-        })
-
-    last_description = Registro.objects.filter(
-        autor_id=OuterRef('pk'),
-        periodo=selected_period,
-    ).order_by('-fecha', '-creado').values('descripcion')[:1]
-    last_date = Registro.objects.filter(
-        autor_id=OuterRef('pk'),
-        periodo=selected_period,
-    ).order_by('-fecha', '-creado').values('fecha')[:1]
-    users = list(Usuario.objects.filter(
-        usuariodelegacion__delegacion_id=delegation_id,
-        usuariodelegacion__fecha_fin__isnull=True,
-        is_active=True,
-        usuariocargo__cargo__nombre__iexact='funcionario',
-        usuariocargo__fecha_fin__isnull=True,
-    ).distinct().annotate(
-        ultimo_registro=Subquery(last_description),
-        fecha_ultimo_registro=Subquery(last_date),
-    ).order_by('last_name', 'first_name', 'email'))
-    performances = list(Desempeno.objects.filter(
-        usuario_id__in=[user.pk for user in users],
-        periodo=selected_period,
-    ).select_related('usuario', 'item', 'periodo')) if selected_period else []
-    summaries = cumplimiento_por_usuario(performances)
-    threshold = umbral_delegacion()
-    rows = []
-    for user in users:
-        summary = summaries.get(user.pk, {
-            'items': [],
-            'avance_real': 0,
-            'avance_esperado': 0,
-            'total_avance': 0,
-            'total_meta': 0,
-            'total_aporte': 0,
-        })
-        rows.append({
-            'usuario': user,
-            'cumplimiento': summary['avance_real'],
-            'esperado': summary['avance_esperado'],
-            'semaforo': (
-                'verde' if summary['avance_real'] >= summary['avance_esperado']
-                else 'ambar' if summary['avance_real'] >= summary['avance_esperado'] * Decimal('0.60')
-                else 'rojo'
-            ),
-            'umbral': threshold,
-            'clasificacion_umbral': clasificar_umbral(
-                summary['avance_real'],
-                tiene_items=bool(summary['items']),
-            ),
-            'ultimo_registro': user.ultimo_registro,
-            'fecha_ultimo_registro': user.fecha_ultimo_registro,
-        })
+    summary = resumen_delegacion(
+        delegation=delegation,
+        period=selected_period,
+    )
     return render(request, 'DelegadoApp/resumen.html', {
         'sgr_role': 'Delegación',
         'sidebar_modules': (
@@ -424,10 +356,5 @@ def resumen(request):
         ),
         'periodos': periods,
         'periodo_seleccionado': selected_period,
-        'funcionarios': rows,
-        'below_threshold': [
-            row for row in rows if row['cumplimiento'] < threshold
-        ],
-        'threshold': threshold,
-        'has_delegation': True,
+        **summary,
     })

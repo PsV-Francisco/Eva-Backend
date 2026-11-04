@@ -7,33 +7,84 @@
 <div class="dashboard-main">
 <div class="metric-grid metric-grid-four">
   <article class="metric"><span>Ítems asignados</span><strong>{{ item_count }}</strong></article>
-  <article class="metric"><span>Avance aprobado</span><strong>{{ summary.total_avance|floatformat:0 }}</strong></article>
+  <article class="metric"><span>{% if es_encargado_social %}Avance actual{% else %}Avance aprobado{% endif %}</span><strong>{% if es_encargado_social %}{{ summary.total_avance|floatformat:2 }}{% else %}{{ summary.total_avance|floatformat:0 }}{% endif %}</strong></article>
   <article class="metric"><span>Avance real</span><strong>{{ summary.avance_real|floatformat:2 }}%</strong></article>
   <article class="metric"><span>Avance esperado</span><strong>{{ summary.avance_esperado|floatformat:2 }}%</strong></article>
   <article class="metric"><span>Umbral fijo</span><strong>{% if summary.items %}{{ umbral_delegacion|floatformat:2 }}%{% else %}Sin ítems asignados{% endif %}</strong></article>
 </div>
 <section class="content-section split-layout">
   <div>
-    <div class="section-head"><div><p class="eyebrow">MEDICIÓN PERSONAL</p><h2>Detalle por ítem</h2></div></div>
+    <div class="section-head"><div><p class="eyebrow">MEDICIÓN PERSONAL</p><h2>Detalle por ítem</h2>
+      <p class="section-note">{% if es_encargado_social %}Cumplimiento de tus metas como Encargado Social.{% else %}Cumplimiento de tus metas asignadas.{% endif %}</p>
+    </div></div>
     <form method="get" class="search-panel mb-3">
       <div><label class="form-label" for="periodo">Período</label><select class="form-select" id="periodo" name="periodo">{% for periodo in periodos %}<option value="{{ periodo.pk }}" {% if periodo == periodo_seleccionado %}selected{% endif %}>{{ periodo.nombre }}</option>{% endfor %}</select></div>
       <button class="btn btn-primary" type="submit">Consultar</button>
     </form>
     <div class="table-responsive"><table class="table align-middle">
-      <thead><tr><th>Ítem de medición</th><th>Meta</th><th>Aprobado</th><th>Cumplimiento</th><th>Ponderador</th><th>Aporte</th><th>Semáforo</th></tr></thead>
+      <thead>
+        <tr>
+          <th>Item</th>
+          {% if es_encargado_social %}
+            <th>Ponderador</th>
+            <th>Avance Actual</th>
+            <th>% de cumplimiento</th>
+            <th>Cumplimiento ponderado</th>
+          {% else %}
+            <th>Ponderación</th>
+            <th>Avance / Meta actual</th>
+            <th>% cumplimiento</th>
+            <th>Cumplimiento ponderado</th>
+          {% endif %}
+        </tr>
+      </thead>
       <tbody>
-      {% for row in summary.items %}<tr>
-        <td><strong>{{ row.desempeno.item.nombre }}</strong></td>
-        <td>{{ row.meta|floatformat:2 }}</td><td>{{ row.avance|floatformat:0 }}</td>
-        <td>{{ row.cumplimiento|floatformat:2 }}%</td><td>{{ row.ponderacion|floatformat:2 }}%</td>
-        <td>{{ row.aporte|floatformat:2 }}%</td>
-        <td><span class="traffic-light traffic-{{ row.semaforo }}">{{ row.semaforo|title }}</span></td>
-      </tr>{% empty %}<tr><td colspan="7" class="empty-state">Sin ítems asignados.</td></tr>{% endfor %}
+      {% for row in summary.items %}
+        <tr>
+          <td><strong>{{ row.desempeno.item.nombre }}</strong></td>
+          {% if es_encargado_social %}
+            <td>{% if row.ponderacion is not None %}{{ row.ponderacion|floatformat:2 }}%{% else %}<span class="text-muted">Sin dato</span>{% endif %}</td>
+            <td>{{ row.avance|floatformat:2 }}</td>
+            <td>{{ row.cumplimiento|floatformat:2 }}% <span class="traffic-light traffic-{{ row.semaforo }}">{{ row.semaforo|title }}</span></td>
+            <td>{% if row.aporte is not None %}{{ row.aporte|floatformat:2 }}%{% else %}<span class="text-muted">Sin ponderación</span>{% endif %}</td>
+          {% else %}
+            <td>{% if row.ponderacion is not None %}{{ row.ponderacion|floatformat:2 }}%{% else %}<span class="text-muted">Sin dato</span>{% endif %}</td>
+            <td>{{ row.avance|floatformat:0 }} / {{ row.meta|floatformat:2 }}</td>
+            <td>{{ row.cumplimiento|floatformat:2 }}% <span class="traffic-light traffic-{{ row.semaforo }}">{{ row.semaforo|title }}</span></td>
+            <td>{% if row.aporte is not None %}{{ row.aporte|floatformat:2 }}%{% else %}<span class="text-muted">Sin ponderación</span>{% endif %}</td>
+          {% endif %}
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" class="empty-state">Sin ítems asignados para este período.</td></tr>
+      {% endfor %}
       </tbody>
-      {% if summary.items %}<tfoot><tr><th>Total</th><th>{{ summary.total_meta|floatformat:2 }}</th><th>{{ summary.total_avance|floatformat:0 }}</th><th>{{ summary.avance_real|floatformat:2 }}%</th><th>—</th><th>{{ summary.total_aporte|floatformat:2 }}%</th><th></th></tr></tfoot>{% endif %}
+      {% if summary.items %}
+      <tfoot>
+        <tr>
+          <th>Total</th>
+          {% if es_encargado_social %}
+            <th>—</th>
+            <th>{{ summary.total_avance|floatformat:2 }}</th>
+            <th>{{ summary.avance_real|floatformat:2 }}%</th>
+            <th>{% if summary.ponderacion_completa %}{{ summary.total_aporte|floatformat:2 }}%{% else %}<span class="text-muted">Incompleto</span>{% endif %}</th>
+          {% else %}
+            <th>—</th>
+            <th>{{ summary.total_avance|floatformat:0 }} / {{ summary.total_meta|floatformat:2 }}</th>
+            <th>{{ summary.avance_real|floatformat:2 }}%</th>
+            <th>{% if summary.ponderacion_completa %}{{ summary.total_aporte|floatformat:2 }}%{% else %}<span class="text-muted">Incompleto</span>{% endif %}</th>
+          {% endif %}
+        </tr>
+      </tfoot>
+      {% endif %}
     </table></div>
   </div>
-  <aside class="side-note"><span class="side-note-mark">i</span><h3>Cómo se calcula</h3><p>Solo cuentan actividades con evidencia aprobada, una vez por actividad. El avance esperado se calcula con días hábiles de lunes a viernes. El semáforo compara contra el avance esperado a la fecha; el umbral compara contra un porcentaje fijo de cumplimiento.</p>{% if summary.items %}<p><strong>Estado frente al umbral:</strong> {% if clasificacion_umbral == 'sobre' %}Sobre el umbral{% else %}Bajo el umbral{% endif %} ({{ umbral_delegacion|floatformat:2 }}%).</p>{% else %}<p><strong>Sin ítems asignados.</strong> No se clasifica frente al umbral.</p>{% endif %}</aside>
+  <aside class="side-note"><span class="side-note-mark">i</span><h3>Cómo se calcula</h3>
+  {% if es_encargado_social %}
+  <p>La información se obtiene directamente de los ítems y de tu desempeño asignado. El avance actual y la meta provienen del desempeño. El porcentaje de cumplimiento compara el avance actual con la meta asignada. El cumplimiento ponderado corresponde al porcentaje de cumplimiento aplicado al ponderador del ítem.</p>
+  {% else %}
+  <p>El avance incluye actividades validadas con evidencia aprobada, una vez por actividad. El porcentaje de cumplimiento compara ese avance con la meta asignada. El cumplimiento ponderado corresponde al porcentaje de cumplimiento aplicado a la ponderación del ítem.</p>
+  {% endif %}
+  <p>El semáforo compara el cumplimiento con el avance esperado a la fecha; el umbral compara con un porcentaje fijo.</p>{% if summary.items %}<p><strong>Estado frente al umbral:</strong> {% if clasificacion_umbral == 'sobre' %}Sobre el umbral{% else %}Bajo el umbral{% endif %} ({{ umbral_delegacion|floatformat:2 }}%).</p>{% else %}<p><strong>Sin ítems asignados.</strong> No se clasifica frente al umbral.</p>{% endif %}</aside>
 </section>
 </div></div>
 {% endblock %}

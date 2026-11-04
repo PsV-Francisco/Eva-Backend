@@ -20,18 +20,24 @@ from DelegadoApp.models import (
     Reclamo,
     HistorialEstadoCompromiso,
 )
-from FuncionarioApp.models import Registro, Territorio
+from FuncionarioApp.models import Registro, Territorio, Subtipo, Tipo
+from test_helpers import create_user
 
 
 class DelegationWorkflowTests(TestCase):
     def setUp(self):
         self.delegation = Delegacion.objects.create(nombre='Delegación central')
         self.other_delegation = Delegacion.objects.create(nombre='Delegación externa')
-        self.delegate = get_user_model().objects.create_user(
+        self.delegate = create_user(
             email='delegado@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='delegado'),
             delegacion=self.delegation,
+        )
+        self.tipo = Tipo.objects.create(nombre='Tipo compromiso')
+        self.subtipo = Subtipo.objects.create(
+            nombre='Subtipo compromiso',
+            tipo=self.tipo,
         )
         self.period = Periodo.objects.create(
             nombre='Período delegado',
@@ -46,6 +52,8 @@ class DelegationWorkflowTests(TestCase):
             agenda=self.agenda,
             descripcion='Operativo comunitario',
             fecha='2026-10-25',
+            tipo=self.tipo,
+            subtipo=self.subtipo,
         )
         self.client.force_login(self.delegate)
 
@@ -89,6 +97,8 @@ class DelegationWorkflowTests(TestCase):
             agenda=other_agenda,
             descripcion='Privado de otra delegación',
             fecha='2026-10-25',
+            tipo=self.tipo,
+            subtipo=self.subtipo,
         )
 
         response = self.client.post(reverse('delegado:home'), {
@@ -103,7 +113,7 @@ class DelegationWorkflowTests(TestCase):
 class TargetSchemaDelegadoModelTests(TestCase):
     def setUp(self):
         self.delegacion = Delegacion.objects.create(nombre='Delegación para hitos')
-        self.usuario = get_user_model().objects.create_user(
+        self.usuario = create_user(
             email='objetivo@sgr.test',
             password='Sgr-Test-Password-418!',
         )
@@ -215,7 +225,7 @@ class TargetSchemaDelegadoModelTests(TestCase):
         self.assertIsNone(hito.descripcion)
 
     def test_hito_clean_rejects_mismatched_registration_dimension(self):
-        other_user = get_user_model().objects.create_user(
+        other_user = create_user(
             email='otro-objetivo@sgr.test',
             password='Sgr-Test-Password-418!',
         )
@@ -242,7 +252,7 @@ class TargetSchemaDelegadoModelTests(TestCase):
         self.assertIn('autor_registro', raised.exception.error_dict)
 
     def test_felicitacion_clean_rejects_mismatched_performance_dimension(self):
-        other_user = get_user_model().objects.create_user(
+        other_user = create_user(
             email='tercero-objetivo@sgr.test',
             password='Sgr-Test-Password-418!',
         )
@@ -263,7 +273,7 @@ class TargetSchemaDelegadoModelTests(TestCase):
         self.assertIn('usuario', raised.exception.error_dict)
 
     def test_all_performance_children_reject_incoherent_relations(self):
-        other_user = get_user_model().objects.create_user(
+        other_user = create_user(
             email='cuarto-objetivo@sgr.test',
             password='Sgr-Test-Password-418!',
         )
@@ -308,7 +318,7 @@ class TargetSchemaDelegadoModelTests(TestCase):
                 self.assertIn('usuario', raised.exception.error_dict)
 
     def test_performance_relation_sync_is_persisted_with_update_fields(self):
-        other_user = get_user_model().objects.create_user(
+        other_user = create_user(
             email='quinto-objetivo@sgr.test',
             password='Sgr-Test-Password-418!',
         )
@@ -407,11 +417,16 @@ class DelegationTrackingTests(TestCase):
     def setUp(self):
         self.delegation = Delegacion.objects.create(nombre='Delegación central')
         self.other_delegation = Delegacion.objects.create(nombre='Delegación externa')
-        self.delegate = get_user_model().objects.create_user(
+        self.delegate = create_user(
             email='delegado@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='delegado'),
             delegacion=self.delegation,
+        )
+        self.tipo = Tipo.objects.create(nombre='Tipo seguimiento')
+        self.subtipo = Subtipo.objects.create(
+            nombre='Subtipo seguimiento',
+            tipo=self.tipo,
         )
         self.period = Periodo.objects.create(
             nombre='Período delegado',
@@ -426,18 +441,20 @@ class DelegationTrackingTests(TestCase):
             agenda=self.agenda,
             descripcion='Operativo comunitario',
             fecha='2026-10-25',
+            tipo=self.tipo,
+            subtipo=self.subtipo,
         )
         self.client.force_login(self.delegate)
 
     def test_summary_is_limited_to_delegate_own_delegation(self):
         employee_cargo = Cargo.objects.create(nombre='funcionario')
-        own_employee = get_user_model().objects.create_user(
+        own_employee = create_user(
             email='propio@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=employee_cargo,
             delegacion=self.delegation,
         )
-        get_user_model().objects.create_user(
+        create_user(
             email='ajeno@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=employee_cargo,
@@ -504,7 +521,7 @@ class DelegationTrackingTests(TestCase):
         self.assertEqual(response.status_code, 410)
 
     def test_unauthorized_user_cannot_manage_public_tracking_link(self):
-        other_delegate = get_user_model().objects.create_user(
+        other_delegate = create_user(
             email='delegado-otro@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.get_or_create(nombre='delegado')[0],

@@ -170,11 +170,11 @@ class RolePortalTests(TestCase):
 
 	def test_sidebar_groups_administrator_options_without_empty_sections(self):
 		response = self.client.get(reverse('administracion:home'))
-		self.assertContains(response, 'data-section-key="usuarios"')
 		self.assertContains(response, 'data-section-key="organizacion"')
-		self.assertContains(response, 'data-section-key="medicion"')
-		self.assertContains(response, 'data-section-key="atenciones"')
+		self.assertContains(response, 'data-section-key="metas-seguimiento"')
+		self.assertNotContains(response, 'data-section-key="atenciones"')
 		self.assertContains(response, 'data-section-key="operacion"')
+		self.assertContains(response, 'data-section-key="territorio"')
 		self.assertContains(response, 'data-section-key="auditoria"')
 		self.assertContains(response, 'data-section-key="ayuda"')
 

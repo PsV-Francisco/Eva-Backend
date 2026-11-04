@@ -15,20 +15,24 @@ from AdminApp.models import (
     Delegacion,
     Historial,
     Rol,
-    SubAtencion,
-    TipoAtencion,
+    UsuarioCargo,
+    UsuarioDelegacion,
 )
 from AdminApp.roles import ensure_role_group
 from CoordinadorApp.models import Desempeno, Funcion, Item, Periodo
+from FuncionarioApp.models import Subtipo, Tipo
 from config.delegations import authorized_delegations
+from test_helpers import create_user
 
 
 class MaintainerTests(TestCase):
     def setUp(self):
-        self.admin = get_user_model().objects.create_superuser(
+        self.admin = create_user(
             email='admin-maintainers@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='administrador'),
+            is_staff=True,
+            is_superuser=True,
         )
         self.client.force_login(self.admin)
 
@@ -55,7 +59,7 @@ class MaintainerTests(TestCase):
         self.assertContains(role_page, 'Seleccionar todo')
 
     def test_non_administrator_cannot_open_administration_routes(self):
-        user = get_user_model().objects.create_user(
+        user = create_user(
             email='funcionario-maintainers@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='funcionario'),
@@ -212,7 +216,7 @@ class MaintainerTests(TestCase):
             codename='view_public_reports',
         )
         role = Rol.objects.create(nombre='Consulta adicional')
-        user = get_user_model().objects.create_user(
+        user = create_user(
             email='consulta-adicional@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='Cargo adicional'),
@@ -317,7 +321,7 @@ class MaintainerTests(TestCase):
 
     def test_role_assignment_changes_are_audited(self):
         role = Rol.objects.create(nombre='Rol asignable')
-        user = get_user_model().objects.create_user(
+        user = create_user(
             email='usuario-con-rol@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='funcionario'),
@@ -358,13 +362,13 @@ class MaintainerTests(TestCase):
         elevated_role = Rol.objects.create(nombre='Coordinación elevada')
         ensure_role_group(manager_role).permissions.add(manager_permission)
         ensure_role_group(elevated_role).permissions.add(elevated_permission)
-        actor = get_user_model().objects.create_user(
+        actor = create_user(
             email='gestor-limitado@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='Funcionario con permiso'),
         )
         actor.roles.add(manager_role)
-        target = get_user_model().objects.create_user(
+        target = create_user(
             email='destinatario-rol@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.get_or_create(nombre='funcionario')[0],
@@ -390,16 +394,21 @@ class MaintainerTests(TestCase):
 
     def test_last_administrator_is_protected_by_the_user_endpoint_and_model(self):
         admin_cargo = Cargo.objects.get(nombre='administrador')
-        target = get_user_model().objects.create_user(
+        target = create_user(
             email='ultimo-administrador@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=admin_cargo,
         )
         self.admin.is_superuser = False
-        self.admin.cargo = Cargo.objects.get_or_create(
-            nombre='funcionario',
-        )[0]
-        self.admin.save(update_fields=['is_superuser', 'cargo'])
+        self.admin.save(update_fields=['is_superuser'])
+        UsuarioCargo.objects.filter(
+            usuario=self.admin,
+            fecha_fin__isnull=True,
+        ).update(fecha_fin=date.today())
+        UsuarioCargo.objects.create(
+            usuario=self.admin,
+            cargo=Cargo.objects.get_or_create(nombre='funcionario')[0],
+        )
         permission = Permission.objects.get(
             content_type__app_label='AdminApp',
             codename='access_admin_users',
@@ -445,10 +454,17 @@ class MaintainerTests(TestCase):
             get_user_model().objects.filter(pk=target.pk).update(
                 is_active=False,
             )
-        target.cargo = self.admin.cargo
+        UsuarioCargo.objects.filter(
+            usuario=target,
+            fecha_fin__isnull=True,
+        ).update(fecha_fin=date.today())
+        UsuarioCargo.objects.create(
+            usuario=target,
+            cargo=self.admin.cargo,
+        )
         with transaction.atomic():
             with self.assertRaises(ValidationError):
-                target.save(update_fields=['cargo'])
+                target.save()
         target.refresh_from_db()
         self.assertEqual(target.cargo_id, admin_cargo.pk)
 
@@ -460,14 +476,12 @@ class MaintainerTests(TestCase):
         self.assertContains(response, 'disabled')
 
     def test_type_cannot_be_deleted_while_subtypes_are_associated(self):
-        attention_type = TipoAtencion.objects.create(
-            codigo='TAT-001',
+        attention_type = Tipo.objects.create(
             nombre='Orientación',
         )
-        SubAtencion.objects.create(
-            codigo='SAT-001',
+        Subtipo.objects.create(
             nombre='Social',
-            tipo_atencion=attention_type,
+            tipo=attention_type,
         )
 
         response = self.client.post(reverse('administracion:tipos-atencion'), {
@@ -477,7 +491,7 @@ class MaintainerTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse('administracion:tipos-atencion'))
-        self.assertTrue(TipoAtencion.objects.filter(pk=attention_type.pk).exists())
+        self.assertTrue(Tipo.objects.filter(pk=attention_type.pk).exists())
         self.assertContains(
             self.client.get(reverse('administracion:tipos-atencion')),
             'El tipo tiene subatenciones asociadas',
@@ -486,12 +500,11 @@ class MaintainerTests(TestCase):
     def test_item_and_meta_assignment_crud_preserves_progress(self):
         function = Funcion.objects.create(nombre='Atención territorial')
         item = Item.objects.create(
-            funcion=function,
             nombre='Orientaciones',
             descripcion='Atenciones registradas',
         )
         self.assertEqual(item.codigo, f'ITEM-{item.pk:04d}')
-        user = get_user_model().objects.create_user(
+        user = create_user(
             email='persona-meta@sgr.test',
             password='Sgr-Test-Password-418!',
             first_name='Ana',
@@ -513,7 +526,7 @@ class MaintainerTests(TestCase):
 
         self.assertRedirects(response, reverse('administracion:metas'))
         goal = Desempeno.objects.get(usuario=user, item=item, periodo=period)
-        self.assertEqual(goal.funcion, function)
+        self.assertEqual(goal.item, item)
         goal.avance = 2
         goal.save(update_fields=['avance'])
 
@@ -529,12 +542,15 @@ class MaintainerTests(TestCase):
         authorized = Delegacion.objects.create(nombre='Delegación Autorizada')
         response = self.client.post(reverse('administracion:home'), {
             'email': 'persona-delegada@sgr.test',
+            'nombre': 'María Prueba',
             'first_name': 'María',
             'last_name': 'Prueba',
+            'cargo': Cargo.objects.get(nombre='administrador').pk,
             'delegacion': primary.pk,
             'delegaciones_autorizadas': [authorized.pk],
             'password1': 'Sgr-New-Account-573!',
             'password2': 'Sgr-New-Account-573!',
+            'estado': 'activo',
             'is_active': 'on',
         })
         self.assertRedirects(response, reverse('administracion:home'))
@@ -563,13 +579,16 @@ class MaintainerTests(TestCase):
             nombre='Delegación desactivada',
             estado=Delegacion.Estado.INACTIVA,
         )
-        managed_user = get_user_model().objects.create_user(
+        managed_user = create_user(
             email='cuenta-contexto@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.get(nombre='administrador'),
             delegacion=active,
         )
-        managed_user.delegaciones_autorizadas.add(inactive)
+        UsuarioDelegacion.objects.create(
+            usuario=managed_user,
+            delegacion=inactive,
+        )
         self.assertEqual(
             list(authorized_delegations(managed_user)),
             [active],
@@ -643,7 +662,7 @@ class MaintainerTests(TestCase):
         self.assertEqual(rows[1][1], '\'=HYPERLINK("https://example.invalid")')
 
     def test_coordinator_can_manage_items_but_not_administration_roles(self):
-        coordinator = get_user_model().objects.create_user(
+        coordinator = create_user(
             email='coordinador-maintainers@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='coordinador'),
@@ -662,19 +681,19 @@ class MaintainerTests(TestCase):
     def test_coordinator_cannot_view_or_edit_goals_outside_active_delegation(self):
         assigned = Delegacion.objects.create(nombre='Delegación asignada')
         other = Delegacion.objects.create(nombre='Delegación ajena')
-        coordinator = get_user_model().objects.create_user(
+        coordinator = create_user(
             email='coordinador-scope@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='coordinador'),
             delegacion=assigned,
         )
-        other_user = get_user_model().objects.create_user(
+        other_user = create_user(
             email='usuario-otra-delegacion@sgr.test',
             password='Sgr-Test-Password-418!',
             delegacion=other,
         )
         function = Funcion.objects.create(nombre='Función acotada')
-        item = Item.objects.create(funcion=function, nombre='Meta restringida')
+        item = Item.objects.create(nombre='Meta restringida')
         period = Periodo.objects.create(
             nombre='Período acotado',
             fecha_inicio=date.today(),
@@ -685,7 +704,6 @@ class MaintainerTests(TestCase):
             item=item,
             periodo=period,
             meta=10,
-            ponderacion=50,
         )
         self.client.force_login(coordinator)
 

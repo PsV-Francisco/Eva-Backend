@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
@@ -10,6 +12,10 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from AdminApp.audit import registrar_historial
+from AdminApp.delegation_scope import (
+	available_delegations,
+	filter_by_delegation,
+)
 from AdminApp.models import Delegacion
 from FuncionarioApp.models import (
 	Beneficiado,
@@ -163,6 +169,29 @@ def gestion_actividades(request):
     })"""
 
 
+def _es_encargado_social(user):
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    if hasattr(user, 'roles'):
+        try:
+            roles_obj = user.roles
+            if hasattr(roles_obj, 'filter'):
+                if roles_obj.filter(nombre__iexact='Encargado Social').exists():
+                    return True
+            elif hasattr(roles_obj, 'all'):
+                if any(getattr(r, 'nombre', '').strip().casefold() == 'encargado social' for r in roles_obj.all()):
+                    return True
+            elif isinstance(roles_obj, (list, tuple, set)):
+                if any(getattr(r, 'nombre', '').strip().casefold() == 'encargado social' for r in roles_obj):
+                    return True
+        except Exception:
+            pass
+    cargo = getattr(user, 'cargo', None)
+    if cargo and getattr(cargo, 'nombre', '').strip().casefold() in {'encargado social', 'social'}:
+        return True
+    return False
+
+
 def _render_cumplimiento(request):
     assigned_periods = Periodo.objects.filter(
         desempenos__usuario=request.user,
@@ -179,7 +208,16 @@ def _render_cumplimiento(request):
         usuario=request.user,
         periodo=period,
     ).select_related('item', 'periodo') if period else Desempeno.objects.none()
-    summary = resumen_cumplimiento(performances)
+
+    es_encargado_social = _es_encargado_social(request.user)
+
+    counts = None
+    if es_encargado_social and period:
+        counts = {
+            (row.usuario_id, row.item_id, row.periodo_id): Decimal(row.avance or 0)
+            for row in performances
+        }
+    summary = resumen_cumplimiento(performances, counts=counts)
     has_items = bool(summary['items'])
     return render(request, 'FuncionarioApp/cumplimiento.html', {
         'sgr_role': 'Funcionario',
@@ -195,6 +233,7 @@ def _render_cumplimiento(request):
         'periodo_seleccionado': period,
         'summary': summary,
         'item_count': len(summary['items']),
+        'es_encargado_social': es_encargado_social,
         'umbral_delegacion': umbral_delegacion(),
         'clasificacion_umbral': clasificar_umbral(
             summary['avance_real'],
@@ -310,25 +349,20 @@ def _es_administrador(user):
 
 
 def _vecinos_para_usuario(request):
-	user = request.user
 	queryset = Vecino.objects.select_related(
 		'delegacion', 'solicitante', 'territorio', 'junta_vecino', 'cargo_jv',
 	)
-	if _es_administrador(user):
-		return queryset
-	delegation = active_delegation(request)
-	if delegation is None:
-		return queryset.none()
-	return queryset.filter(delegacion=delegation)
+	return filter_by_delegation(
+		queryset,
+		request,
+		delegation_lookup='delegacion_id',
+	)
 
 
 def _delegaciones_para_vecino(request):
-	if _es_administrador(request.user):
-		return Delegacion.objects.filter(
-			estado=Delegacion.Estado.ACTIVA,
-		).order_by('nombre')
-	delegation = active_delegation(request)
-	return Delegacion.objects.filter(pk=delegation.pk) if delegation else Delegacion.objects.none()
+	return available_delegations(request.user).filter(
+		estado=Delegacion.Estado.ACTIVA,
+	).order_by('nombre')
 
 
 def _vecino_snapshot(vecino):
@@ -359,21 +393,17 @@ def _telefono_repetido(vecino):
 
 def _juntas_para_usuario(request):
 	queryset = JuntaVecino.objects.select_related('delegacion', 'territorio')
-	if _es_administrador(request.user):
-		return queryset
-	delegation = active_delegation(request)
-	if delegation is None:
-		return queryset.none()
-	return queryset.filter(delegacion=delegation)
+	return filter_by_delegation(
+		queryset,
+		request,
+		delegation_lookup='delegacion_id',
+	)
 
 
 def _delegaciones_para_junta(request):
-	if _es_administrador(request.user):
-		return Delegacion.objects.filter(
-			estado=Delegacion.Estado.ACTIVA,
-		).order_by('nombre')
-	delegation = active_delegation(request)
-	return Delegacion.objects.filter(pk=delegation.pk) if delegation else Delegacion.objects.none()
+	return available_delegations(request.user).filter(
+		estado=Delegacion.Estado.ACTIVA,
+	).order_by('nombre')
 
 
 def _junta_snapshot(junta):
@@ -637,29 +667,47 @@ def desactivar_vecino(request, vecino_id):
 
 @cargo_required('funcionario', permission='delete_vecinos')
 @require_POST
-def eliminar_vecino(request, vecino_id):
+def eliminar_vecino(
+	request,
+	vecino_id,
+	*,
+	return_url_name='funcionario:vecinos',
+):
 	vecino = get_object_or_404(_vecinos_para_usuario(request), pk=vecino_id)
 	before = _vecino_snapshot(vecino)
+	entity = f'Vecino:{vecino.pk}'
 	try:
 		with transaction.atomic():
 			vecino.delete()
 			registrar_historial(
 				actor=request.user,
 				action='Eliminar vecino',
-				entity=f'Vecino:{vecino.pk}',
+				entity=entity,
 				before=before,
 			)
 	except ProtectedError:
 		messages.error(request, 'No se puede eliminar el vecino porque tiene registros asociados. Desactívalo en su lugar.')
 	else:
 		messages.success(request, 'Vecino eliminado correctamente.')
-	return redirect('funcionario:vecinos')
+	return redirect(return_url_name)
 
 
-def _vecino_form(request, vecino_id=None):
+def _vecino_form(
+	request,
+	vecino_id=None,
+	*,
+	return_url_name='funcionario:vecinos',
+	sidebar_modules=None,
+	sgr_role='Funcionario',
+):
 	queryset = _vecinos_para_usuario(request)
 	vecino = get_object_or_404(queryset, pk=vecino_id) if vecino_id else None
 	delegaciones = _delegaciones_para_vecino(request)
+	if vecino:
+		delegaciones = (
+			delegaciones
+			| Delegacion.objects.filter(pk=vecino.delegacion_id)
+		).distinct()
 	form = VecinoForm(
 		request.POST or None,
 		instance=vecino,
@@ -682,13 +730,17 @@ def _vecino_form(request, vecino_id=None):
 			request,
 			'Vecino actualizado correctamente.' if before else 'Vecino creado correctamente.',
 		)
-		return redirect('funcionario:vecinos')
+		return redirect(return_url_name)
 	territorios = Territorio.objects.filter(
 		delegacion__in=delegaciones,
 	).values_list('nombre', flat=True).distinct().order_by('nombre')
 	return render(request, 'FuncionarioApp/vecino_form.html', {
-		'sgr_role': 'Funcionario',
-		'sidebar_modules': _funcionario_sidebar_modules(),
+		'sgr_role': sgr_role,
+		'sidebar_modules': (
+			_funcionario_sidebar_modules()
+			if sidebar_modules is None else sidebar_modules
+		),
+		'return_url_name': return_url_name,
 		'form': form,
 		'vecino': vecino,
 		'territorios': territorios,
@@ -731,13 +783,26 @@ def juntas(request):
 	})
 
 
-def _junta_form(request, junta_id=None):
+def _junta_form(
+	request,
+	junta_id=None,
+	*,
+	return_url_name='funcionario:juntas',
+	sidebar_modules=None,
+	sgr_role='Funcionario',
+):
 	queryset = _juntas_para_usuario(request)
 	junta = get_object_or_404(queryset, pk=junta_id) if junta_id else None
+	delegaciones = _delegaciones_para_junta(request)
+	if junta:
+		delegaciones = (
+			delegaciones
+			| Delegacion.objects.filter(pk=junta.delegacion_id)
+		).distinct()
 	form = JuntaVecinoForm(
 		request.POST or None,
 		instance=junta,
-		delegaciones=_delegaciones_para_junta(request),
+		delegaciones=delegaciones,
 	)
 	if request.method == 'POST' and form.is_valid():
 		before = _junta_snapshot(junta) if junta else None
@@ -759,13 +824,17 @@ def _junta_form(request, junta_id=None):
 			request,
 			'Junta actualizada correctamente.' if before else 'Junta creada correctamente.',
 		)
-		return redirect('funcionario:juntas')
+		return redirect(return_url_name)
 	territorios = Territorio.objects.filter(
-		delegacion__in=_delegaciones_para_junta(request),
+		delegacion__in=delegaciones,
 	).values_list('nombre', flat=True).distinct().order_by('nombre')
 	return render(request, 'FuncionarioApp/junta_form.html', {
-		'sgr_role': 'Funcionario',
-		'sidebar_modules': _funcionario_sidebar_modules(),
+		'sgr_role': sgr_role,
+		'sidebar_modules': (
+			_funcionario_sidebar_modules()
+			if sidebar_modules is None else sidebar_modules
+		),
+		'return_url_name': return_url_name,
 		'form': form,
 		'junta': junta,
 		'territorios': territorios,
@@ -784,23 +853,29 @@ def editar_junta(request, junta_id):
 
 @cargo_required('funcionario', permission='delete_juntas')
 @require_POST
-def eliminar_junta(request, junta_id):
+def eliminar_junta(
+	request,
+	junta_id,
+	*,
+	return_url_name='funcionario:juntas',
+):
 	junta = get_object_or_404(_juntas_para_usuario(request), pk=junta_id)
 	before = _junta_snapshot(junta)
+	entity = f'JuntaVecino:{junta.pk}'
 	try:
 		with transaction.atomic():
 			junta.delete()
 			registrar_historial(
 				actor=request.user,
 				action='Eliminar junta de vecinos',
-				entity=f'JuntaVecino:{junta.pk}',
+				entity=entity,
 				before=before,
 			)
 	except ProtectedError:
 		messages.error(request, 'No se puede eliminar la junta porque tiene vecinos o cargos asociados.')
 	else:
 		messages.success(request, 'Junta eliminada correctamente.')
-	return redirect('funcionario:juntas')
+	return redirect(return_url_name)
 
 
 """@cargo_required('funcionario', permission='manage_social_care')

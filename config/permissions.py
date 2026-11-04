@@ -34,6 +34,23 @@ PERMISSION_CATALOG = (
     PermissionDefinition('Administración', 'access_admin_goals', 'Administrar metas', 'administracion:metas', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_history', 'Consultar historial', 'administracion:historial', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_password_audit', 'Consultar auditoría de recuperación', 'administracion:auditoria-recuperacion', ('admin', 'administrador')),
+    PermissionDefinition('Administración', 'access_admin_absences', 'Consultar ausencias', 'administracion:ausencias', ('admin', 'administrador')),
+    PermissionDefinition('Administración', 'access_admin_congratulations', 'Consultar felicitaciones', 'administracion:felicitaciones', ('admin', 'administrador')),
+    PermissionDefinition('Administración', 'access_admin_complaints', 'Consultar reclamos', 'administracion:reclamos', ('admin', 'administrador')),
+    PermissionDefinition('Administración', 'access_admin_milestones', 'Consultar hitos', 'administracion:hitos', ('admin', 'administrador')),
+    PermissionDefinition('Administración', 'access_admin_neighbors', 'Administrar vecinos', 'administracion:vecinos', ('admin', 'administrador')),
+    PermissionDefinition('Administración', 'access_admin_neighborhood_associations', 'Administrar juntas de vecinos', 'administracion:juntas', ('admin', 'administrador')),
+    PermissionDefinition('Administración', 'access_admin_generated_reports', 'Consultar informes generados', 'administracion:informes-generados', ('admin', 'administrador')),
+    PermissionDefinition('Administración', 'access_admin_delegation_summary', 'Consultar resumen de delegaciones', 'administracion:resumen-delegacion', ('admin', 'administrador')),
+    PermissionDefinition('Administración', 'access_admin_records', 'Consultar registros por delegación', 'administracion:registros', ('admin', 'administrador')),
+    PermissionDefinition('Administración', 'access_admin_social_attentions', 'Consultar atenciones sociales por delegación', 'administracion:atenciones-sociales', ('admin', 'administrador')),
+    PermissionDefinition('Administración', 'access_admin_commitments', 'Consultar compromisos por delegación', 'administracion:compromisos', ('admin', 'administrador')),
+    PermissionDefinition('Administración', 'create_admin_neighbors', 'Crear vecinos', 'administracion:vecino-nuevo', ('admin', 'administrador'), show_in_menu=False),
+    PermissionDefinition('Administración', 'edit_admin_neighbors', 'Modificar vecinos', 'administracion:vecino-editar', ('admin', 'administrador'), (('vecino_id', 1),), False),
+    PermissionDefinition('Administración', 'delete_admin_neighbors', 'Eliminar vecinos', 'administracion:vecino-eliminar', ('admin', 'administrador'), (('vecino_id', 1),), False),
+    PermissionDefinition('Administración', 'create_admin_juntas', 'Crear juntas de vecinos', 'administracion:junta-nueva', ('admin', 'administrador'), show_in_menu=False),
+    PermissionDefinition('Administración', 'edit_admin_juntas', 'Modificar juntas de vecinos', 'administracion:junta-editar', ('admin', 'administrador'), (('junta_id', 1),), False),
+    PermissionDefinition('Administración', 'delete_admin_juntas', 'Eliminar juntas de vecinos', 'administracion:junta-eliminar', ('admin', 'administrador'), (('junta_id', 1),), False),
     PermissionDefinition('Funcionario', 'access_employee_dashboard', 'Consultar registro de actividades', 'funcionario:home', ('funcionario',)),
     PermissionDefinition('Funcionario', 'manage_employee_activities', 'Gestionar actividades', 'funcionario:gestion_actividades', ('funcionario',)),
     PermissionDefinition('Funcionario', 'access_funcionario_vecinos', 'Consultar vecinos', 'funcionario:vecinos', ('funcionario',)),
@@ -82,6 +99,23 @@ PERMISSION_DESCRIPTIONS = {
     'access_admin_goals': 'Crear y administrar metas.',
     'access_admin_history': 'Consultar el historial de auditoría.',
     'access_admin_password_audit': 'Consultar la auditoría de recuperación de contraseñas.',
+    'access_admin_absences': 'Consultar ausencias por delegación.',
+    'access_admin_congratulations': 'Consultar felicitaciones por delegación.',
+    'access_admin_complaints': 'Consultar reclamos por delegación.',
+    'access_admin_milestones': 'Consultar hitos por delegación.',
+    'access_admin_neighbors': 'Consultar y administrar vecinos por delegación.',
+    'access_admin_neighborhood_associations': 'Consultar y administrar juntas de vecinos por delegación.',
+    'access_admin_generated_reports': 'Generar y consultar informes consolidados de todas las delegaciones.',
+    'access_admin_delegation_summary': 'Consultar el resumen de cumplimiento de una o todas las delegaciones.',
+    'access_admin_records': 'Consultar registros de actividades por delegación.',
+    'access_admin_social_attentions': 'Consultar atenciones sociales por delegación.',
+    'access_admin_commitments': 'Consultar compromisos por delegación.',
+    'create_admin_neighbors': 'Crear vecinos desde la administración.',
+    'edit_admin_neighbors': 'Modificar vecinos desde la administración.',
+    'delete_admin_neighbors': 'Eliminar vecinos desde la administración.',
+    'create_admin_juntas': 'Crear juntas de vecinos desde la administración.',
+    'edit_admin_juntas': 'Modificar juntas de vecinos desde la administración.',
+    'delete_admin_juntas': 'Eliminar juntas de vecinos desde la administración.',
     'access_employee_dashboard': 'Consultar el registro de actividades propio.',
     'manage_employee_activities': 'Crear, editar y eliminar actividades propias.',
     'access_funcionario_vecinos': 'Consultar vecinos de la delegación.',
@@ -132,25 +166,103 @@ def permission_name(codename):
     return f'AdminApp.{codename}'
 
 
+def _normalize_role_or_cargo_name(name):
+    return (name or '').strip().casefold()
+
+
+def cargo_key_for_access(name):
+    normalized = _normalize_role_or_cargo_name(name)
+    if normalized in {
+        'admin',
+        'administrador',
+        'administrador del sistema',
+    } or normalized.startswith(('administrador ', 'admin ')):
+        return 'admin'
+    if normalized == 'encargado social' or normalized.startswith(
+        ('encargado social ', 'encargada social ', 'funcionario '),
+    ):
+        return 'funcionario'
+    if normalized == 'funcionario':
+        return 'funcionario'
+    if normalized == 'coordinador' or normalized.startswith('coordinador '):
+        return 'coordinador'
+    if normalized == 'delegado' or normalized.startswith('delegado '):
+        return 'delegado'
+    if normalized in {'supervisor', 'verificador'}:
+        return 'supervisor'
+    if normalized in {'vistaf', 'consulta', 'usuario de consulta'}:
+        return 'vistaf'
+    return None
+
+
+def _is_matching_cargo(name, cargos):
+    cargo_key = cargo_key_for_access(name)
+    accepted = {
+        cargo_key_for_access(cargo) or _normalize_role_or_cargo_name(cargo)
+        for cargo in cargos
+    }
+    return cargo_key in accepted
+
+
 def has_cargo_access(user, cargos):
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+
     cargo = getattr(user, 'cargo', None)
-    if cargo and cargo.nombre.strip().casefold() in {
-        name.strip().casefold() for name in cargos
-    }:
+    cargo_name = getattr(cargo, 'nombre', '') if cargo else ''
+    if cargo_name:
+        if _is_matching_cargo(cargo_name, cargos):
+            return True
+        if cargo_key_for_access(cargo_name) == 'admin':
+            return True
+
+    roles = getattr(user, 'roles', None)
+    if roles is None and hasattr(user, 'usuariorol_set'):
+        roles = user.usuariorol_set.filter(
+            fecha_fin__isnull=True,
+        ).select_related('rol')
+        role_names = (getattr(user_role.rol, 'nombre', '') for user_role in roles)
+    elif hasattr(roles, 'all'):
+        role_names = (getattr(role, 'nombre', '') for role in roles.all())
+    else:
+        role_names = (getattr(role, 'nombre', '') for role in (roles or ()))
+
+    for r_name in role_names:
+        if _is_matching_cargo(r_name, cargos):
+            return True
+        if cargo_key_for_access(r_name) == 'admin':
+            return True
+
+    accepted = {
+        cargo_key_for_access(cargo) or _normalize_role_or_cargo_name(cargo)
+        for cargo in cargos
+    }
+    if getattr(user, 'is_superuser', False) and 'admin' in accepted:
         return True
-    return bool(
-        cargo
-        and cargo.nombre.strip().casefold() in {'admin', 'administrador'}
-    )
+
+    return False
 
 
 def can_access_permission(user, codename, cargos=()):
-    if getattr(user, 'is_superuser', False) and not has_cargo_access(
-        user,
-        cargos,
-    ):
+    if not user or not getattr(user, 'is_authenticated', False):
         return False
-    return (
-        has_cargo_access(user, cargos)
-        or user.has_perm(permission_name(codename))
-    )
+
+    if has_cargo_access(user, cargos):
+        return True
+
+    if getattr(user, 'is_superuser', False):
+        return True
+
+    if user.has_perm(permission_name(codename)) or user.has_perm(codename):
+        return True
+
+    roles = getattr(user, 'roles', None)
+    if roles is not None:
+        roles_list = roles.all() if hasattr(roles, 'all') else roles
+        for role in roles_list:
+            raw_perms = getattr(role, 'permisos', '') or ''
+            role_perms = {p.strip() for p in raw_perms.split(',') if p.strip()}
+            if codename in role_perms:
+                return True
+
+    return False

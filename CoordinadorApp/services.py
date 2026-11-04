@@ -151,6 +151,7 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
             'avance_real': ZERO,
             'avance_esperado': ZERO,
             'total_aporte': ZERO,
+            'ponderacion_completa': False,
         }
 
     if counts is None:
@@ -184,9 +185,14 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
             rounding=ROUND_HALF_UP,
         )
         esperado = porcentaje_esperado(desempenho.periodo, hoy=hoy)
+        ponderacion = desempenho.item.ponderacion
         aporte = (
-            Decimal(desempenho.ponderacion) * cumplimiento / HUNDRED
-        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            (Decimal(ponderacion) * cumplimiento / HUNDRED).quantize(
+                Decimal('0.01'),
+                rounding=ROUND_HALF_UP,
+            )
+            if ponderacion is not None else None
+        )
         expected_amount = meta * esperado / HUNDRED
         items.append({
             'desempeno': desempenho,
@@ -194,14 +200,15 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
             'meta': meta,
             'cumplimiento': cumplimiento,
             'esperado': esperado,
-            'ponderacion': desempenho.ponderacion,
+            'ponderacion': ponderacion,
             'aporte': aporte,
             'semaforo': _semaforo(cumplimiento, esperado),
         })
         total_avance += avance
         total_meta += meta
         total_esperado += expected_amount
-        total_aporte += aporte
+        if aporte is not None:
+            total_aporte += aporte
 
     avance_real = (
         min(total_avance * HUNDRED / total_meta, cap)
@@ -218,6 +225,9 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
         'avance_real': avance_real,
         'avance_esperado': avance_esperado,
         'total_aporte': total_aporte.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
+        'ponderacion_completa': all(
+            item['ponderacion'] is not None for item in items
+        ),
     }
 
 
@@ -239,7 +249,10 @@ def _resumen_desde_items(items):
         (item['meta'] * item['esperado'] / HUNDRED for item in items),
         ZERO,
     )
-    total_aporte = sum((item['aporte'] for item in items), ZERO)
+    total_aporte = sum(
+        (item['aporte'] for item in items if item['aporte'] is not None),
+        ZERO,
+    )
     cap = Decimal(ParametroSistema.obtener(ParametroSistema.Clave.TOPE_CUMPLIMIENTO))
     avance_real = min(total_avance * HUNDRED / total_meta, cap) if total_meta else ZERO
     avance_esperado = total_esperado * HUNDRED / total_meta if total_meta else ZERO
@@ -253,6 +266,9 @@ def _resumen_desde_items(items):
             rounding=ROUND_HALF_UP,
         ),
         'total_aporte': total_aporte.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
+        'ponderacion_completa': all(
+            item['ponderacion'] is not None for item in items
+        ),
     }
 
 
