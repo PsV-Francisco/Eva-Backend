@@ -21,6 +21,7 @@ PERMISSION_CATALOG = (
     PermissionDefinition('Coordinador', 'manage_coordinator_position_functions', 'Asignar funciones a cargos desde Coordinaci\u00f3n', 'coordinador:cargos_funciones', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'view_coordinator_weights', 'Consultar ponderaciones por cargo o funcionario', 'coordinador:ponderaciones', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'manage_coordinator_periods', 'Administrar períodos del Coordinador', 'coordinador:periodos', ('coordinador', 'admin', 'administrador')),
+    PermissionDefinition('Administración', 'access_admin_dashboard', 'Consultar panel de inicio de Administración', 'administracion:dashboard', ('admin', 'administrador'), show_in_menu=False),
     PermissionDefinition('Administración', 'access_admin_users', 'Administrar usuarios', 'administracion:home', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_parameters', 'Administrar parámetros del sistema', 'administracion:parametros', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_delegations', 'Administrar delegaciones', 'administracion:delegaciones', ('admin', 'administrador')),
@@ -105,6 +106,7 @@ PERMISSION_CATALOG = (
 )
 
 PERMISSION_DESCRIPTIONS = {
+    'access_admin_dashboard': 'Consultar métricas generales y accesos rápidos de Administración.',
     'access_admin_users': 'Crear, editar y consultar cuentas de usuario.',
     'access_admin_parameters': 'Consultar y modificar parámetros generales del sistema.',
     'access_admin_delegations': 'Crear, editar y administrar delegaciones.',

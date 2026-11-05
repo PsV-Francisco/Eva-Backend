@@ -23,6 +23,7 @@ SIDEBAR_SECTIONS = (
 CURRENT_SECTION_BY_VIEW = {
     'coordinador:home': ('metas-seguimiento', 'Tablero Personal'),
     'vistaf:home': ('consulta', 'Búsqueda de información'),
+    'administracion:dashboard': ('inicio', 'Inicio'),
 }
 
 

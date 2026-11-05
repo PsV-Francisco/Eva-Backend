@@ -186,8 +186,8 @@ def home_redirect(request):
         'verificador': 'supervisor:home',
         'delegado': 'delegado:home',
         'coordinador': 'coordinador:home',
-        'admin': 'administracion:home',
-        'administrador': 'administracion:home',
+        'admin': 'administracion:dashboard',
+        'administrador': 'administracion:dashboard',
         'vistaf': 'vistaf:home',
         'consulta': 'vistaf:home',
         'usuario de consulta': 'vistaf:home',
@@ -223,7 +223,7 @@ def home_redirect(request):
 
     if route_name is None:
         if getattr(request.user, 'is_superuser', False) or getattr(request.user, 'is_staff', False):
-            route_name = 'administracion:home'
+            route_name = 'administracion:dashboard'
         else:
             raise PermissionDenied
 

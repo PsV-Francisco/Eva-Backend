@@ -18,6 +18,7 @@ from AdminApp.models import (
     UsuarioCargo,
     UsuarioDelegacion,
 )
+from AdminApp.forms import UsuarioCreationForm
 from AdminApp.roles import ensure_role_group
 from CoordinadorApp.models import Desempeno, Funcion, Item, Periodo
 from FuncionarioApp.models import Subtipo, Tipo
@@ -101,6 +102,70 @@ class MaintainerTests(TestCase):
     def test_delegation_code_is_backfilled_for_legacy_model_creations(self):
         delegation = Delegacion.objects.create(nombre='Código automático')
         self.assertEqual(delegation.codigo, f'DEL-{delegation.pk:04d}')
+
+    def test_legacy_active_delegations_are_assignable_and_listed_as_active(self):
+        legacy_delegation = Delegacion.objects.create(
+            nombre='Delegación activa legado',
+            estado='Activo',
+        )
+        employee = create_user(
+            email='delegacion-legada@sgr.test',
+            password='Sgr-Test-Password-418!',
+            cargo=Cargo.objects.create(nombre='funcionario'),
+            delegacion=legacy_delegation,
+        )
+
+        form = UsuarioCreationForm(actor=self.admin)
+        self.assertIn(
+            legacy_delegation,
+            form.fields['delegacion'].queryset,
+        )
+        self.assertIn(
+            legacy_delegation,
+            form.fields['delegaciones_autorizadas'].queryset,
+        )
+        self.assertIn(
+            legacy_delegation,
+            authorized_delegations(employee),
+        )
+
+        response = self.client.get(
+            reverse('administracion:delegaciones'),
+            {'estado': Delegacion.Estado.ACTIVA},
+        )
+        self.assertContains(response, 'Delegación activa legado')
+        self.assertContains(response, 'Activa')
+
+    def test_active_delegation_must_be_deactivated_before_deletion(self):
+        delegation = Delegacion.objects.create(
+            nombre='Delegación sin usuarios',
+            estado=Delegacion.Estado.ACTIVA,
+        )
+        listing = self.client.get(reverse('administracion:delegaciones'))
+        self.assertContains(listing, 'Delegación sin usuarios')
+        self.assertNotContains(listing, 'Eliminar')
+
+        response = self.client.post(
+            reverse('administracion:delegaciones'),
+            {'action': 'eliminar', 'object_id': delegation.pk},
+            follow=True,
+        )
+        self.assertContains(response, 'Desactiva la delegación antes de eliminarla')
+        self.assertTrue(Delegacion.objects.filter(pk=delegation.pk).exists())
+
+        self.client.post(
+            reverse('administracion:delegaciones'),
+            {'action': 'cambiar_estado', 'object_id': delegation.pk},
+        )
+        delegation.refresh_from_db()
+        self.assertEqual(delegation.estado, Delegacion.Estado.INACTIVA)
+
+        response = self.client.post(
+            reverse('administracion:delegaciones'),
+            {'action': 'eliminar', 'object_id': delegation.pk},
+        )
+        self.assertRedirects(response, reverse('administracion:delegaciones'))
+        self.assertFalse(Delegacion.objects.filter(pk=delegation.pk).exists())
 
     def test_role_form_persists_description_permissions_scope_and_state(self):
         permission = Permission.objects.get(

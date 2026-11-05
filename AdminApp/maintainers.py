@@ -60,6 +60,8 @@ class MaintainerSpec:
 
 
 def _delegation_delete_block(delegation):
+    if delegation.estado != Delegacion.Estado.INACTIVA:
+        return 'Desactiva la delegación antes de eliminarla.'
     if UsuarioDelegacion.objects.filter(delegacion=delegation).exists():
         return 'La delegación tiene usuarios asociados. Desactívala para conservar esas relaciones.'
     return ''
@@ -429,6 +431,12 @@ def display_value(record, field_name):
     if field_name == 'is_active':
         return 'Activo' if record.is_active else 'Inactivo'
     if field_name == 'estado' or field_name == 'alcance':
+        if (
+            field_name == 'estado'
+            and isinstance(record, Delegacion)
+            and record.estado.casefold() == 'activo'
+        ):
+            return Delegacion.Estado.ACTIVA.label
         display_method = getattr(record, f'get_{field_name}_display', None)
         if display_method:
             return display_method()
@@ -461,9 +469,18 @@ def _queryset_for(spec, request, *, global_scope=False):
             str(spec.inactive_value): spec.inactive_value,
         }
         if status in status_values:
-            queryset = queryset.filter(**{
-                spec.status_filter_field: status_values[status],
-            })
+            if (
+                spec.key == 'delegaciones'
+                and status == str(spec.active_value)
+            ):
+                queryset = queryset.filter(
+                    Q(estado=spec.active_value)
+                    | Q(estado__iexact='activo')
+                )
+            else:
+                queryset = queryset.filter(**{
+                    spec.status_filter_field: status_values[status],
+                })
 
     return queryset.order_by(*spec.ordering)
 
@@ -759,7 +776,13 @@ def maintainer(
                 current_value = getattr(record, spec.status_field)
                 new_value = (
                     spec.inactive_value
-                    if current_value == spec.active_value
+                    if (
+                        current_value == spec.active_value
+                        or (
+                            spec.key == 'delegaciones'
+                            and current_value.casefold() == 'activo'
+                        )
+                    )
                     else spec.active_value
                 )
                 before = _snapshot(spec, record)

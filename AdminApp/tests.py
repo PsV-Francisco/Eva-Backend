@@ -296,7 +296,7 @@ class RolePortalTests(TestCase):
 		self.assertEqual(response.status_code, 302)
 		self.assertEqual(response.url, reverse('home'))
 		response = client.get(reverse('home'))
-		self.assertRedirects(response, reverse('administracion:home'))
+		self.assertRedirects(response, reverse('administracion:dashboard'))
 
 	def test_role_workspaces_require_authentication(self):
 		client = Client()

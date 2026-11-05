@@ -64,11 +64,13 @@ class PermissionCheckboxSelectMultiple(forms.CheckboxSelectMultiple):
 def _configure_user_form_fields(form, actor):
     instance = form.instance
     delegations = Delegacion.objects.filter(
-        estado=Delegacion.Estado.ACTIVA,
+        Q(estado=Delegacion.Estado.ACTIVA)
+        | Q(estado__iexact='activo')
     )
     if instance.pk:
         delegations = Delegacion.objects.filter(
             Q(estado=Delegacion.Estado.ACTIVA)
+            | Q(estado__iexact='activo')
             | Q(usuariodelegacion__usuario=instance)
         ).distinct()
     form.fields['delegacion'].queryset = delegations.order_by('nombre')

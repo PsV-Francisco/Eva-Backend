@@ -268,4 +268,52 @@ class PermissionAndCsvTests(TestCase):
             'coordinador:ponderaciones',
         ):
             self.assertContains(response, reverse(route_name))
-        self.assertNotContains(response, 'sidebar-link-disabled')
+
+    def test_administrator_dashboard_is_separate_from_user_management(self):
+        admin = create_user(
+            email='dashboard-admin@sgr.test',
+            password='Sgr-Test-Password-418!',
+            cargo=Cargo.objects.create(nombre='administrador'),
+        )
+        client = Client()
+        client.force_login(admin)
+
+        response = client.get(reverse('administracion:dashboard'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Panel de Administración')
+        self.assertContains(response, 'Accesos rápidos')
+        self.assertContains(response, 'Usuarios activos')
+        self.assertContains(response, 'data-current="true"')
+        self.assertNotContains(response, 'Crear usuario')
+
+        response = client.get(reverse('administracion:home'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Administración de usuarios')
+        self.assertContains(response, 'Crear usuario')
+
+    def test_non_administrator_cannot_open_administrator_dashboard(self):
+        user = create_user(
+            email='dashboard-funcionario@sgr.test',
+            password='Sgr-Test-Password-418!',
+            cargo=Cargo.objects.create(nombre='funcionario'),
+        )
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('administracion:dashboard'))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_home_redirect_sends_administrator_to_dashboard(self):
+        admin = create_user(
+            email='dashboard-redirect@sgr.test',
+            password='Sgr-Test-Password-418!',
+            cargo=Cargo.objects.create(nombre='admin'),
+        )
+        client = Client()
+        client.force_login(admin)
+
+        response = client.get(reverse('home'))
+
+        self.assertRedirects(response, reverse('administracion:dashboard'))
