@@ -573,6 +573,50 @@ class MaintainerTests(TestCase):
             [cell.value for cell in worksheet[1]],
         )
 
+    def test_user_without_delegation_can_open_editor_and_assign_one(self):
+        employee = create_user(
+            email='sin-delegacion@sgr.test',
+            password='Sgr-Test-Password-418!',
+            cargo=Cargo.objects.create(nombre='funcionario'),
+        )
+        delegation = Delegacion.objects.create(
+            nombre='Delegación para asignación',
+            estado=Delegacion.Estado.ACTIVA,
+        )
+
+        response = self.client.get(
+            reverse('administracion:home'),
+            {'editar': employee.pk},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Delegación para asignación')
+
+        response = self.client.post(reverse('administracion:home'), {
+            'usuario_id': employee.pk,
+            'email': employee.email,
+            'first_name': 'Funcionario',
+            'last_name': 'Sin delegación',
+            'nombre': 'Funcionario sin delegación',
+            'cargo': UsuarioCargo.objects.get(
+                usuario=employee,
+                fecha_fin__isnull=True,
+            ).cargo_id,
+            'delegacion': delegation.pk,
+            'delegaciones_autorizadas': [delegation.pk],
+            'password1': '',
+            'password2': '',
+            'estado': employee.estado,
+            'is_active': 'on',
+        })
+
+        self.assertRedirects(response, reverse('administracion:home'))
+        employee.refresh_from_db()
+        self.assertEqual(employee.delegacion_id, delegation.pk)
+        self.assertQuerySetEqual(
+            employee.delegaciones_autorizadas.order_by('pk'),
+            [delegation],
+        )
+
     def test_inactive_delegations_cannot_be_assigned_or_selected(self):
         active = Delegacion.objects.create(nombre='Delegación vigente')
         inactive = Delegacion.objects.create(

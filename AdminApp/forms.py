@@ -262,6 +262,26 @@ class UsuarioCreationForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class UsuarioUpdateForm(BootstrapFormMixin, forms.ModelForm):
+    delegacion = forms.ModelChoiceField(
+        queryset=Delegacion.objects.none(),
+        required=False,
+        label='Delegación principal',
+    )
+    delegaciones_autorizadas = forms.ModelMultipleChoiceField(
+        queryset=Delegacion.objects.none(),
+        required=False,
+        label='Delegaciones autorizadas',
+    )
+    cargo = forms.ModelChoiceField(
+        queryset=Cargo.objects.none(),
+        required=True,
+        label='Cargo',
+    )
+    roles = forms.ModelMultipleChoiceField(
+        queryset=Rol.objects.none(),
+        required=False,
+        label='Roles',
+    )
     password1 = forms.CharField(label='Nueva contraseña', widget=forms.PasswordInput, required=False)
     password2 = forms.CharField(label='Confirmar contraseña', widget=forms.PasswordInput, required=False)
 
