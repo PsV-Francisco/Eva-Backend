@@ -2,7 +2,7 @@
 
 ## Integrantes
 
-Francisco Andres Alonzo Diaz Moralez
+Francisco Andres Alonzo Diaz Moralez y Francisco Astudillo
 
 ## Descripción
 

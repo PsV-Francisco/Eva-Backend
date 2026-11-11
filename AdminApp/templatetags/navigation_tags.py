@@ -12,7 +12,10 @@ SIDEBAR_SECTIONS = (
     ('inicio', 'Inicio', '⌂'),
     ('organizacion', 'Organización', '▦'),
     ('territorio', 'Territorio', '⌖'),
+    ('territorio', 'Territorio', '⌖'),
     ('operacion', 'Operación', '✓'),
+    ('metas-seguimiento', 'Metas y seguimiento', '◷'),
+    ('informes', 'Informes', '▤'),
     ('metas-seguimiento', 'Metas y seguimiento', '◷'),
     ('informes', 'Informes', '▤'),
     ('auditoria', 'Auditoría', '▤'),
@@ -58,6 +61,30 @@ def _section_for(label, url_name):
         or 'usuarios' in normalized_label
         or any(term in normalized_label for term in ('cargo', 'funcion', 'delegacion'))
     ):
+    
+    
+        if route in {
+        'coordinador:informes',
+        'coordinador:tendencias',
+        'administracion:informes',
+        'administracion:informes-generados',
+    } or 'informe' in normalized_label or 'reporte' in normalized_label:
+            return 'informes'
+    if route in {
+        'administracion:vecinos',
+        'administracion:juntas',
+        'administracion:hitos',
+        'funcionario:vecinos',
+        'funcionario:vecino_nuevo',
+        'funcionario:juntas',
+    } or any(term in normalized_label for term in ('vecino', 'junta', 'hito')):
+        return 'territorio'
+    if (
+        route == 'administracion:home'
+        or 'roles' in normalized_label
+        or 'usuarios' in normalized_label
+        or any(term in normalized_label for term in ('cargo', 'funcion', 'delegacion'))
+    ):
         return 'organizacion'
     if route in {
         'administracion:items',
@@ -70,6 +97,7 @@ def _section_for(label, url_name):
         'administracion:resumen-delegacion',
         'funcionario:cumplimiento',
     } or any(term in normalized_label for term in ('meta', 'periodo', 'período', 'indicador', 'parámetro', 'item', 'ítem')):
+        return 'metas-seguimiento'
         return 'metas-seguimiento'
     if route in {
         'funcionario:home',

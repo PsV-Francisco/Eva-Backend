@@ -23,7 +23,10 @@ PERMISSION_CATALOG = (
     PermissionDefinition('Coordinador', 'manage_coordinator_position_functions', 'Asignar funciones a cargos desde Coordinación', 'coordinador:cargos_funciones', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'view_coordinator_weights', 'Consultar ponderaciones por cargo o funcionario', 'coordinador:ponderaciones', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'manage_coordinator_periods', 'Administrar períodos del Coordinador', 'coordinador:periodos', ('coordinador', 'admin', 'administrador')),
+<<<<<<< HEAD
     
+=======
+>>>>>>> 465b4bb67aab4934b4687aaf713ce7c0c8b1d762
     PermissionDefinition('Administración', 'access_admin_dashboard', 'Consultar panel de inicio de Administración', 'administracion:dashboard', ('admin', 'administrador'), show_in_menu=False),
     PermissionDefinition('Administración', 'access_admin_users', 'Administrar usuarios', 'administracion:home', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_parameters', 'Administrar parámetros del sistema', 'administracion:parametros', ('admin', 'administrador')),

@@ -365,4 +365,8 @@ def resumen(request):
         'periodos': periods,
         'periodo_seleccionado': selected_period,
         **summary,
+<<<<<<< HEAD
     })
+=======
+    })
+>>>>>>> 465b4bb67aab4934b4687aaf713ce7c0c8b1d762

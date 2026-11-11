@@ -185,7 +185,11 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
             rounding=ROUND_HALF_UP,
         )
         esperado = porcentaje_esperado(desempenho.periodo, hoy=hoy)
+<<<<<<< HEAD
         ponderacion = desempenho.ponderacion
+=======
+        ponderacion = desempenho.item.ponderacion
+>>>>>>> 465b4bb67aab4934b4687aaf713ce7c0c8b1d762
         aporte = (
             (Decimal(ponderacion) * cumplimiento / HUNDRED).quantize(
                 Decimal('0.01'),
