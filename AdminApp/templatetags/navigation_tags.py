@@ -98,7 +98,6 @@ def _section_for(label, url_name):
         'funcionario:cumplimiento',
     } or any(term in normalized_label for term in ('meta', 'periodo', 'período', 'indicador', 'parámetro', 'item', 'ítem')):
         return 'metas-seguimiento'
-        return 'metas-seguimiento'
     if route in {
         'funcionario:home',
         'funcionario:gestion_actividades',
