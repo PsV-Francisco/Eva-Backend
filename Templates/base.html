@@ -51,8 +51,9 @@
         </form>
       </div>
       {% else %}
+      <!-- Se reemplazó el botón ingresar por el recuadro de fecha -->
       <div class="account-area">
-        <a class="btn btn-sm btn-outline-light" href="{% url 'login' %}">Ingresar</a>
+        <span class="date-chip">{% now 'd/m/Y' %}</span>
       </div>
       {% endif %}
     </div>
@@ -71,8 +72,8 @@
     {% block content %}{% endblock %}
   </main>
 
-  <!--Pie de Página-->
-  <footer class="site-footer"><div class="container-fluid shell">Sgr | Gestión de resultados Municipalidad de La Serena</div></footer>
+  <!--Pie de Página Centrado-->
+  <footer class="site-footer"><div class="container-fluid shell text-center">© {% now 'Y' %} Municipalidad de La Serena | SGR - Gestión de resultados</div></footer>
   <script src="{% static 'vendor/bootstrap.bundle.min.js' %}"></script><script src="{% static 'vendor/sweetalert2.min.js' %}"></script>
   <script>
     document.querySelectorAll('[data-sgr-message]').forEach((message) => { const kind = message.dataset.kind || ''; const icon = kind.includes('success') ? 'success' : kind.includes('error') ? 'error' : kind.includes('warning') ? 'warning' : 'info'; Swal.fire({icon, text: message.dataset.text, confirmButtonText: 'Entendido'}); });

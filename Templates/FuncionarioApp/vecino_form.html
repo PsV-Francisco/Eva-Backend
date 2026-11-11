@@ -7,8 +7,35 @@
 <div class="dashboard-main"><section class="content-section split-layout"><div>
   <form method="post" novalidate>{% csrf_token %}{% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
     <datalist id="territorios-usados">{% for territorio in territorios %}<option value="{{ territorio }}">{% endfor %}</datalist>
-    <div class="form-grid">{% for field in form %}<div class="mb-3{% if field.name == 'direccion' or field.name == 'territorio' %} field-wide{% endif %}">{% if field.name != 'activo' %}<label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{% endif %}{{ field }}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}</div>
-    <button class="btn btn-primary" type="submit">Guardar vecino</button> <a class="btn btn-outline-secondary" href="{% url 'funcionario:vecinos' %}">Cancelar</a>
+    <div class="form-grid">
+      {% for field in form %}
+      {% if field.name != 'nuevo_territorio' and field.name != 'nuevo_nombre_junta' and field.name != 'nuevo_domicilio_junta' and field.name != 'nuevo_numero_rpj' and field.name != 'nuevo_cargo_junta' and field.name != 'nuevo_cargo_permisos' %}
+      <div class="mb-3{% if field.name == 'direccion' or field.name == 'territorio' or field.name == 'junta_vecino' or field.name == 'cargo_jv' %} field-wide{% endif %}">
+        {% if field.name != 'activo' %}<label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{% endif %}
+        {{ field }}
+        {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+        {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    <details class="content-section">
+      <summary class="form-label">Crear territorio, junta o cargo que aún no exista</summary>
+      <p class="form-text">Puedes crear los datos relacionados sin salir de esta pantalla. Solo se permite usar delegaciones activas autorizadas para tu cuenta; las nuevas delegaciones las gestiona Administración.</p>
+      <div class="form-grid">
+        {% for field in form %}
+        {% if field.name == 'nuevo_territorio' or field.name == 'nuevo_nombre_junta' or field.name == 'nuevo_domicilio_junta' or field.name == 'nuevo_numero_rpj' or field.name == 'nuevo_cargo_junta' or field.name == 'nuevo_cargo_permisos' %}
+        <div class="mb-3{% if field.name == 'nuevo_domicilio_junta' or field.name == 'nuevo_cargo_permisos' %} field-wide{% endif %}">
+          <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+          {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </details>
+    <button class="btn btn-primary" type="submit">Guardar vecino</button> <a class="btn btn-outline-secondary" href="{% url return_url_name %}">Cancelar</a>
   </form>
 </div><aside class="side-note"><span class="side-note-mark">i</span><h3>Información</h3><p>El teléfono repetido en una misma delegación genera una advertencia, pero no bloquea el registro.</p></aside></section></div></div>
 {% endblock %}

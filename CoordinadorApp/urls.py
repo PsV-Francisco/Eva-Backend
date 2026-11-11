@@ -6,6 +6,7 @@ app_name = 'coordinador'
 
 urlpatterns = [
     path('', views.home, name='home'),
+    path('tablero-personal/', views.personal, name='personal'),
     path('periodos/', views.periodos, name='periodos'),
     path('metas/', views.metas, name='metas'),
     path('cargos-funciones/', views.cargos_funciones, name='cargos_funciones'),

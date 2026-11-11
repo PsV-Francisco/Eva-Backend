@@ -19,18 +19,19 @@ from CoordinadorApp.models import (
 )
 from django.db.models.deletion import ProtectedError
 from CoordinadorApp.services import _semaforo, authorization_for, max_dias_autorizacion, porcentaje_esperado, record_authorization_use, resumen_cumplimiento, tendencias_cumplimiento, validate_authorization_expiry
-from FuncionarioApp.models import Registro
+from FuncionarioApp.models import Registro, Subtipo, Tipo
 from SupervisorApp.models import Evidencia
 from config.permissions import PERMISSION_CATALOG, PERMISSION_DESCRIPTIONS
 from AdminApp.templatetags.navigation_tags import sidebar_sections
+from test_helpers import create_user
 
 
 class ClosedPeriodAuthorizationTests(TestCase):
     def setUp(self):
         User = get_user_model()
-        self.coordinator = User.objects.create_user(email='coord-auth@test', password='password', cargo=Cargo.objects.create(nombre='coordinador'))
-        self.admin = User.objects.create_user(email='admin-auth@test', password='password', cargo=Cargo.objects.create(nombre='admin'))
-        self.employee = User.objects.create_user(email='employee-auth@test', password='password', cargo=Cargo.objects.create(nombre='funcionario'))
+        self.coordinator = create_user(email='coord-auth@test', password='password', cargo=Cargo.objects.create(nombre='coordinador'))
+        self.admin = create_user(email='admin-auth@test', password='password', cargo=Cargo.objects.create(nombre='admin'))
+        self.employee = create_user(email='employee-auth@test', password='password', cargo=Cargo.objects.create(nombre='funcionario'))
         self.period = Periodo.objects.create(nombre='Periodo cerrado auth', fecha_inicio='2026-01-01', fecha_fin='2026-01-31', estado=Periodo.Estado.CERRADO)
 
     def test_request_can_be_cancelled_and_admin_inbox_marks_old_pending(self):
@@ -74,8 +75,8 @@ class ClosedPeriodAuthorizationTests(TestCase):
 
     def test_valid_authorization_allows_multiple_closed_meta_mutations(self):
         function = Funcion.objects.create(nombre='Funcion auth')
-        item_one = Item.objects.create(funcion=function, nombre='Item auth 1')
-        item_two = Item.objects.create(funcion=function, nombre='Item auth 2')
+        item_one = Item.objects.create(nombre='Item auth 1')
+        item_two = Item.objects.create(nombre='Item auth 2')
         request = SolicitudAutorizacionPeriodo.objects.create(
             periodo=self.period, solicitante=self.coordinator, alcances=['metas'], motivo='motivo',
             estado=SolicitudAutorizacionPeriodo.Estado.APROBADA,
@@ -119,27 +120,26 @@ class TargetSchemaPeriodoSemanaTests(TestCase):
             nombre='Primera semana',
             fecha_inicio='2026-01-05T00:00:00Z',
             fecha_fin='2026-01-11T23:59:59Z',
-            estado='planificada',
+            estado=PeriodoSemana.Estado.ABIERTO,
             periodo=self.periodo,
         )
 
         semana.refresh_from_db()
         self.assertEqual(semana.periodo, self.periodo)
-        self.assertEqual(self.periodo.semanas_objetivo.get(), semana)
+        self.assertEqual(self.periodo.periodosemana_set.get(), semana)
 
     def test_periodo_semana_nullable_fields_accept_null(self):
         semana = PeriodoSemana.objects.create(
             nombre='Semana sin fechas',
             fecha_inicio=None,
             fecha_fin=None,
-            estado=None,
             periodo=self.periodo,
         )
 
         semana.refresh_from_db()
         self.assertIsNone(semana.fecha_inicio)
         self.assertIsNone(semana.fecha_fin)
-        self.assertIsNone(semana.estado)
+        self.assertEqual(semana.estado, PeriodoSemana.Estado.ABIERTO)
 
     def test_periodo_with_semana_is_protected(self):
         PeriodoSemana.objects.create(
@@ -160,7 +160,7 @@ class TargetSchemaPeriodoSemanaTests(TestCase):
 class ConsolidatedReportTests(TestCase):
     def setUp(self):
         User = get_user_model()
-        self.coordinator = User.objects.create_user(email='report-coord@test', password='password', cargo=Cargo.objects.create(nombre='coordinador'))
+        self.coordinator = create_user(email='report-coord@test', password='password', cargo=Cargo.objects.create(nombre='coordinador'))
         self.cargo = Cargo.objects.create(nombre='analista')
         self.delegation = Delegacion.objects.create(nombre='Delegación Informe')
         self.period = Periodo.objects.create(nombre='Período informe abierto', fecha_inicio='2026-01-01', fecha_fin='2026-01-31')
@@ -169,13 +169,13 @@ class ConsolidatedReportTests(TestCase):
     def create_employee(self, index, **extra):
         values = {'email': f'report-{index}@test', 'password': 'password', 'cargo': self.cargo, 'delegacion': self.delegation}
         values.update(extra)
-        return get_user_model().objects.create_user(**values)
+        return create_user(**values)
 
     def test_default_period_and_filters_render_consolidated_summary(self):
         employee = self.create_employee(1)
         function = Funcion.objects.create(nombre='Función informe')
-        item = Item.objects.create(funcion=function, nombre='Ítem informe')
-        Desempeno.objects.create(usuario=employee, item=item, periodo=self.period, meta=10, ponderacion=100)
+        item = Item.objects.create(nombre='Ítem informe', ponderacion='99.9')
+        Desempeno.objects.create(usuario=employee, item=item, periodo=self.period, meta=10)
         response = self.client.get(reverse('coordinador:informes'), {'delegacion': self.delegation.pk})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, self.period.nombre)
@@ -217,7 +217,7 @@ class ConsolidatedReportTests(TestCase):
 
     def test_report_is_read_only_and_admin_can_access(self):
         self.assertEqual(self.client.post(reverse('coordinador:informes')).status_code, 405)
-        admin = get_user_model().objects.create_user(email='report-admin@test', password='password', cargo=Cargo.objects.create(nombre='admin'))
+        admin = create_user(email='report-admin@test', password='password', cargo=Cargo.objects.create(nombre='admin'))
         self.client.force_login(admin)
         self.assertEqual(self.client.get(reverse('coordinador:informes')).status_code, 200)
 
@@ -225,7 +225,7 @@ class ConsolidatedReportTests(TestCase):
 class HistoricalTrendsTests(TestCase):
     def setUp(self):
         User = get_user_model()
-        self.coordinator = User.objects.create_user(
+        self.coordinator = create_user(
             email='trends-coord@test',
             password='password',
             cargo=Cargo.objects.create(nombre='coordinador'),
@@ -255,9 +255,14 @@ class HistoricalTrendsTests(TestCase):
             for month in (1, 2, 3)
         ]
         self.function = Funcion.objects.create(nombre='Función tendencias')
+        self.tipo = Tipo.objects.create(nombre='Tipo tendencias')
+        self.subtipo = Subtipo.objects.create(
+            nombre='Subtipo tendencias',
+            tipo=self.tipo,
+        )
         self.item = Item.objects.create(
-            funcion=self.function,
             nombre='Ítem tendencias',
+            ponderacion='99.9',
         )
         self.add_performance(self.alice, self.periods[0], 8)
         self.add_performance(self.bob, self.periods[0], 4)
@@ -270,7 +275,7 @@ class HistoricalTrendsTests(TestCase):
         self.client.force_login(self.coordinator)
 
     def create_employee(self, email, cargo, delegation):
-        return get_user_model().objects.create_user(
+        return create_user(
             email=email,
             password='password',
             cargo=cargo,
@@ -283,7 +288,6 @@ class HistoricalTrendsTests(TestCase):
             item=self.item,
             periodo=period,
             meta=10,
-            ponderacion=100,
         )
         for index in range(activity_count):
             record = Registro.objects.create(
@@ -293,6 +297,8 @@ class HistoricalTrendsTests(TestCase):
                 fecha=period.fecha_inicio,
                 descripcion=f'Actividad {user.email} {period.pk} {index}',
                 estado=Registro.Estado.VALIDADA,
+                tipo=self.tipo,
+                subtipo=self.subtipo,
             )
             Evidencia.objects.create(
                 registro=record,
@@ -304,7 +310,7 @@ class HistoricalTrendsTests(TestCase):
         url = reverse('coordinador:tendencias')
         self.assertEqual(self.client.get(url).status_code, 200)
 
-        administrator = get_user_model().objects.create_user(
+        administrator = create_user(
             email='trends-admin@test',
             password='password',
             cargo=Cargo.objects.create(nombre='administrador'),
@@ -312,7 +318,7 @@ class HistoricalTrendsTests(TestCase):
         self.client.force_login(administrator)
         self.assertEqual(self.client.get(url).status_code, 200)
 
-        employee = get_user_model().objects.create_user(
+        employee = create_user(
             email='trends-denied@test',
             password='password',
             cargo=Cargo.objects.create(nombre='funcionario'),
@@ -333,7 +339,7 @@ class HistoricalTrendsTests(TestCase):
         )
         self.assertEqual(definition.view_name, 'coordinador:tendencias')
         self.assertIn('evolución histórica', PERMISSION_DESCRIPTIONS[definition.codename])
-        employee = get_user_model().objects.create_user(
+        employee = create_user(
             email='trends-permission@test',
             password='password',
             cargo=Cargo.objects.create(nombre='funcionario'),
@@ -514,7 +520,7 @@ class HistoricalTrendsTests(TestCase):
 
 class PeriodManagementTests(TestCase):
     def setUp(self):
-        self.coordinator = get_user_model().objects.create_user(
+        self.coordinator = create_user(
             email='coordinador@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='coordinador'),
@@ -574,13 +580,12 @@ class PeriodManagementTests(TestCase):
     def test_period_with_measurements_is_closed_instead_of_deleted(self):
         period = self.create_period(nombre='Período con datos')
         function = Funcion.objects.create(nombre='Función de prueba')
-        item = Item.objects.create(funcion=function, nombre='Ítem de prueba')
+        item = Item.objects.create(nombre='Ítem de prueba', ponderacion='99.9')
         Desempeno.objects.create(
             usuario=self.coordinator,
             item=item,
             periodo=period,
             meta=10,
-            ponderacion=100,
         )
 
         response = self.client.post(reverse('coordinador:home'), {
@@ -606,7 +611,7 @@ class PeriodManagementTests(TestCase):
         ).exists())
 
     def test_administrator_can_reopen_period_and_action_is_audited(self):
-        administrator = get_user_model().objects.create_user(
+        administrator = create_user(
             email='admin@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='administrador'),
@@ -636,7 +641,7 @@ class PeriodManagementTests(TestCase):
 
 class ComplianceCalculationTests(TestCase):
     def setUp(self):
-        self.user = get_user_model().objects.create_user(
+        self.user = create_user(
             email='funcionario-medicion@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='funcionario'),
@@ -646,14 +651,21 @@ class ComplianceCalculationTests(TestCase):
             fecha_inicio=date(2026, 10, 19),
             fecha_fin=date(2026, 10, 23),
         )
+        self.tipo = Tipo.objects.create(nombre='Tipo medición')
+        self.subtipo = Subtipo.objects.create(
+            nombre='Subtipo medición',
+            tipo=self.tipo,
+        )
         self.function = Funcion.objects.create(nombre='Función medición')
-        self.item = Item.objects.create(funcion=self.function, nombre='Atenciones')
+        self.item = Item.objects.create(
+            nombre='Atenciones',
+            ponderacion='50.0',
+        )
         self.performance = Desempeno.objects.create(
             usuario=self.user,
             item=self.item,
             periodo=self.period,
             meta=10,
-            ponderacion=50,
         )
 
     def add_approved_activity(self, index, *, duplicate_evidence=False):
@@ -663,6 +675,8 @@ class ComplianceCalculationTests(TestCase):
             periodo=self.period,
             fecha='2026-10-20',
             descripcion=f'Actividad {index}',
+            tipo=self.tipo,
+            subtipo=self.subtipo,
         )
         record.estado = Registro.Estado.VALIDADA
         record.save(update_fields=['estado'])
@@ -686,6 +700,8 @@ class ComplianceCalculationTests(TestCase):
             periodo=self.period,
             fecha='2026-10-20',
             descripcion='Actividad pendiente',
+            tipo=self.tipo,
+            subtipo=self.subtipo,
         )
         Evidencia.objects.create(
             registro=pending,
@@ -710,40 +726,120 @@ class ComplianceCalculationTests(TestCase):
 
 class CoordinatorDashboardTests(TestCase):
     def setUp(self):
-        self.coordinator = get_user_model().objects.create_user(
+        self.coordinator = create_user(
             email='coordinador-tablero@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='coordinador'),
         )
         self.client.force_login(self.coordinator)
 
-    def test_coordinator_dashboard_shows_threshold_and_item_detail(self):
+    def test_coordinator_personal_board_shows_threshold_and_item_detail(self):
         period = Periodo.objects.create(
             nombre='Período tablero',
             fecha_inicio=date(2026, 10, 1),
             fecha_fin=date(2026, 10, 31),
         )
         function = Funcion.objects.create(nombre='Función tablero')
-        item = Item.objects.create(funcion=function, nombre='Ítem tablero')
+        item = Item.objects.create(
+            nombre='Ítem tablero',
+            ponderacion='99.9',
+        )
         Desempeno.objects.create(
             usuario=self.coordinator,
             item=item,
             periodo=period,
             meta=10,
-            ponderacion=100,
         )
 
-        response = self.client.get(reverse('coordinador:home'))
+        response = self.client.get(reverse('coordinador:personal'))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Umbral fijo')
         self.assertContains(response, 'Ítem tablero')
 
-    def test_coordinator_dashboard_without_items_shows_empty_message(self):
-        response = self.client.get(reverse('coordinador:home'))
+    def test_coordinator_personal_board_without_items_shows_empty_message(self):
+        response = self.client.get(reverse('coordinador:personal'))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Sin ítems asignados')
+        self.assertContains(response, 'No hay períodos disponibles')
+
+    def test_coordinator_personal_board_lists_periods_without_personal_goals(self):
+        period = Periodo.objects.create(
+            nombre='Período visible para coordinación',
+            fecha_inicio=date(2026, 10, 1),
+            fecha_fin=date(2026, 10, 31),
+        )
+
+        response = self.client.get(reverse('coordinador:personal'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, period.nombre)
+        self.assertEqual(response.context['periodo_seleccionado'], period)
+        self.assertEqual(response.context['periodos'].count(), 1)
+
+    def test_coordinator_dashboard_shows_global_period_and_operational_metrics(self):
+        period = Periodo.objects.create(
+            nombre='Período del panel',
+            fecha_inicio=date(2026, 10, 1),
+            fecha_fin=date(2026, 10, 31),
+        )
+        item = Item.objects.create(nombre='Ítem del panel', ponderacion='50.0')
+        Desempeno.objects.create(
+            usuario=self.coordinator,
+            item=item,
+            periodo=period,
+            meta=10,
+        )
+
+        response = self.client.get(reverse('coordinador:home'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'CoordinadorApp/dashboard.html')
+        self.assertContains(response, 'Panel de Coordinación')
+        self.assertContains(response, period.nombre)
+        self.assertEqual(response.context['goal_count'], 1)
+        self.assertEqual(response.context['employee_count'], 1)
+
+    def test_coordinator_dashboard_period_filter_selects_requested_period(self):
+        first = Periodo.objects.create(
+            nombre='Período anterior del panel',
+            fecha_inicio=date(2026, 1, 1),
+            fecha_fin=date(2026, 6, 30),
+            estado=Periodo.Estado.CERRADO,
+        )
+        second = Periodo.objects.create(
+            nombre='Período actual del panel',
+            fecha_inicio=date(2026, 7, 1),
+            fecha_fin=date(2026, 12, 31),
+        )
+
+        response = self.client.get(
+            reverse('coordinador:home'),
+            {'periodo': first.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['periodo_seleccionado'], first)
+        self.assertContains(response, 'Período actual del panel')
+        self.assertContains(response, 'Período anterior del panel')
+
+    def test_legacy_period_edit_link_redirects_to_period_management(self):
+        period = Periodo.objects.create(
+            nombre='Período para editar',
+            fecha_inicio=date(2026, 10, 1),
+            fecha_fin=date(2026, 10, 31),
+        )
+
+        response = self.client.get(
+            reverse('coordinador:home'),
+            {'editar': period.pk},
+        )
+
+        self.assertRedirects(
+            response,
+            f"{reverse('coordinador:periodos')}?editar={period.pk}",
+        )
 
 
 class TrafficLightTests(SimpleTestCase):
@@ -756,12 +852,12 @@ class TrafficLightTests(SimpleTestCase):
 
 class CoordinatorManagementTests(TestCase):
     def setUp(self):
-        self.coordinator = get_user_model().objects.create_user(
+        self.coordinator = create_user(
             email='coordinador-c1@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='coordinador'),
         )
-        self.employee = get_user_model().objects.create_user(
+        self.employee = create_user(
             email='funcionario-c1@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='funcionario'),
@@ -771,9 +867,15 @@ class CoordinatorManagementTests(TestCase):
             fecha_inicio=date(2026, 10, 1),
             fecha_fin=date(2026, 10, 31),
         )
+        self.tipo = Tipo.objects.create(nombre='Tipo C1')
+        self.subtipo = Subtipo.objects.create(
+            nombre='Subtipo C1',
+            tipo=self.tipo,
+        )
         self.function = Funcion.objects.create(nombre='Función C1')
         self.item = Item.objects.create(
-            funcion=self.function, nombre='Ítem C1',
+            nombre='Ítem C1',
+            ponderacion='99.9',
         )
         self.client.force_login(self.coordinator)
 
@@ -783,7 +885,6 @@ class CoordinatorManagementTests(TestCase):
             item=self.item,
             periodo=self.period,
             meta=10,
-            ponderacion=100,
         )
 
         response = self.client.get(reverse('coordinador:metas'))
@@ -806,7 +907,6 @@ class CoordinatorManagementTests(TestCase):
             item=self.item,
             periodo=self.period,
             meta=10,
-            ponderacion=100,
         )
 
         response = self.client.post(reverse('coordinador:metas'), {
@@ -833,7 +933,6 @@ class CoordinatorManagementTests(TestCase):
             item=self.item,
             periodo=self.period,
             meta=10,
-            ponderacion=100,
         )
         Registro.objects.create(
             autor=self.employee,
@@ -841,6 +940,8 @@ class CoordinatorManagementTests(TestCase):
             periodo=self.period,
             fecha='2026-10-02',
             descripcion='Actividad vinculada',
+            tipo=self.tipo,
+            subtipo=self.subtipo,
         )
 
         self.client.post(reverse('coordinador:metas'), {
@@ -852,7 +953,7 @@ class CoordinatorManagementTests(TestCase):
     def test_weight_listing_reports_exact_total(self):
         Desempeno.objects.create(
             usuario=self.employee, item=self.item, periodo=self.period,
-            meta=10, ponderacion=100,
+            meta=10,
         )
 
         response = self.client.get(reverse('coordinador:ponderaciones'), {
@@ -861,7 +962,7 @@ class CoordinatorManagementTests(TestCase):
         })
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Cumple 100 %')
+        self.assertContains(response, 'Incompleta')
 
     def test_saving_meta_warns_when_weight_total_is_not_100(self):
         response = self.client.post(

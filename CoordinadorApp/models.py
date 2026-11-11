@@ -1,4 +1,5 @@
-import uuid
+import secrets
+import string
 from django.conf import settings
 from django.db import models
 
@@ -34,7 +35,7 @@ class Item(models.Model):
 	codigo = models.CharField(max_length=20, unique=True, null=True)
 	nombre = models.CharField(max_length=120)
 	descripcion = models.TextField(blank=True)
-	ponderacion = models.DecimalField(max_digits=3,decimal_places=1,null=True,blank=True,db_column='PONDERACION',)
+	
 	estado = models.CharField(max_length=20,choices=Estado.choices,default=Estado.ACTIVO,)
 
 	class Meta:
@@ -175,13 +176,11 @@ class Desempeno(models.Model):
 	
 	usuario = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='desempenos',)
 	item = models.ForeignKey(Item, on_delete=models.PROTECT, related_name='desempenos')
+	ponderacion = models.DecimalField(max_digits=3,decimal_places=1,null=True,blank=True,db_column='PONDERACION',)
 	meta = models.DecimalField(max_digits=12, decimal_places=2)
 	avance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 	ultimo_registro = models.DateField(null=True, blank=True)
 	periodo = models.ForeignKey(Periodo, on_delete=models.PROTECT, related_name='desempenos')
-	dias_libres = models.IntegerField(null=True, blank=True, db_column='DIAS_LIBRES')
-	vacaciones = models.IntegerField(null=True, blank=True, db_column='VACACIONES')
-	dias_adm = models.IntegerField(null=True, blank=True, db_column='DIAS_ADM')
 
 	class Meta:
 		ordering = ['periodo', 'usuario', 'item']
@@ -203,46 +202,55 @@ class Desempeno(models.Model):
 
 #Modelo : GestionAtencion (OK)
 class GestionAtencion(models.Model):
-	codigo = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-	numero_gestion = models.PositiveSmallIntegerField(db_column='NUMERO_GESTION')
-	fecha = models.DateField(db_column='FECHA')
-	observaciones = models.TextField(blank=True, db_column='OBSERVACIONES')
+    # Campo CharField de 20 caracteres únicos en lugar de UUID
+    codigo = models.CharField(max_length=20, unique=True, editable=False)
+    fecha = models.DateField(db_column='FECHA')
+    observaciones = models.TextField(blank=True, db_column='OBSERVACIONES')
 
-	class Meta:
-		ordering = ['fecha', 'numero_gestion']
-		constraints = [
-			models.CheckConstraint(
-				condition=models.Q(numero_gestion__gte=1, numero_gestion__lte=3),
-				name='gestion_numero_entre_1_y_3',
-			),
-		]
-		db_table = 'gestion_atencion'
-		verbose_name = 'gestión de atención'
-		verbose_name_plural = 'gestiones de atenciones'
+    class Meta:
+        ordering = ['-fecha']
+        db_table = 'gestion_atencion'
+        verbose_name = 'gestión de atención'
+        verbose_name_plural = 'gestiones de atenciones'
 
-	def __str__(self):
-		return f'Gestión {self.numero_gestion} - {self.fecha:%Y-%m-%d}'
+    def __str__(self):
+        return f'Gestión {self.codigo} - {self.fecha:%Y-%m-%d}'
 
-	def save(self, *args, **kwargs):
-		if self.pk:
-			original_code = type(self).objects.filter(pk=self.pk).values_list(
-				'codigo', flat=True,
-			).first()
-			if original_code and original_code != self.codigo:
-				raise ValueError('El código de atención es inmutable.')
-		return super().save(*args, **kwargs)
+    @classmethod
+    def generar_codigo_unico(cls):
+        """Genera un código aleatorio alfanumérico de 20 caracteres único en la BD."""
+        caracteres = string.ascii_uppercase + string.digits
+        while True:
+            codigo = ''.join(secrets.choice(caracteres) for _ in range(20))
+            if not cls.objects.filter(codigo=codigo).exists():
+                return codigo
+
+    def save(self, *args, **kwargs):
+        if not self.codigo:
+            self.codigo = self.generar_codigo_unico()
+        elif self.pk:
+            original_code = type(self).objects.filter(pk=self.pk).values_list('codigo', flat=True).first()
+            if original_code and original_code != self.codigo:
+                raise ValueError('El código de atención es inmutable.')
+        return super().save(*args, **kwargs)
+
+    @property
+    def cantidad_atenciones(self):
+        """Retorna la cantidad de atenciones sociales asociadas a esta gestión."""
+        return self.atencionsocial_set.count()
 
 #Modelo : AtencionSocial (OK)
 class AtencionSocial(models.Model):
 
 	fecha = models.DateTimeField(db_column='FECHA')
-	resultado = models.TextField(blank=True)
-	observaciones = models.TextField(blank=True)
+	resultado = models.TextField(blank=True,db_column='RESULTADO')
+	observaciones = models.TextField(blank=True,db_column="OBSERVACIONES")
 	autor = models.ForeignKey('AdminApp.Usuario', on_delete=models.PROTECT, db_column='AUTOR')
 	beneficiado = models.ForeignKey('FuncionarioApp.Beneficiado', on_delete=models.PROTECT, db_column='BENEFICIADO')
 	tipo = models.ForeignKey('FuncionarioApp.Tipo',on_delete=models.PROTECT,db_column='TIPO',related_name='Atencion_Social')
 	subtipo = models.ForeignKey('FuncionarioApp.Subtipo',on_delete=models.PROTECT,db_column='SUBTIPO',related_name='Atencion_Social')
 	gestion_atencion = models.ForeignKey(GestionAtencion, on_delete=models.PROTECT, db_column='GESTION_ATENCION')
+	evidencia = models.ForeignKey('SupervisorApp.Evidencia',on_delete=models.PROTECT,null=True,blank=True,db_column='EVIDENCIA',related_name='atenciones_sociales',)
 	creado = models.DateTimeField(auto_now_add=True)
 
 	class Meta:

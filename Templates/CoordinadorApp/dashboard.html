@@ -1,0 +1,162 @@
+{% extends 'base.html' %}
+{% block title %}Panel de Coordinación | SGR{% endblock %}
+{% block page_title %}Panel de Coordinación{% endblock %}
+
+{% block extra_css %}
+<style>
+  .coordinator-dashboard .metric-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .coordinator-dashboard .metric strong {
+    overflow-wrap: anywhere;
+  }
+  .coordinator-dashboard .dashboard-filters {
+    display: flex;
+    align-items: end;
+    gap: .75rem;
+    max-width: 760px;
+    padding: 1rem;
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: .45rem;
+  }
+  .coordinator-dashboard .dashboard-filters > div {
+    flex: 1;
+    min-width: 0;
+  }
+  .coordinator-dashboard .coordinator-links {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .75rem;
+  }
+  .coordinator-dashboard .coordinator-links a {
+    display: block;
+    min-height: 100%;
+    padding: 1rem;
+    color: var(--ink);
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--institution-red);
+    text-decoration: none;
+  }
+  .coordinator-dashboard .coordinator-links a:hover,
+  .coordinator-dashboard .coordinator-links a:focus-visible {
+    background: #fff7f7;
+    text-decoration: underline;
+  }
+  .coordinator-dashboard .coordinator-links strong,
+  .coordinator-dashboard .coordinator-links span {
+    display: block;
+  }
+  .coordinator-dashboard .coordinator-links span {
+    margin-top: .3rem;
+    color: var(--muted);
+    font-size: .88rem;
+  }
+  @media (max-width: 991.98px) {
+    .coordinator-dashboard .metric-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .coordinator-dashboard .coordinator-links {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 575.98px) {
+    .coordinator-dashboard .metric-grid,
+    .coordinator-dashboard .coordinator-links {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .coordinator-dashboard .dashboard-filters {
+      align-items: stretch;
+      flex-direction: column;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main coordinator-dashboard">
+    <p class="section-note">
+      Resumen operacional para revisar períodos, metas, actividades y evidencias.
+      {% if periodo_seleccionado %}
+      Período consultado: <strong>{{ periodo_seleccionado.nombre }}</strong>.
+      {% else %}
+      Aún no hay períodos registrados.
+      {% endif %}
+    </p>
+
+    <form method="get" class="dashboard-filters">
+      <div>
+        <label class="form-label" for="dashboard-period">Período</label>
+        <select class="form-select" id="dashboard-period" name="periodo">
+          {% for periodo in periodos %}
+          <option value="{{ periodo.pk }}"{% if periodo == periodo_seleccionado %} selected{% endif %}>
+            {{ periodo.nombre }} ({{ periodo.get_estado_display }})
+          </option>
+          {% empty %}
+          <option value="">No hay períodos disponibles</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-primary" type="submit"{% if not periodos %} disabled{% endif %}>Consultar</button>
+    </form>
+
+    <div class="metric-grid">
+      <article class="metric"><span>Períodos abiertos</span><strong>{{ open_period_count }}</strong></article>
+      <article class="metric"><span>Períodos cerrados</span><strong>{{ closed_period_count }}</strong></article>
+      <article class="metric"><span>Funcionarios con metas</span><strong>{{ employee_count }}</strong></article>
+      <article class="metric"><span>Metas del período</span><strong>{{ goal_count }}</strong></article>
+      <article class="metric"><span>Actividades registradas</span><strong>{{ activity_count }}</strong></article>
+      <article class="metric"><span>Actividades validadas</span><strong>{{ validated_activity_count }}</strong></article>
+      <article class="metric"><span>Actividades pendientes</span><strong>{{ pending_activity_count }}</strong></article>
+      <article class="metric"><span>Evidencias de actividad pendientes</span><strong>{{ pending_evidence_count }}</strong></article>
+    </div>
+
+    <section class="content-section">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">GESTIÓN</p>
+          <h2>Accesos de Coordinación</h2>
+          <p class="section-note">Selecciona un módulo para administrar períodos, metas y consultar resultados.</p>
+        </div>
+      </div>
+      <div class="coordinator-links">
+        <a href="{% url 'coordinador:periodos' %}">
+          <strong>Gestión de períodos</strong>
+          <span>Crear, editar, cerrar y revisar períodos.</span>
+        </a>
+        <a href="{% url 'coordinador:metas' %}">
+          <strong>Gestión de metas</strong>
+          <span>Administrar las metas asignadas a funcionarios.</span>
+        </a>
+        <a href="{% url 'coordinador:cargos_funciones' %}">
+          <strong>Funciones por cargo</strong>
+          <span>Consultar y gestionar las asignaciones funcionales.</span>
+        </a>
+        <a href="{% url 'coordinador:ponderaciones' %}">
+          <strong>Ponderaciones</strong>
+          <span>Revisar la distribución de ponderaciones.</span>
+        </a>
+        <a href="{% url 'coordinador:informes' %}">
+          <strong>Informes de gestión</strong>
+          <span>Consultar resultados por período, delegación y cargo.</span>
+        </a>
+        <a href="{% url 'coordinador:tendencias' %}">
+          <strong>Tendencias históricas</strong>
+          <span>Analizar la evolución de los indicadores.</span>
+        </a>
+        <a href="{% url 'coordinador:solicitudes_autorizacion' %}">
+          <strong>Solicitar autorización</strong>
+          <span>Solicitar acceso para cambios en períodos cerrados.</span>
+        </a>
+        <a href="{% url 'coordinador:personal' %}">
+          <strong>Tablero Personal</strong>
+          <span>Consultar el cumplimiento individual del coordinador.</span>
+        </a>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

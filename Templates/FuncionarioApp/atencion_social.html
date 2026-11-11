@@ -1,6 +1,11 @@
 {% extends 'base.html' %}
 {% block title %}Atención social | SGR{% endblock %}
 {% block page_title %}Atención social{% endblock %}
+{% block extra_head %}
+<!-- Librería SweetAlert2 CDN -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+{% endblock %}
+
 {% block content %}
 <div class="dashboard-layout">
   {% include 'includes/role_sidebar.html' %}
@@ -10,7 +15,7 @@
         <p class="eyebrow">NUEVA ATENCIÓN</p>
         <h2>Registrar atención social</h2>
         <p class="section-note">Selecciona un beneficiado existente o ingresa sus datos para crear uno nuevo. Cada atención registra una gestión y requiere evidencia.</p>
-        <form method="post" enctype="multipart/form-data" data-loading data-single-submit novalidate>
+        <form method="post" enctype="multipart/form-data" id="atencion-social-form" data-loading data-single-submit novalidate>
           {% csrf_token %}
           {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
           <div class="form-grid">
@@ -35,30 +40,96 @@
     </section>
 
     <section class="content-section">
-      <div class="section-head">
-        <div><p class="eyebrow">HISTORIAL</p><h2>Atenciones registradas</h2></div>
+      <div class="section-head d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+          <p class="eyebrow">HISTORIAL</p>
+          <h2>Atenciones registradas</h2>
+        </div>
+        
+        <!-- BUSCADOR INSTANTÁNEO -->
+        <div class="search-box position-relative" style="min-width: 280px;">
+          <input type="text" id="tabla-search-input" class="form-control" placeholder="Buscar por gestión, código o beneficiario...">
+        </div>
         <span class="count-pill">{{ atencion_count }} atenciones</span>
       </div>
-      <div class="table-responsive">
-        <table class="table align-middle">
-          <thead><tr><th>Fecha</th><th>Beneficiado</th><th>Tipo / Subtipo</th><th>Gestión</th><th>Resultado y observaciones</th><th>Evidencia</th></tr></thead>
+
+      <div class="table-responsive mt-3">
+        <table class="table align-middle" id="tabla-atenciones">
+          <thead>
+            <tr>
+              <th>FECHA</th>
+              <th>RESULTADOS</th>
+              <th>OBSERVACIONES</th>
+              <th>AUTOR</th>
+              <th>BENEFICIADO</th>
+              <th>TIPO</th>
+              <th>SUBTIPO</th>
+              <th>GESTIÓN SOCIAL</th>
+              <th>EVIDENCIA</th>
+              <th class="text-end">ACCIONES</th>
+            </tr>
+          </thead>
+          
           <tbody>
             {% for atencion in atenciones %}
-            <tr>
+            <tr class="atencion-row" data-codigo-gestion="{{ atencion.gestion_atencion.codigo }}">
+              <!-- 1. FECHA -->
               <td>{{ atencion.fecha|date:'d/m/Y H:i' }}</td>
-              <td>{{ atencion.beneficiado.nombre }} {{ atencion.beneficiado.apellido }}</td>
-              <td>{{ atencion.tipo.nombre }} / {{ atencion.subtipo.nombre }}</td>
-              <td>N.º {{ atencion.gestion_atencion.numero_gestion }} · {{ atencion.gestion_atencion.fecha|date:'d/m/Y' }}{% if atencion.gestion_atencion.observaciones %}<small class="d-block text-muted">{{ atencion.gestion_atencion.observaciones }}</small>{% endif %}</td>
-              <td>{% if atencion.resultado %}<p>{{ atencion.resultado }}</p>{% endif %}{{ atencion.observaciones|default:'—' }}</td>
+
+              <!-- 2. RESULTADOS -->
+              <td>{{ atencion.resultado|default:'—' }}</td>
+
+              <!-- 3. OBSERVACIONES -->
+              <td>{{ atencion.observaciones|default:'—' }}</td>
+
+              <!-- 4. AUTOR -->
               <td>
-                {% for evidencia in atencion.gestion_atencion.evidencias.all %}
-                <a href="{{ evidencia.archivo.url }}" target="_blank" rel="noopener">{{ evidencia.codigo|slice:':8' }}</a>
-                <span class="tag">{{ evidencia.get_estado_display }}</span>
-                {% empty %}—{% endfor %}
+                {% if atencion.autor.first_name or atencion.autor.last_name %}
+                  {{ atencion.autor.first_name }} {{ atencion.autor.last_name }}
+                {% else %}
+                  {{ atencion.autor.username }}
+                {% endif %}
+              </td>
+
+              <!-- 5. BENEFICIADO -->
+              <td>{{ atencion.beneficiado.nombre }} {{ atencion.beneficiado.apellido }}</td>
+
+              <!-- 6. TIPO -->
+              <td>{{ atencion.tipo.nombre }}</td>
+
+              <!-- 7. SUBTIPO -->
+              <td>{{ atencion.subtipo.nombre }}</td>
+
+              <!-- 8. GESTIÓN SOCIAL (Código y fecha) -->
+              <td>
+                <div><strong class="gestion-codigo">N.º {{ atencion.gestion_atencion.numero_gestion }}</strong> ({{ atencion.gestion_atencion.codigo|slice:':8' }})</div>
+                <small class="text-muted">{{ atencion.gestion_atencion.fecha|date:'d/m/Y' }}</small>
+              </td>
+
+              <!-- 9. EVIDENCIA -->
+              <td>
+                {% if atencion.evidencia %}
+                  <a href="{{ atencion.evidencia.archivo.url }}" target="_blank" rel="noopener" class="fw-bold text-decoration-none">
+                    <i class="bi bi-file-earmark-arrow-down me-1"></i>
+                    {{ atencion.evidencia.codigo|slice:':8' }}
+                  </a>
+                {% else %}
+                  <span class="text-muted italic">Sin evidencia asignada</span>
+                {% endif %}
+              </td>
+
+              <!-- 10. BOTÓN EDITAR (MODAL) -->
+              <td class="text-end">
+                <button type="button" class="btn btn-sm btn-outline-primary btn-editar-atencion" data-id="{{ atencion.pk }}">
+                  <i class="bi bi-pencil me-1"></i>
+                  Editar
+                </button>
               </td>
             </tr>
             {% empty %}
-            <tr><td colspan="6" class="empty-state">Todavía no hay atenciones sociales registradas.</td></tr>
+            <tr id="row-empty-state">
+              <td colspan="10" class="empty-state text-center py-4">Todavía no hay atenciones sociales registradas.</td>
+            </tr>
             {% endfor %}
           </tbody>
         </table>
@@ -66,4 +137,272 @@
     </section>
   </div>
 </div>
+
+<!-- MODAL DE EDICIÓN DE ATENCIÓN SOCIAL -->
+<div class="modal fade" id="modalEditarAtencion" tabindex="-1" aria-labelledby="modalEditarAtencionLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold" id="modalEditarAtencionLabel">Editar Atención Social</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <form id="form-editar-atencion">
+          <input type="hidden" id="modal-atencion-id">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="modal-fecha" class="form-label fw-bold">Fecha de atención *</label>
+              <input type="datetime-local" class="form-control" id="modal-fecha" required>
+            </div>
+            
+            <div class="col-md-6">
+              <label for="modal-beneficiado" class="form-label fw-bold">Beneficiario *</label>
+              <select class="form-select" id="modal-beneficiado" required>
+                {% for b in form.fields.beneficiado.queryset %}
+                  <option value="{{ b.pk }}">{{ b.nombre }} {{ b.apellido }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-6">
+              <label for="modal-tipo" class="form-label fw-bold">Tipo de Atención *</label>
+              <select class="form-select" id="modal-tipo" required>
+                {% for t in form.fields.tipo.queryset %}
+                  <option value="{{ t.pk }}">{{ t.nombre }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-6">
+              <label for="modal-subtipo" class="form-label fw-bold">Subtipo de Atención *</label>
+              <select class="form-select" id="modal-subtipo" required>
+                <!-- Carga dinámica -->
+              </select>
+            </div>
+
+            <div class="col-12">
+              <label for="modal-gestion-atencion" class="form-label fw-bold">Gestión Social *</label>
+              <select class="form-select" id="modal-gestion-atencion" required>
+                {% for g in form.fields.gestion_atencion.queryset %}
+                  <option value="{{ g.pk }}">Gestión N.º {{ g.numero_gestion }} - {{ g.codigo|slice:':8' }} ({{ g.fecha|date:'d/m/Y' }})</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-12">
+              <label for="modal-resultado" class="form-label fw-bold">Resultado</label>
+              <textarea class="form-control" id="modal-resultado" rows="3"></textarea>
+            </div>
+
+            <div class="col-12">
+              <label for="modal-observaciones" class="form-label fw-bold">Observaciones</label>
+              <textarea class="form-control" id="modal-observaciones" rows="2"></textarea>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btn-guardar-edicion">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 1. BUSCADOR INSTANTÁNEO (SIN BOTÓN)
+  
+    const searchInput = document.getElementById('tabla-search-input');
+    const tableRows = document.querySelectorAll('#tabla-atenciones tbody tr.atencion-row');
+
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            const query = this.value.toLowerCase().trim();
+
+            tableRows.forEach(row => {
+                const textContent = row.textContent.toLowerCase();
+                if (textContent.includes(query)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    }
+
+    // 2. CREACIÓN / FORMULARIO PRINCIPAL 
+    const formElement = document.getElementById('atencion-social-form');
+    const beneficiadoSelect = document.getElementById('id_beneficiado');
+    const fieldsToToggle = [document.getElementById('id_nombre'),document.getElementById('id_apellido'),document.getElementById('id_telefono'),document.getElementById('id_email')];
+
+    function toggleBeneficiadoFields() {
+        const hasSelection = Boolean(beneficiadoSelect && beneficiadoSelect.value);
+        fieldsToToggle.forEach(field => {
+            if (field) {
+                field.disabled = hasSelection;
+                if (hasSelection) field.value = '';
+            }
+        });
+    }
+
+    if (beneficiadoSelect) {
+        beneficiadoSelect.addEventListener('change', toggleBeneficiadoFields);
+        toggleBeneficiadoFields();
+    }
+
+    if (formElement) {
+        formElement.addEventListener('submit', function() {
+            fieldsToToggle.forEach(field => {
+                if (field) field.disabled = false;
+            });
+        });
+    }
+
+    const tipoSelect = document.getElementById('id_tipo');
+    const subtipoSelect = document.getElementById('id_subtipo');
+
+    if (tipoSelect && subtipoSelect) {
+        tipoSelect.addEventListener('change', function() {
+            const tipoId = this.value;
+            subtipoSelect.innerHTML = '<option value="">Seleccionar subtipo</option>';
+            if (!tipoId) return;
+
+            subtipoSelect.innerHTML = '<option value="">Cargando subtipos...</option>';
+            const baseUrl = "{% url 'funcionario:subatenciones_tipo' tipo_id=0 %}";
+            const requestUrl = baseUrl.replace('0', tipoId);
+
+            fetch(requestUrl)
+                .then(res => res.json())
+                .then(data => {
+                    subtipoSelect.innerHTML = '<option value="">Seleccionar subtipo</option>';
+                    if (data.results && data.results.length > 0) {
+                        data.results.forEach(subtipo => {
+                            const opt = document.createElement('option');
+                            opt.value = subtipo.pk;
+                            opt.textContent = subtipo.nombre;
+                            subtipoSelect.appendChild(opt);
+                        });
+                        subtipoSelect.disabled = false;
+                    } else {
+                        subtipoSelect.innerHTML = '<option value="">Sin subtipos disponibles</option>';
+                    }
+                });
+        });
+    }
+
+    // 3. EDICIÓN MEDIANTE MODAL Y SWEETALERT2
+    const modalElement = document.getElementById('modalEditarAtencion');
+    const modalEditar = new bootstrap.Modal(modalElement);
+    const modalTipoSelect = document.getElementById('modal-tipo');
+    const modalSubtipoSelect = document.getElementById('modal-subtipo');
+
+    // Cambios dinámicos de subtipo en el modal
+    modalTipoSelect.addEventListener('change', function() {
+        const tipoId = this.value;
+        modalSubtipoSelect.innerHTML = '<option value="">Cargando...</option>';
+        if (!tipoId) return;
+
+        const baseUrl = "{% url 'funcionario:subatenciones_tipo' tipo_id=0 %}";
+        fetch(baseUrl.replace('0', tipoId))
+            .then(res => res.json())
+            .then(data => {
+                modalSubtipoSelect.innerHTML = '';
+                data.results.forEach(sub => {
+                    const opt = document.createElement('option');
+                    opt.value = sub.pk;
+                    opt.textContent = sub.nombre;
+                    modalSubtipoSelect.appendChild(opt);
+                });
+            });
+    });
+
+    // Cargar datos reales al abrir Modal
+    document.querySelectorAll('.btn-editar-atencion').forEach(button => {
+        button.addEventListener('click', function() {
+            const atencionId = this.getAttribute('data-id');
+            const urlDetail = "{% url 'funcionario:detalle_atencion_json' atencion_id=0 %}".replace('0', atencionId);
+
+            fetch(urlDetail)
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('modal-atencion-id').value = data.id;
+                    document.getElementById('modal-fecha').value = data.fecha;
+                    document.getElementById('modal-resultado').value = data.resultado;
+                    document.getElementById('modal-observaciones').value = data.observaciones;
+                    document.getElementById('modal-beneficiado').value = data.beneficiado_id;
+                    document.getElementById('modal-tipo').value = data.tipo_id;
+                    document.getElementById('modal-gestion-atencion').value = data.gestion_atencion_id;
+
+                    // Cargar subtipos precargados
+                    modalSubtipoSelect.innerHTML = '';
+                    data.subtipos_disponibles.forEach(sub => {
+                        const opt = document.createElement('option');
+                        opt.value = sub.pk;
+                        opt.textContent = sub.nombre;
+                        if (sub.pk === data.subtipo_id) opt.selected = true;
+                        modalSubtipoSelect.appendChild(opt);
+                    });
+
+                    modalEditar.show();
+                })
+                .catch(err => {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error de conexión',
+                        text: 'No se pudieron obtener los datos de la atención social.'
+                    });
+                });
+        });
+    });
+
+    // Guardar cambios con confirmación / respuesta SweetAlert2
+    document.getElementById('btn-guardar-edicion').addEventListener('click', function() {
+        const atencionId = document.getElementById('modal-atencion-id').value;
+        const urlUpdate = "{% url 'funcionario:editar_atencion_ajax' atencion_id=0 %}".replace('0', atencionId);
+        
+        const payload = {
+            fecha: document.getElementById('modal-fecha').value,
+            beneficiado_id: document.getElementById('modal-beneficiado').value,
+            tipo_id: document.getElementById('modal-tipo').value,
+            subtipo_id: document.getElementById('modal-subtipo').value,
+            gestion_atencion_id: document.getElementById('modal-gestion-atencion').value,
+            resultado: document.getElementById('modal-resultado').value,
+            observaciones: document.getElementById('modal-observaciones').value,
+        };
+
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        fetch(urlUpdate, {method: 'POST',headers: {'Content-Type': 'application/json','X-CSRFToken': csrfToken},body: JSON.stringify(payload)})
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                modalEditar.hide();
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Actualización Exitosa!',
+                    text: data.message,
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => {
+                    location.reload(); // Recarga para refrescar los datos en la tabla
+                });
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error en la validación',
+                    text: data.message
+                });
+            }
+        })
+        .catch(err => {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error del servidor',
+                text: 'Ocurrió un fallo al procesar la actualización de la atención.'
+            });
+        });
+    });
+});
+</script>
 {% endblock %}

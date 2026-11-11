@@ -1,109 +1,434 @@
 {% extends 'base.html' %}
 {% block title %}Funcionario | SGR{% endblock %}
 {% block page_title %}Gestión de Actividades{% endblock %}
+
 {% block content %}
 <div class="dashboard-layout">
-{% include 'includes/role_sidebar.html' %}
-<div class="dashboard-main">
-<div class="metric-grid">
-	<article class="metric"><span>Mis registros</span><strong>{{ registro_count }}</strong></article>
-	<article class="metric"><span>Períodos abiertos</span><strong>{{ form.periodo.field.queryset.count }}</strong></article>
-	<article class="metric"><span>Últimos registros</span><strong>{{ registros|length }}</strong></article>
-</div>
-<!--Creación de Actividades-->
-<section class="content-section split-layout">
-	<div>
-		<p class="eyebrow">NUEVA ACTIVIDAD</p>
-		<h2>Registrar gestión</h2>
-		<p class="section-note">La actividad queda asociada a tu cuenta y al período e ítem seleccionados.</p>
-		<form method="post" enctype="multipart/form-data" data-loading novalidate>
-		{% csrf_token %}
-		<input type="hidden" name="action" value="guardar">
-		{% if editing_record %}
-		<input type="hidden" name="registro_id" value="{{ editing_record.pk }}">
-		{% endif %}
-		<!--Error por falta de campos-->
-		{% if form.non_field_errors %}
-		<div class="alert alert-danger">{{ form.non_field_errors }}</div>
-		{% endif %}
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+    <div class="metric-grid">
+      <article class="metric"><span>Mis registros</span><strong>{{ registro_count }}</strong></article>
+      <article class="metric"><span>Períodos abiertos</span><strong>{{ form.periodo.field.queryset.count }}</strong></article>
+      <article class="metric"><span>Últimos registros</span><strong>{{ registros|length }}</strong></article>
+    </div>
 
-		<div class="form-grid">
-		{% for field in form %}
-			<div class="mb-3 {% if field.name == 'accion' or field.name == 'evidencia' %}field-wide{% endif %}{% if field.name == 'incluir_en_agenda' %}form-check field-wide{% endif %}">
-				{% if field.name == 'incluir_en_agenda' %}{{ field }} 
-				<label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-				{% else %}
-				<label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-				{{ field }}
-				{% endif %}
-				{% if field.name == 'evidencia' %}
-				<div class="form-text">JPG, PNG o PDF. Máximo 5 MB.</div>
-				{% endif %}
-				{% for error in field.errors %}
-				<div class="invalid-feedback d-block">{{ error }}</div>
-				{% endfor %}
-			</div>
-		{% endfor %}
-		</div>
-		<button class="btn btn-primary" type="submit">
-			{% if editing_record %}
-			Actualizar actividad
-			{% else %}
-			Crear actividad
-			{% endif %}
-		</button>
-		{% if editing_record %} 
-		<a class="btn btn-outline-secondary" href="{% url 'funcionario:gestion_actividades' %}">Cancelar edición</a>
-		{% endif %}
-		</form>
-	</div>
-	<aside class="side-note"><span class="side-note-mark">+</span><h3>Identificador único</h3>
-		<p>Al guardar, el sistema asigna un código inmutable para consultar y vincular evidencia.</p>
-	</aside>
-</section>
-<!--Historial de Actividades-->
-<section class="content-section">
-	<div class="section-head"><div>
-		<p class="eyebrow">HISTORIAL PERSONAL</p><h2>Mis actividades recientes</h2>
-		</div><span class="count-pill">{{ registro_count }} total</span></div>
-	<div class="table-responsive">
-		<table class="table align-middle">
-			<thead>
-				<tr><th>Fecha</th><th>Actividad</th><th>Ítem</th><th>Período</th><th>Código</th><th>Estado</th><th>Acciones</th></tr>
-			</thead>
-			<tbody>
-			{% for registro in registros %}
-			<tr>
-				<td>{{ registro.fecha|date:'d/m/Y' }}</td>
-				<td><strong>{{ registro.descripcion }}</strong><small class="d-block text-muted">{{ registro.accion|truncatechars:90 }}</small></td>
-				<td>{{ registro.item }}</td><td>{{ registro.periodo }}</td>
-				<td><code>{{ registro.codigo|slice:':8' }}</code></td>
-				<td><span class="tag">{{ registro.get_estado_display }}</span></td>
-				
-				<td>
-					<!--Si el estado del registro es pendiente-->
-					{% if registro.estado == 'pendiente' %}<div class="d-flex flex-wrap gap-1"><a class="btn btn-sm btn-outline-primary" href="{% url 'funcionario:gestion_actividades' %}?editar={{ registro.pk }}">Editar</a>
-					<form method="post" data-confirm="¿Eliminar esta actividad? La acción no se puede deshacer.">
-						{% csrf_token %}
-						<input type="hidden" name="action" value="eliminar">
-						<input type="hidden" name="registro_id" value="{{ registro.pk }}">
-						<button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button>
-					</form></div>
-					<!--Todos los demás casos-->
-					{% else %}
-					<span class="text-muted small">Cerrado</span>
-					{% endif %}
-				</td>
-			</tr>
-			<!--Si no hay actividades registradas-->
-			{% empty %}
-			<tr>
-				<td colspan="7" class="empty-state">Todavía no tienes actividades registradas.</td></tr>
-				{% endfor %}
-			</tbody>
-		</table>
-	</div>
-</section>
+    <!-- 1. Formulario para Ingresar Nuevo Registro -->
+    <section class="content-section mb-4">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">REGISTRO DE ACTIVIDADES</p>
+          <h2>Ingresar Nueva Gestión</h2>
+          <p class="section-note">La actividad queda asociada a tu cuenta y al período e ítem seleccionados.</p>
+        </div>
+      </div>
+
+      <form method="post" enctype="multipart/form-data" id="form-nuevo-registro" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="guardar">
+        
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Fecha de Actividad *</label>
+            {{ form.fecha }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Período *</label>
+            {{ form.periodo }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Ítem de Medición *</label>
+            {{ form.item }}
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Tipo *</label>
+            {{ form.tipo }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Subtipo *</label>
+            {{ form.subtipo }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Contacto</label>
+            {{ form.contacto }}
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Teléfono</label>
+            {{ form.telefono }}
+          </div>
+          <div class="col-md-8">
+            <label class="form-label">Actividad / Solicitud *</label>
+            {{ form.descripcion }}
+          </div>
+
+          <div class="col-md-12">
+            <label class="form-label">Acción Realizada</label>
+            {{ form.accion }}
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Archivo de Evidencia (Opcional)</label>
+            {{ form.evidencia }}
+            <div class="form-text">JPG, PNG o PDF. Máximo 5 MB.</div>
+          </div>
+
+          <div class="col-md-6 d-flex align-items-center mt-4">
+            <div class="form-check">
+              {{ form.incluir_en_agenda }}
+              <label class="form-check-label ms-1" for="{{ form.incluir_en_agenda.id_for_label }}">
+                Relacionar con la agenda colectiva
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <button class="btn btn-primary" type="submit">Crear Actividad</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 2. Tabla del Listado de Registros con Barra de Búsqueda -->
+    <section class="content-section">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">HISTORIAL PERSONAL</p>
+          <h2>Mis Actividades Registradas</h2>
+        </div>
+        <span class="count-pill">{{ registro_count }} total</span>
+      </div>
+
+      <!-- Barra de búsqueda Keyup -->
+      <div class="search-panel mb-3">
+        <div class="w-100">
+          <label class="form-label" for="search-registro">Buscar Registro</label>
+          <input type="text" class="form-control" id="search-registro" placeholder="Buscar por Acción, ESTADO, ITEM o PERIODO...">
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table align-middle" id="tabla-registros">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Actividad</th>
+              <th>Acción</th>
+              <th>Ítem</th>
+              <th>Período</th>
+              <th>Código</th>
+              <th>Evidencia</th>
+              <th>Estado</th>
+              <th class="text-end">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for reg in registros %}
+            <tr data-accion="{{ reg.accion|lower }}"
+                data-estado="{{ reg.get_estado_display|lower }}"
+                data-item="{{ reg.item.nombre|lower }}"
+                data-periodo="{{ reg.periodo.nombre|lower }}">
+              <td>{{ reg.fecha|date:'d/m/Y' }}</td>
+              <td><strong>{{ reg.descripcion }}</strong></td>
+              <td><small class="text-muted">{{ reg.accion|default:"-"|truncatechars:60 }}</small></td>
+              <td>{{ reg.item.nombre }}</td>
+              <td>{{ reg.periodo.nombre }}</td>
+              <td><code>{{ reg.codigo|slice:':8' }}</code></td>
+              <td>
+                {% if reg.evidencia and reg.evidencia.archivo %}
+                  <a href="{{ reg.evidencia.archivo.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-info">
+                    📎 Ver evidencia
+                  </a>
+                {% else %}
+                  <span class="text-muted small">Sin archivo</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge {% if reg.estado == 'validada' %}bg-success{% elif reg.estado == 'anulada' %}bg-danger{% elif reg.estado == 'observada' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                  {{ reg.get_estado_display }}
+                </span>
+              </td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-outline-primary btn-editar-registro" data-id="{{ reg.pk }}">
+                  Editar
+                </button>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="9" class="empty-state">Todavía no tienes actividades registradas.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- 3. Modal Emergente para Editar Registro -->
+<div class="modal fade" id="modalEditarRegistro" tabindex="-1" aria-hidden="true">
+	<div class="modal-dialog modal-lg">
+    <div class="modal-content">
+		<div class="modal-header">
+        <h5 class="modal-title">Editar Actividad / Registro</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+    </div>
+    <div class="modal-body">
+    <form id="form-editar-registro">
+        <input type="hidden" id="edit-registro-id">
+
+        <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Fecha de Actividad *</label>
+            <input type="date" class="form-control" id="edit-fecha" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Período *</label>
+            <select class="form-select" id="edit-periodo" required>
+                {% for p in periodos %}
+                <option value="{{ p.pk }}">{{ p.nombre }}</option>
+                {% endfor %}
+            </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Ítem de Medición *</label>
+            <select class="form-select" id="edit-item" required>
+                {% for item in items %}
+                <option value="{{ item.pk }}">{{ item.nombre }}</option>
+                {% endfor %}
+        </select>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label">Tipo *</label>
+            <select class="form-select" id="edit-tipo" required>
+                <option value="">Seleccione un tipo</option>
+                {% for tipo in tipos %}
+                <option value="{{ tipo.pk }}">{{ tipo.nombre }}</option>
+                {% endfor %}
+            </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Subtipo *</label>
+        <select class="form-select" id="edit-subtipo" required>
+                <option value="">Seleccione un tipo primero</option>
+            </select>
+            </div>
+
+            <div class="col-md-6">
+            <label class="form-label">Contacto</label>
+            <input type="text" class="form-control" id="edit-contacto">
+            </div>
+            <div class="col-md-6">
+            <label class="form-label">Teléfono</label>
+            <input type="text" class="form-control" id="edit-telefono">
+            </div>
+
+            <div class="col-md-12">
+              <label class="form-label">Actividad / Solicitud *</label>
+            <input type="text" class="form-control" id="edit-descripcion" required>
+            </div>
+
+            <div class="col-md-12">
+            <label class="form-label">Acción Realizada</label>
+            <textarea class="form-control" id="edit-accion" rows="3"></textarea>
+            </div>
+
+            <div class="col-md-12">
+            <div class="form-check mt-2">
+                <input class="form-check-input" type="checkbox" id="edit-incluir-agenda">
+                <label class="form-check-label ms-1" for="edit-incluir-agenda">
+                Relacionar con la agenda colectiva
+                </label>
+            </div>
+            </div>
+        </div>
+    </form>
+    </div>
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btn-guardar-edit-registro">Guardar Cambios</button>
+    </div>
+    </div>
 </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const getCookie = (name) => {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  };
+  const csrftoken = getCookie('csrftoken');
+
+  // 1. Carga en cascada de Subtipos según Tipo
+  const selectTipoForm = document.getElementById('id_tipo');
+  const selectSubtipoForm = document.getElementById('id_subtipo');
+
+  function cargarSubtipos(tipoId, targetSelect, selectedSubtipoId = null) {
+    if (!tipoId) {
+      targetSelect.innerHTML = '<option value="">Seleccione un tipo primero</option>';
+      return;
+    }
+    fetch(`/funcionario/actividades/subtipos-por-tipo/${tipoId}/`)
+      .then(res => res.json())
+      .then(data => {
+        targetSelect.innerHTML = '<option value="">Seleccione un subtipo</option>';
+        if (data.subtipos && data.subtipos.length > 0) {
+          data.subtipos.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.pk;
+            opt.textContent = s.nombre;
+            if (selectedSubtipoId && s.pk == selectedSubtipoId) {
+              opt.selected = true;
+            }
+            targetSelect.appendChild(opt);
+          });
+        }
+      })
+      .catch(err => console.error('Error al cargar subtipos:', err));
+  }
+
+  if (selectTipoForm) {
+    selectTipoForm.addEventListener('change', function() {
+      cargarSubtipos(this.value, selectSubtipoForm);
+    });
+  }
+
+  // 2. Validación de Formulario Principal con SweetAlert2
+  document.getElementById('form-nuevo-registro').addEventListener('submit', function(e) {
+    const fecha = document.getElementById('id_fecha').value;
+    const descripcion = document.getElementById('id_descripcion').value.trim();
+    const item = document.getElementById('id_item').value;
+    const periodo = document.getElementById('id_periodo').value;
+    const tipo = selectTipoForm ? selectTipoForm.value : '';
+    const subtipo = selectSubtipoForm ? selectSubtipoForm.value : '';
+
+    if (!fecha || !descripcion || !item || !periodo || !tipo || !subtipo) {
+      e.preventDefault();
+      Swal.fire({
+        icon: 'error',
+        title: 'Campos Vacíos',
+        text: 'Por favor completa todos los campos requeridos (*): Fecha, Actividad, Ítem, Período, Tipo y Subtipo.'
+      });
+    }
+  });
+
+  // 3. Búsqueda Keyup por Acción, ESTADO, ITEM o PERIODO
+  const searchInput = document.getElementById('search-registro');
+  if (searchInput) {
+    searchInput.addEventListener('keyup', function() {
+      const term = this.value.toLowerCase().trim();
+      const rows = document.querySelectorAll('#tabla-registros tbody tr');
+
+      rows.forEach(row => {
+        const accion = row.getAttribute('data-accion') || '';
+        const estado = row.getAttribute('data-estado') || '';
+        const item = row.getAttribute('data-item') || '';
+        const periodo = row.getAttribute('data-periodo') || '';
+
+        if (accion.includes(term) || estado.includes(term) || item.includes(term) || periodo.includes(term)) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    });
+  }
+
+  // 4. Precargar Modal Emergente para Editar Registro
+  const modalElem = document.getElementById('modalEditarRegistro');
+  const modalEdit = new bootstrap.Modal(modalElem);
+
+  document.querySelectorAll('.btn-editar-registro').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const id = this.getAttribute('data-id');
+      fetch(`/funcionario/actividades/${id}/detalle-json/`)
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById('edit-registro-id').value = data.id;
+          document.getElementById('edit-fecha').value = data.fecha;
+          document.getElementById('edit-descripcion').value = data.descripcion;
+          document.getElementById('edit-contacto').value = data.contacto;
+          document.getElementById('edit-telefono').value = data.telefono;
+          document.getElementById('edit-accion').value = data.accion;
+          document.getElementById('edit-incluir-agenda').checked = data.incluir_en_agenda;
+          document.getElementById('edit-item').value = data.item_id;
+          document.getElementById('edit-periodo').value = data.periodo_id;
+          document.getElementById('edit-tipo').value = data.tipo_id;
+
+          const subtipoSelectModal = document.getElementById('edit-subtipo');
+          cargarSubtipos(data.tipo_id, subtipoSelectModal, data.subtipo_id);
+
+          modalEdit.show();
+        })
+        .catch(() => {
+          Swal.fire('Error', 'No se pudieron cargar los datos de la actividad.', 'error');
+        });
+    });
+  });
+
+  document.getElementById('edit-tipo').addEventListener('change', function() {
+    cargarSubtipos(this.value, document.getElementById('edit-subtipo'));
+  });
+
+  // 5. Guardar Cambios AJAX desde el Modal de Edición
+  document.getElementById('btn-guardar-edit-registro').addEventListener('click', function() {
+    const id = document.getElementById('edit-registro-id').value;
+    const payload = {
+      fecha: document.getElementById('edit-fecha').value,
+      descripcion: document.getElementById('edit-descripcion').value.trim(),
+      contacto: document.getElementById('edit-contacto').value.trim(),
+      telefono: document.getElementById('edit-telefono').value.trim(),
+      accion: document.getElementById('edit-accion').value.trim(),
+      incluir_en_agenda: document.getElementById('edit-incluir-agenda').checked,
+      item_id: document.getElementById('edit-item').value,
+      periodo_id: document.getElementById('edit-periodo').value,
+      tipo_id: document.getElementById('edit-tipo').value,
+      subtipo_id: document.getElementById('edit-subtipo').value
+    };
+
+    if (!payload.fecha || !payload.descripcion || !payload.item_id || !payload.periodo_id || !payload.tipo_id || !payload.subtipo_id) {
+      Swal.fire('Campos Incompletos', 'Por favor completa todos los campos requeridos (*).', 'warning');
+      return;
+    }
+
+    fetch(`/funcionario/actividades/${id}/editar-ajax/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrftoken
+      },
+      body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        modalEdit.hide();
+        Swal.fire('¡Éxito!', data.message, 'success').then(() => {
+          window.location.reload();
+        });
+      } else {
+        Swal.fire('Error', data.message, 'error');
+      }
+    })
+    .catch(() => {
+      Swal.fire('Error', 'Ocurrió un error al actualizar la actividad.', 'error');
+    });
+  });
+});
+</script>
 {% endblock %}

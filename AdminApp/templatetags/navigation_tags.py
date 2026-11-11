@@ -10,19 +10,21 @@ register = template.Library()
 
 SIDEBAR_SECTIONS = (
     ('inicio', 'Inicio', '⌂'),
-    ('usuarios', 'Gestión de usuarios y roles', '♙'),
     ('organizacion', 'Organización', '▦'),
-    ('medicion', 'Medición', '◷'),
-    ('atenciones', 'Atenciones', '◉'),
+    ('territorio', 'Territorio', '⌖'),
     ('operacion', 'Operación', '✓'),
+    ('metas-seguimiento', 'Metas y seguimiento', '◷'),
+    ('informes', 'Informes', '▤'),
     ('auditoria', 'Auditoría', '▤'),
     ('consulta', 'Consulta', '⌕'),
     ('ayuda', 'Ayuda', '?'),
 )
 
 CURRENT_SECTION_BY_VIEW = {
-    'coordinador:home': ('medicion', 'Tablero Personal'),
+    'coordinador:home': ('metas-seguimiento', 'Panel de Coordinación'),
+    'coordinador:personal': ('metas-seguimiento', 'Tablero Personal'),
     'vistaf:home': ('consulta', 'Búsqueda de información'),
+    'administracion:dashboard': ('inicio', 'Inicio'),
 }
 
 
@@ -34,37 +36,58 @@ def _section_for(label, url_name):
         return 'ayuda'
     if route in {'administracion:historial', 'administracion:auditoria-recuperacion'}:
         return 'auditoria'
-    if 'roles' in normalized_label or 'usuarios' in normalized_label or route == 'administracion:home':
-        return 'usuarios'
-    if any(term in normalized_label for term in ('cargo', 'funcion', 'delegacion')):
+    if route in {
+        'coordinador:informes',
+        'coordinador:tendencias',
+        'administracion:informes',
+        'administracion:informes-generados',
+    } or 'informe' in normalized_label or 'reporte' in normalized_label:
+        return 'informes'
+    if route in {
+        'administracion:vecinos',
+        'administracion:juntas',
+        'administracion:hitos',
+        'funcionario:vecinos',
+        'funcionario:vecino_nuevo',
+        'funcionario:juntas',
+    } or any(term in normalized_label for term in ('vecino', 'junta', 'hito')):
+        return 'territorio'
+    if (
+        route == 'administracion:home'
+        or 'roles' in normalized_label
+        or 'usuarios' in normalized_label
+        or any(term in normalized_label for term in ('cargo', 'funcion', 'delegacion'))
+    ):
         return 'organizacion'
     if route in {
         'administracion:items',
         'administracion:metas',
         'administracion:parametros',
         'coordinador:home',
+        'coordinador:personal',
+        'coordinador:metas',
+        'coordinador:ponderaciones',
+        'administracion:resumen-delegacion',
+        'funcionario:cumplimiento',
     } or any(term in normalized_label for term in ('meta', 'periodo', 'período', 'indicador', 'parámetro', 'item', 'ítem')):
-        return 'medicion'
+        return 'metas-seguimiento'
     if route in {
         'funcionario:home',
         'funcionario:gestion_actividades',
-        'funcionario:vecinos',
-        'funcionario:vecino_nuevo',
-        'funcionario:juntas',
-        'funcionario:cumplimiento',
         'funcionario:atencion_social',
         'funcionario:agenda_colectiva',
         'supervisor:home',
         'delegado:home',
         'delegado:resumen',
-    }:
-        return 'operacion'
-    if route in {
         'administracion:tipos-atencion',
         'administracion:subatenciones',
-    } or any(term in normalized_label for term in ('atencion', 'atención', 'subatencion', 'subatención', 'catalogo', 'catálogo')):
-        return 'atenciones'
-    if any(term in normalized_label for term in ('actividad', 'evidencia', 'compromiso', 'agenda', 'validar')):
+        'administracion:ausencias',
+        'administracion:felicitaciones',
+        'administracion:reclamos',
+        'administracion:registros',
+        'administracion:atenciones-sociales',
+        'administracion:compromisos',
+    } or any(term in normalized_label for term in ('atencion', 'atención', 'subatencion', 'subatención', 'catalogo', 'catálogo', 'actividad', 'compromiso', 'agenda', 'validar')):
         return 'operacion'
     if route == 'vistaf:home' or any(term in normalized_label for term in ('busqueda', 'búsqueda', 'consulta', 'informacion', 'información')):
         return 'consulta'

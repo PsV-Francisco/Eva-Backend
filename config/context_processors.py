@@ -3,6 +3,7 @@ from config.permissions import (
     PERMISSION_BY_VIEW,
     PERMISSION_CATALOG,
     can_access_permission,
+    cargo_key_for_access,
     permission_name,
 )
 
@@ -17,9 +18,24 @@ NAVIGATION_BY_CARGO = {
         ('Roles y permisos', 'administracion:roles'),
         ('Usuarios', 'administracion:home'),
         ('Ítems y metas', 'administracion:items'),
+        ('Metas', 'administracion:metas'),
+        ('Ajustes de Metas', 'administracion:ajustes-metas'),
+        ('Ponderaciones', 'coordinador:ponderaciones'),
+        ('Informes de Coordinación', 'coordinador:informes'),
+        ('Informes Generados', 'administracion:informes-generados'),
+        ('Resumen de Delegación', 'administracion:resumen-delegacion'),
+        ('Tendencias históricas', 'coordinador:tendencias'),
         ('Tipo de Atención', 'administracion:tipos-atencion'),
         ('Sub Atención', 'administracion:subatenciones'),
-        ('Atenciones', None),
+        ('Ausencias', 'administracion:ausencias'),
+        ('Felicitaciones', 'administracion:felicitaciones'),
+        ('Reclamos', 'administracion:reclamos'),
+        ('Hitos', 'administracion:hitos'),
+        ('Registros', 'administracion:registros'),
+        ('Atenciones Sociales', 'administracion:atenciones-sociales'),
+        ('Compromisos', 'administracion:compromisos'),
+        ('Vecinos', 'administracion:vecinos'),
+        ('Juntas de Vecinos', 'administracion:juntas'),
         ('Historial', 'administracion:historial'),
         ('Auditoría de recuperación', 'administracion:auditoria-recuperacion'),
         ('Manual / Ayuda', 'manual'),
@@ -33,9 +49,24 @@ NAVIGATION_BY_CARGO = {
         ('Roles y permisos', 'administracion:roles'),
         ('Usuarios', 'administracion:home'),
         ('Ítems y metas', 'administracion:items'),
+        ('Metas', 'administracion:metas'),
+        ('Ajustes de Metas', 'administracion:ajustes-metas'),
+        ('Ponderaciones', 'coordinador:ponderaciones'),
+        ('Informes de Coordinación', 'coordinador:informes'),
+        ('Informes Generados', 'administracion:informes-generados'),
+        ('Resumen de Delegación', 'administracion:resumen-delegacion'),
+        ('Tendencias históricas', 'coordinador:tendencias'),
         ('Tipo de Atención', 'administracion:tipos-atencion'),
         ('Sub Atención', 'administracion:subatenciones'),
-        ('Atenciones', None),
+        ('Ausencias', 'administracion:ausencias'),
+        ('Felicitaciones', 'administracion:felicitaciones'),
+        ('Reclamos', 'administracion:reclamos'),
+        ('Hitos', 'administracion:hitos'),
+        ('Registros', 'administracion:registros'),
+        ('Atenciones Sociales', 'administracion:atenciones-sociales'),
+        ('Compromisos', 'administracion:compromisos'),
+        ('Vecinos', 'administracion:vecinos'),
+        ('Juntas de Vecinos', 'administracion:juntas'),
         ('Historial', 'administracion:historial'),
         ('Auditoría de recuperación', 'administracion:auditoria-recuperacion'),
         ('Manual / Ayuda', 'manual'),
@@ -89,9 +120,18 @@ def common_header(request):
 
     delegation = active_delegation(request)
     delegations = tuple(authorized_delegations(request.user))
-    cargo = request.user.cargo
-    role = cargo.nombre if cargo else 'Usuario'
-    navigation = list(NAVIGATION_BY_CARGO.get(role.strip().casefold(), ()))
+    cargo = getattr(request.user, 'cargo', None)
+    role = cargo.nombre if cargo else ''
+    if not role:
+        roles = getattr(request.user, 'roles', None)
+        if roles is not None:
+            role_list = roles.all() if hasattr(roles, 'all') else roles
+            first_role = next(iter(role_list), None)
+            if first_role:
+                role = getattr(first_role, 'nombre', '')
+
+    role_key = cargo_key_for_access(role) or role.strip().casefold()
+    navigation = list(NAVIGATION_BY_CARGO.get(role_key, ()))
     for definition in PERMISSION_CATALOG:
         if (
             definition.show_in_menu

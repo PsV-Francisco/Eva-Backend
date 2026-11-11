@@ -1,23 +1,37 @@
 from django.contrib.auth.models import Group
+from django.contrib.auth.models import Permission
+from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db.models import signals
 from django.dispatch import receiver
 
-from AdminApp.models import Rol, Usuario
+from AdminApp.models import Rol, Usuario, UsuarioRol
 from AdminApp.roles import synchronize_user_role_groups
+from config.permissions import PERMISSION_CATALOG
 
 
-#@receiver(signals.m2m_changed, sender=Usuario.roles.through)
-# def synchronize_role_groups(sender, instance, action, **kwargs):
-    #if action not in {'post_add', 'post_remove', 'post_clear'}:
-        #return
+@receiver(signals.post_migrate)
+def provision_catalog_permissions(sender, using, **kwargs):
+    if sender.name != 'AdminApp':
+        return
 
-    #synchronize_user_role_groups(instance)
+    content_type = ContentType.objects.db_manager(using).get_for_model(Rol)
+    permissions = Permission.objects.using(using)
+    for definition in PERMISSION_CATALOG:
+        permissions.get_or_create(
+            content_type=content_type,
+            codename=definition.codename,
+            defaults={'name': definition.label},
+        )
 
 
 @receiver(signals.post_save, sender=Rol)
-def synchronize_users_after_role_change(sender, instance, **kwargs):
-    for user in instance.usuarios.all():
+def synchronize_users_after_role_change(sender, instance, using='default', **kwargs):
+    user_ids = UsuarioRol.objects.using(using).filter(
+        rol=instance,
+        fecha_fin__isnull=True,
+    ).values_list('usuario_id', flat=True).distinct()
+    for user in Usuario.objects.using(using).filter(pk__in=user_ids):
         synchronize_user_role_groups(user)
 
 

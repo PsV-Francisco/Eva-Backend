@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -17,7 +18,9 @@ def authorized_delegations(user):
     return Delegacion.objects.filter(
         usuariodelegacion__usuario=user,
         usuariodelegacion__fecha_fin__isnull=True,
-        estado=Delegacion.Estado.ACTIVA,
+    ).filter(
+        Q(estado=Delegacion.Estado.ACTIVA)
+        | Q(estado__iexact='activo')
     ).distinct().order_by('nombre')
 
 

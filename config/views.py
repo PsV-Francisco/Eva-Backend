@@ -4,6 +4,8 @@ from django.views.decorators.http import require_GET
 from django.shortcuts import redirect, render
 from django.contrib.auth.decorators import login_required
 
+from config.permissions import cargo_key_for_access
+
 
 MANUALS = {
     'administrador': {
@@ -175,9 +177,8 @@ def _role_key(name):
 
 @login_required
 def home_redirect(request):
-    cargo = request.user.cargo
-    if not cargo:
-        raise PermissionDenied
+    cargo = getattr(request.user, 'cargo', None)
+    cargo_name = _role_key(getattr(cargo, 'nombre', ''))
 
     cargo_routes = {
         'funcionario': 'funcionario:home',
@@ -185,15 +186,47 @@ def home_redirect(request):
         'verificador': 'supervisor:home',
         'delegado': 'delegado:home',
         'coordinador': 'coordinador:home',
-        'admin': 'administracion:home',
-        'administrador': 'administracion:home',
+        'admin': 'administracion:dashboard',
+        'administrador': 'administracion:dashboard',
         'vistaf': 'vistaf:home',
         'consulta': 'vistaf:home',
         'usuario de consulta': 'vistaf:home',
     }
-    route_name = cargo_routes.get(cargo.nombre.strip().casefold())
+    cargo_key = cargo_key_for_access(cargo_name)
+    route_name = cargo_routes.get(cargo_key)
+
     if route_name is None:
-        raise PermissionDenied
+        roles = getattr(request.user, 'roles', None)
+        if roles is None and hasattr(request.user, 'usuariorol_set'):
+            roles = request.user.usuariorol_set.filter(
+                fecha_fin__isnull=True,
+            ).select_related('rol')
+            role_names = (
+                getattr(user_role.rol, 'nombre', '')
+                for user_role in roles
+            )
+        elif hasattr(roles, 'all'):
+            role_names = (
+                getattr(role, 'nombre', '')
+                for role in roles.all()
+            )
+        else:
+            role_names = (
+                getattr(role, 'nombre', '')
+                for role in (roles or ())
+            )
+
+        for role_name in role_names:
+            route_name = cargo_routes.get(cargo_key_for_access(role_name))
+            if route_name:
+                break
+
+    if route_name is None:
+        if getattr(request.user, 'is_superuser', False) or getattr(request.user, 'is_staff', False):
+            route_name = 'administracion:dashboard'
+        else:
+            raise PermissionDenied
+
     return redirect(route_name)
 
 

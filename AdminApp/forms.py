@@ -64,11 +64,13 @@ class PermissionCheckboxSelectMultiple(forms.CheckboxSelectMultiple):
 def _configure_user_form_fields(form, actor):
     instance = form.instance
     delegations = Delegacion.objects.filter(
-        estado=Delegacion.Estado.ACTIVA,
+        Q(estado=Delegacion.Estado.ACTIVA)
+        | Q(estado__iexact='activo')
     )
     if instance.pk:
         delegations = Delegacion.objects.filter(
             Q(estado=Delegacion.Estado.ACTIVA)
+            | Q(estado__iexact='activo')
             | Q(usuariodelegacion__usuario=instance)
         ).distinct()
     form.fields['delegacion'].queryset = delegations.order_by('nombre')
@@ -262,6 +264,26 @@ class UsuarioCreationForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class UsuarioUpdateForm(BootstrapFormMixin, forms.ModelForm):
+    delegacion = forms.ModelChoiceField(
+        queryset=Delegacion.objects.none(),
+        required=False,
+        label='Delegación principal',
+    )
+    delegaciones_autorizadas = forms.ModelMultipleChoiceField(
+        queryset=Delegacion.objects.none(),
+        required=False,
+        label='Delegaciones autorizadas',
+    )
+    cargo = forms.ModelChoiceField(
+        queryset=Cargo.objects.none(),
+        required=True,
+        label='Cargo',
+    )
+    roles = forms.ModelMultipleChoiceField(
+        queryset=Rol.objects.none(),
+        required=False,
+        label='Roles',
+    )
     password1 = forms.CharField(label='Nueva contraseña', widget=forms.PasswordInput, required=False)
     password2 = forms.CharField(label='Confirmar contraseña', widget=forms.PasswordInput, required=False)
 
@@ -596,12 +618,11 @@ class CargoFuncionForm(BootstrapFormMixin, forms.ModelForm):
 class ItemForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Item
-        fields = ('codigo', 'nombre', 'descripcion', 'ponderacion', 'estado')
+        fields = ('codigo', 'nombre', 'descripcion', 'estado')
         labels = {
             'codigo': 'Código',
             'nombre': 'Nombre',
             'descripcion': 'Descripción',
-            'ponderacion': 'Ponderación (%)',
             'estado': 'Estado',
         }
         widgets = {'descripcion': forms.Textarea(attrs={'rows': 3})}
@@ -663,9 +684,12 @@ class DesempenoForm(BootstrapFormMixin, forms.ModelForm):
 
     def __init__(
         self, *args, user=None, delegation=None, global_scope=False,
-        allow_closed_periods=False, **kwargs,
+        allow_closed_periods=False, meta_only=False, **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        if meta_only:
+            for field_name in ('usuario', 'item', 'periodo'):
+                self.fields[field_name].disabled = True
         usuarios = Usuario.objects.filter(is_active=True)
         if (
             user and not global_scope and user.cargo

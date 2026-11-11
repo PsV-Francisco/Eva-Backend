@@ -9,23 +9,29 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from AdminApp.models import Cargo, Delegacion, Historial, ParametroSistema, SubAtencion, TipoAtencion
-from CoordinadorApp.models import Desempeno, Funcion, Item, Periodo
+from AdminApp.models import (
+    Cargo,
+    Delegacion,
+    Historial,
+    ParametroSistema,
+    UsuarioCargo,
+    UsuarioDelegacion,
+)
+from CoordinadorApp.models import Desempeno, Item, Periodo
+from CoordinadorApp.models import AtencionSocial, GestionAtencion
 from django.test import Client
 from DelegadoApp.models import Agenda, Compromiso, HistorialEstadoCompromiso
 from FuncionarioApp.models import (
-    AtencionSocial,
     Beneficiado,
     CargoJv,
-    CasoSocial,
-    GestionAtencion,
-    JuntaVecinos,
-    Solicitante,
+    JuntaVecino as JuntaVecinos,
+    Subtipo as SubAtencion,
     Territorio,
+    Tipo,
     Vecino,
-    VecinoJunta,
 )
 from SupervisorApp.models import Evidencia
+from test_helpers import create_user
 
 
 class SocialCaseTests(TestCase):
@@ -33,16 +39,18 @@ class SocialCaseTests(TestCase):
         self.delegation = Delegacion.objects.create(
             nombre='Delegación de atención',
         )
-        self.attention_type = TipoAtencion.objects.create(
-            codigo='TAT-SOC',
+        self.territory = Territorio.objects.create(
+            nombre='Norte',
+            delegacion=self.delegation,
+        )
+        self.attention_type = Tipo.objects.create(
             nombre='Apoyo familiar',
         )
         self.subattention = SubAtencion.objects.create(
-            codigo='SAT-SOC',
             nombre='Orientación social',
-            tipo_atencion=self.attention_type,
+            tipo=self.attention_type,
         )
-        self.user = get_user_model().objects.create_user(
+        self.user = create_user(
             email='funcionario-social@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='funcionario'),
@@ -76,10 +84,12 @@ class SocialCaseTests(TestCase):
             nombre='Período de umbral', fecha_inicio='2026-10-01',
             fecha_fin='2026-12-31', estado=Periodo.Estado.ABIERTO,
         )
-        function = Funcion.objects.create(nombre='Función de umbral')
-        item = Item.objects.create(funcion=function, nombre='Ítem de umbral')
+        item = Item.objects.create(
+            nombre='Ítem de umbral',
+            ponderacion='99.9',
+        )
         Desempeno.objects.create(
-            usuario=self.user, item=item, periodo=period, meta=10, ponderacion=100,
+            usuario=self.user, item=item, periodo=period, meta=10,
         )
 
         personal_response = self.client.get(
@@ -87,7 +97,7 @@ class SocialCaseTests(TestCase):
         )
         personal_classification = personal_response.context['clasificacion_umbral']
 
-        delegate = get_user_model().objects.create_user(
+        delegate = create_user(
             email='delegado-umbral@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='delegado'),
@@ -109,15 +119,54 @@ class SocialCaseTests(TestCase):
         self.assertEqual(response.context['clasificacion_umbral'], None)
         self.assertContains(response, 'Sin ítems asignados')
 
+    def create_neighbor(self, nombre, telefono, delegation=None, **fields):
+        delegation = delegation or self.delegation
+        territory = Territorio.objects.create(
+            nombre=f'Territorio {nombre}',
+            delegacion=delegation,
+        )
+        junta = self.create_junta(
+            f'Junta {nombre}',
+            delegation=delegation,
+            territory=territory,
+        )
+        cargo = CargoJv.objects.create(
+            nombre=f'Cargo {nombre}',
+            permisos='Administrar junta',
+            junta_vecino=junta,
+        )
+        return Vecino.objects.create(
+            nombre=nombre,
+            telefono=telefono,
+            territorio=territory,
+            delegacion=delegation,
+            junta_vecino=junta,
+            cargo_jv=cargo,
+            **fields,
+        )
+
+    def create_junta(self, nombre, delegation=None, territory=None, **fields):
+        delegation = delegation or self.delegation
+        territory = territory or self.territory
+        return JuntaVecinos.objects.create(
+            nombre=nombre,
+            domicilio_legal='Domicilio legal',
+            territorio=territory,
+            delegacion=delegation,
+            numero_rpj=JuntaVecinos.objects.count() + 1,
+            **fields,
+        )
+
+    def create_commitment(self, **fields):
+        return Compromiso.objects.create(
+            tipo=self.attention_type,
+            subtipo=self.subattention,
+            **fields,
+        )
+
     def test_neighbors_list_defaults_to_active_and_supports_inactive_filter(self):
-        Vecino.objects.create(
-            nombre='Vecino activo', telefono='912345678', territorio='Norte',
-            delegacion=self.delegation,
-        )
-        Vecino.objects.create(
-            nombre='Vecino inactivo', telefono='923456789', territorio='Sur',
-            delegacion=self.delegation, activo=False,
-        )
+        self.create_neighbor('Vecino activo', '912345678')
+        self.create_neighbor('Vecino inactivo', '923456789', activo=False)
 
         response = self.client.get(reverse('funcionario:vecinos'))
         self.assertContains(response, 'Vecino activo')
@@ -130,15 +179,17 @@ class SocialCaseTests(TestCase):
         self.assertContains(form_response, 'list="territorios-usados"')
 
     def test_neighbor_crud_warns_on_duplicate_phone_and_validates_fields(self):
-        Vecino.objects.create(
-            nombre='Vecino original', telefono='9 123 456 78',
-            territorio='Norte', delegacion=self.delegation,
-        )
+        original = self.create_neighbor('Vecino original', '9 123 456 78')
+        territory_id = original.territorio_id
+        junta_id = original.junta_vecino_id
+        cargo_id = original.cargo_jv_id
         response = self.client.post(reverse('funcionario:vecino_nuevo'), {
             'nombre': 'Vecino repetido',
             'telefono': '912345678',
             'direccion': '',
-            'territorio': 'Norte',
+            'territorio': territory_id,
+            'junta_vecino': junta_id,
+            'cargo_jv': cargo_id,
             'delegacion': self.delegation.pk,
             'solicitante': '',
             'activo': 'on',
@@ -154,11 +205,137 @@ class SocialCaseTests(TestCase):
         self.assertEqual(invalid.status_code, 200)
         self.assertEqual(Vecino.objects.filter(nombre='A').count(), 0)
 
+    def test_new_neighbor_form_shows_scoped_location_options_and_selects_active_delegation(self):
+        neighbor = self.create_neighbor('Vecino con referencias', '912340000')
+
+        response = self.client.get(reverse('funcionario:vecino_nuevo'))
+
+        self.assertEqual(response.status_code, 200)
+        form = response.context['form']
+        self.assertEqual(form['delegacion'].value(), self.delegation.pk)
+        self.assertIn(neighbor.territorio, form.fields['territorio'].queryset)
+        self.assertIn(neighbor.junta_vecino, form.fields['junta_vecino'].queryset)
+        self.assertIn(neighbor.cargo_jv, form.fields['cargo_jv'].queryset)
+        self.assertContains(response, neighbor.territorio.nombre)
+        self.assertContains(response, neighbor.junta_vecino.nombre)
+        self.assertContains(response, neighbor.cargo_jv.nombre)
+
+    def test_new_neighbor_form_accepts_legacy_active_delegation_and_related_options(self):
+        legacy_delegation = Delegacion.objects.create(
+            nombre='Delegación legado',
+            estado='Activo',
+        )
+        territory = Territorio.objects.create(
+            nombre='Territorio legado',
+            delegacion=legacy_delegation,
+        )
+        junta = self.create_junta(
+            'Junta legado',
+            delegation=legacy_delegation,
+            territory=territory,
+        )
+        cargo = CargoJv.objects.create(
+            nombre='Cargo legado',
+            permisos='',
+            junta_vecino=junta,
+        )
+        funcionario_cargo, _ = Cargo.objects.get_or_create(
+            nombre='funcionario',
+        )
+        user = create_user(
+            email='funcionario-delegacion-legada@sgr.test',
+            password='Sgr-Test-Password-418!',
+            cargo=funcionario_cargo,
+            delegacion=legacy_delegation,
+        )
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('funcionario:vecino_nuevo'))
+
+        self.assertEqual(response.status_code, 200)
+        form = response.context['form']
+        self.assertEqual(form['delegacion'].value(), legacy_delegation.pk)
+        self.assertIn(territory, form.fields['territorio'].queryset)
+        self.assertIn(junta, form.fields['junta_vecino'].queryset)
+        self.assertIn(cargo, form.fields['cargo_jv'].queryset)
+
+    def test_new_neighbor_form_creates_missing_references_and_audits_them(self):
+        response = self.client.post(reverse('funcionario:vecino_nuevo'), {
+            'nombre': 'Vecino nuevo con referencias',
+            'telefono': '912345678',
+            'direccion': 'Calle Nueva 123',
+            'delegacion': self.delegation.pk,
+            'territorio': '',
+            'nuevo_territorio': 'Territorio creado en línea',
+            'junta_vecino': '',
+            'nuevo_nombre_junta': 'Junta creada en línea',
+            'nuevo_domicilio_junta': 'Av. Principal 100',
+            'nuevo_numero_rpj': '9876',
+            'cargo_jv': '',
+            'nuevo_cargo_junta': 'Secretaría',
+            'nuevo_cargo_permisos': 'Registrar actas',
+            'solicitante': '',
+            'activo': 'on',
+        })
+
+        self.assertRedirects(response, reverse('funcionario:vecinos'))
+        territory = Territorio.objects.get(
+            nombre='Territorio creado en línea',
+        )
+        junta = JuntaVecinos.objects.get(nombre='Junta creada en línea')
+        cargo = CargoJv.objects.get(nombre='Secretaría')
+        neighbor = Vecino.objects.get(nombre='Vecino nuevo con referencias')
+        self.assertEqual(territory.delegacion, self.delegation)
+        self.assertEqual(junta.territorio, territory)
+        self.assertEqual(junta.delegacion, self.delegation)
+        self.assertEqual(cargo.junta_vecino, junta)
+        self.assertEqual(neighbor.territorio, territory)
+        self.assertEqual(neighbor.junta_vecino, junta)
+        self.assertEqual(neighbor.cargo_jv, cargo)
+        for record in (territory, junta, cargo):
+            self.assertTrue(
+                Historial.objects.filter(
+                    entidad_afectada=(
+                        f'{record.__class__.__name__}:{record.pk}'
+                    ),
+                ).exists(),
+            )
+
+    def test_new_neighbor_cannot_create_references_outside_authorized_delegations(self):
+        unauthorized = Delegacion.objects.create(
+            nombre='Delegación no autorizada para vecino',
+        )
+
+        response = self.client.post(reverse('funcionario:vecino_nuevo'), {
+            'nombre': 'Vecino fuera de alcance',
+            'telefono': '912345679',
+            'direccion': '',
+            'delegacion': unauthorized.pk,
+            'territorio': '',
+            'nuevo_territorio': 'Territorio fuera de alcance',
+            'junta_vecino': '',
+            'nuevo_nombre_junta': 'Junta fuera de alcance',
+            'nuevo_domicilio_junta': 'Domicilio',
+            'nuevo_numero_rpj': '9877',
+            'cargo_jv': '',
+            'nuevo_cargo_junta': 'Cargo fuera de alcance',
+            'nuevo_cargo_permisos': '',
+            'solicitante': '',
+            'activo': 'on',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            Territorio.objects.filter(
+                nombre='Territorio fuera de alcance',
+            ).exists(),
+        )
+
     def test_neighbor_scope_is_limited_to_delegation_and_admin_sees_all(self):
         other_delegation = Delegacion.objects.create(nombre='Otra delegación vecinal')
-        foreign_neighbor = Vecino.objects.create(
-            nombre='Vecino extranjero', telefono='934567890', territorio='Centro',
-            delegacion=other_delegation,
+        foreign_neighbor = self.create_neighbor(
+            'Vecino extranjero', '934567890', delegation=other_delegation,
         )
         self.assertEqual(
             self.client.get(reverse('funcionario:vecinos')).context['page_obj'].paginator.count,
@@ -169,7 +346,7 @@ class SocialCaseTests(TestCase):
             404,
         )
 
-        admin = get_user_model().objects.create_user(
+        admin = create_user(
             email='administrador-vecinos@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='administrador'),
@@ -179,52 +356,38 @@ class SocialCaseTests(TestCase):
         self.assertContains(response, 'Vecino extranjero')
 
     def test_deleting_neighbor_sets_solicitante_link_null_without_deleting_solicitante(self):
-        solicitante = Solicitante.objects.create(
-            identificador='11111111-1', nombre='Solicitante vinculado',
-            delegacion=self.delegation,
+        solicitante = Beneficiado.objects.create(
+            nombre='Solicitante',
+            apellido='Vinculado',
+            telefono=945678901,
         )
-        vecino = Vecino.objects.create(
-            nombre='Vecino vinculado', telefono='945678901', territorio='Norte',
-            delegacion=self.delegation, solicitante=solicitante,
+        vecino = self.create_neighbor(
+            'Vecino vinculado', '945678901', solicitante=solicitante,
         )
         vecino.delete()
         solicitante.refresh_from_db()
-        self.assertTrue(Solicitante.objects.filter(pk=solicitante.pk).exists())
+        self.assertTrue(Beneficiado.objects.filter(pk=solicitante.pk).exists())
         self.assertFalse(Vecino.objects.filter(pk=vecino.pk).exists())
 
     def _junta_payload(self, **overrides):
         payload = {
             'nombre': 'Junta Nueva',
             'domicilio_legal': 'Calle Legal 123',
-            'territorio': 'Norte',
+            'territorio': self.territory.pk,
             'delegacion': self.delegation.pk,
-            'cantidad_socios_activos': '10',
-            'fecha_constitucion': '2020-01-01',
-            'numero_personalidad_juridica': 'PJ-001',
-            'fecha_inscripcion': '2020-02-01',
-            'numero_registro': 'REG-001',
-            'activo': 'on',
+            'socios_activos': '10',
+            'fecha_constitucion': '2020-01-01T00:00',
+            'numero_rpj': '1',
+            'fecha_ingreso': '2020-02-01T00:00',
+            'numero_registro': '1',
         }
         payload.update(overrides)
         return payload
 
     def test_vecino_junta_duplicate_is_rejected_without_server_error(self):
-        first = JuntaVecinos.objects.create(
-            nombre='Junta Uno', domicilio_legal='Legal 1', territorio='Norte',
-            delegacion=self.delegation, fecha_constitucion='2020-01-01',
-            numero_personalidad_juridica='PJ-101', fecha_inscripcion='2020-02-01',
-            numero_registro='REG-101',
-        )
-        second = JuntaVecinos.objects.create(
-            nombre='Junta Dos', domicilio_legal='Legal 2', territorio='Norte',
-            delegacion=self.delegation, fecha_constitucion='2020-01-01',
-            numero_personalidad_juridica='PJ-102', fecha_inscripcion='2020-02-01',
-            numero_registro='REG-102',
-        )
-        vecino = Vecino.objects.create(
-            nombre='Vecino con juntas', telefono='956789012', territorio='Norte',
-            delegacion=self.delegation,
-        )
+        first = self.create_junta('Junta Uno')
+        second = self.create_junta('Junta Dos')
+        vecino = self.create_neighbor('Vecino con juntas', '956789012')
         VecinoJunta.objects.create(vecino=vecino, junta=first)
         VecinoJunta.objects.create(vecino=vecino, junta=second)
 
@@ -232,9 +395,10 @@ class SocialCaseTests(TestCase):
             reverse('funcionario:vecino_editar', args=[vecino.pk]),
             {
                 'nombre': vecino.nombre, 'telefono': vecino.telefono,
-                'direccion': '', 'territorio': vecino.territorio,
+                'direccion': '', 'territorio': vecino.territorio_id,
                 'delegacion': self.delegation.pk, 'solicitante': '',
-                'activo': 'on', 'junta': second.pk, 'es_dirigente': 'on',
+                'activo': 'on', 'junta_vecino': second.pk,
+                'cargo_jv': vecino.cargo_jv_id,
             },
         )
         self.assertEqual(response.status_code, 200)
@@ -242,22 +406,9 @@ class SocialCaseTests(TestCase):
         self.assertEqual(VecinoJunta.objects.filter(vecino=vecino).count(), 2)
 
     def test_vecino_form_changes_only_displayed_membership_and_warns_on_others(self):
-        first = JuntaVecinos.objects.create(
-            nombre='Junta Principal', domicilio_legal='Legal 1', territorio='Norte',
-            delegacion=self.delegation, fecha_constitucion='2020-01-01',
-            numero_personalidad_juridica='PJ-201', fecha_inscripcion='2020-02-01',
-            numero_registro='REG-201',
-        )
-        second = JuntaVecinos.objects.create(
-            nombre='Junta Secundaria', domicilio_legal='Legal 2', territorio='Norte',
-            delegacion=self.delegation, fecha_constitucion='2020-01-01',
-            numero_personalidad_juridica='PJ-202', fecha_inscripcion='2020-02-01',
-            numero_registro='REG-202',
-        )
-        vecino = Vecino.objects.create(
-            nombre='Vecino dirigente', telefono='967890123', territorio='Norte',
-            delegacion=self.delegation,
-        )
+        first = self.create_junta('Junta Principal')
+        second = self.create_junta('Junta Secundaria')
+        vecino = self.create_neighbor('Vecino dirigente', '967890123')
         VecinoJunta.objects.create(vecino=vecino, junta=first)
         VecinoJunta.objects.create(vecino=vecino, junta=second)
 
@@ -265,9 +416,10 @@ class SocialCaseTests(TestCase):
             reverse('funcionario:vecino_editar', args=[vecino.pk]),
             {
                 'nombre': vecino.nombre, 'telefono': vecino.telefono,
-                'direccion': '', 'territorio': vecino.territorio,
+                'direccion': '', 'territorio': vecino.territorio_id,
                 'delegacion': self.delegation.pk, 'solicitante': '',
-                'activo': 'on', 'junta': first.pk, 'es_dirigente': 'on',
+                'activo': 'on', 'junta_vecino': first.pk,
+                'cargo_jv': vecino.cargo_jv_id,
             },
         )
         self.assertRedirects(response, reverse('funcionario:vecinos'))
@@ -277,14 +429,14 @@ class SocialCaseTests(TestCase):
         self.assertTrue(VecinoJunta.objects.filter(vecino=vecino, junta=second).exists())
 
     def test_junta_validations_and_personality_number_warning(self):
-        admin = get_user_model().objects.create_user(
+        admin = create_user(
             email='admin-juntas@sgr.test', password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='administrador'),
         )
         self.client.force_login(admin)
         invalid = self.client.post(
             reverse('funcionario:junta_nueva'),
-            self._junta_payload(cantidad_socios_activos='-1', fecha_inscripcion='2019-01-01'),
+            self._junta_payload(socios_activos='-1', fecha_ingreso='2019-01-01T00:00'),
         )
         self.assertEqual(invalid.status_code, 200)
         self.assertFalse(JuntaVecinos.objects.exists())
@@ -293,32 +445,19 @@ class SocialCaseTests(TestCase):
         self.assertRedirects(created, reverse('funcionario:juntas'))
         warning = self.client.post(
             reverse('funcionario:junta_nueva'),
-            self._junta_payload(nombre='Junta Duplicada', numero_registro='REG-002'),
+            self._junta_payload(nombre='Junta Duplicada', numero_rpj='1'),
         )
         self.assertRedirects(warning, reverse('funcionario:juntas'))
         self.assertTrue(any('número de personalidad jurídica' in str(message) for message in get_messages(warning.wsgi_request)))
 
     def test_employee_can_delete_only_unrelated_juntas_and_deactivate_related_ones(self):
-        unrelated = JuntaVecinos.objects.create(
-            nombre='Junta Eliminable', domicilio_legal='Legal', territorio='Norte',
-            delegacion=self.delegation, fecha_constitucion='2020-01-01',
-            numero_personalidad_juridica='PJ-301', fecha_inscripcion='2020-02-01',
-            numero_registro='REG-301',
-        )
+        unrelated = self.create_junta('Junta Eliminable')
         response = self.client.post(reverse('funcionario:junta_eliminar', args=[unrelated.pk]))
         self.assertRedirects(response, reverse('funcionario:juntas'))
         self.assertFalse(JuntaVecinos.objects.filter(pk=unrelated.pk).exists())
 
-        related = JuntaVecinos.objects.create(
-            nombre='Junta Relacionada', domicilio_legal='Legal', territorio='Norte',
-            delegacion=self.delegation, fecha_constitucion='2020-01-01',
-            numero_personalidad_juridica='PJ-302', fecha_inscripcion='2020-02-01',
-            numero_registro='REG-302',
-        )
-        vecino = Vecino.objects.create(
-            nombre='Vecino relacionado', telefono='978901234', territorio='Norte',
-            delegacion=self.delegation,
-        )
+        related = self.create_junta('Junta Relacionada')
+        vecino = self.create_neighbor('Vecino relacionado', '978901234')
         VecinoJunta.objects.create(vecino=vecino, junta=related)
         response = self.client.post(reverse('funcionario:junta_eliminar', args=[related.pk]))
         self.assertRedirects(response, reverse('funcionario:juntas'))
@@ -329,7 +468,7 @@ class SocialCaseTests(TestCase):
         self.assertFalse(JuntaVecinos.objects.get(pk=related.pk).activo)
 
     def test_delegate_cannot_create_junta_yet(self):
-        delegate = get_user_model().objects.create_user(
+        delegate = create_user(
             email='delegado-sin-juntas@sgr.test', password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='delegado'), delegacion=self.delegation,
         )
@@ -414,14 +553,12 @@ class SocialCaseTests(TestCase):
         self.assertEqual(attention.descripcion, 'Solicitud de orientación familiar')
 
     def test_case_intake_rejects_subattention_of_another_type(self):
-        other_type = TipoAtencion.objects.create(
-            codigo='TAT-OTR',
+        other_type = Tipo.objects.create(
             nombre='Otro tipo',
         )
         other_subattention = SubAtencion.objects.create(
-            codigo='SAT-OTR',
             nombre='Otra sub atención',
-            tipo_atencion=other_type,
+            tipo=other_type,
         )
 
         response = self.client.post(reverse('funcionario:atencion_social'), {
@@ -439,18 +576,15 @@ class SocialCaseTests(TestCase):
         self.assertFalse(AtencionSocial.objects.exists())
 
     def test_solicitante_lookup_is_limited_to_active_delegation(self):
-        applicant = Solicitante.objects.create(
-            identificador='12345678-K',
-            nombre='Persona solicitante',
-            delegacion=self.delegation,
+        applicant = Beneficiado.objects.create(
+            nombre='Persona',
+            apellido='Solicitante',
+            telefono=12345678,
         )
-        other_delegation = Delegacion.objects.create(
-            nombre='Otra delegación de atención',
-        )
-        Solicitante.objects.create(
-            identificador='87654321-0',
-            nombre='Otra persona',
-            delegacion=other_delegation,
+        Beneficiado.objects.create(
+            nombre='Otra',
+            apellido='Beneficiada',
+            telefono=87654321,
         )
 
         for query in ('Persona', '12345678'):
@@ -466,22 +600,19 @@ class SocialCaseTests(TestCase):
                 )
 
     def test_subattention_endpoint_returns_only_active_children(self):
-        self.subattention.estado = SubAtencion.Estado.INACTIVO
+        self.subattention.estado = SubAtencion.Estado.DESACTIVADO
         self.subattention.save(update_fields=['estado'])
         active_subattention = SubAtencion.objects.create(
-            codigo='SAT-SOC-ACT',
             nombre='Orientación activa',
-            tipo_atencion=self.attention_type,
+            tipo=self.attention_type,
         )
-        inactive_type = TipoAtencion.objects.create(
-            codigo='TAT-INAC',
+        inactive_type = Tipo.objects.create(
             nombre='Tipo inactivo',
-            estado=TipoAtencion.Estado.INACTIVO,
+            estado=Tipo.Estado.DESACTIVADO,
         )
         SubAtencion.objects.create(
-            codigo='SAT-INAC',
             nombre='Sub atención inactiva',
-            tipo_atencion=inactive_type,
+            tipo=inactive_type,
         )
 
         response = self.client.get(
@@ -504,16 +635,16 @@ class SocialCaseTests(TestCase):
         other_delegation = Delegacion.objects.create(
             nombre='Delegación privada',
         )
-        foreign_applicant = Solicitante.objects.create(
-            identificador='99999999-K',
-            nombre='Persona de otra delegación',
-            delegacion=other_delegation,
+        foreign_applicant = Beneficiado.objects.create(
+            nombre='Persona',
+            apellido='de otra delegación',
+            telefono=99999999,
         )
 
         response = self.client.post(reverse('funcionario:atencion_social'), {
             'action': 'crear_caso',
             'solicitante_registrado': foreign_applicant.pk,
-            'identificador': foreign_applicant.identificador,
+            'identificador': foreign_applicant.pk,
             'nombre_solicitante': foreign_applicant.nombre,
             'tipo_atencion_catalogo': self.attention_type.pk,
             'sub_atencion': self.subattention.pk,
@@ -524,14 +655,17 @@ class SocialCaseTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(AtencionSocial.objects.exists())
-        self.assertEqual(Solicitante.objects.count(), 1)
+        self.assertEqual(Beneficiado.objects.count(), 1)
 
     def test_switching_delegation_scopes_cases_and_solicitantes(self):
         self.create_case()
         second_delegation = Delegacion.objects.create(
             nombre='Delegación secundaria de atención',
         )
-        self.user.delegaciones_autorizadas.add(second_delegation)
+        UsuarioDelegacion.objects.create(
+            usuario=self.user,
+            delegacion=second_delegation,
+        )
         session = self.client.session
         session['active_delegation_id'] = second_delegation.pk
         session.save()
@@ -548,7 +682,7 @@ class SocialCaseTests(TestCase):
         )
 
     def test_user_without_active_delegation_cannot_create_case(self):
-        user = get_user_model().objects.create_user(
+        user = create_user(
             email='funcionario-sin-delegacion@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=self.user.cargo,
@@ -569,14 +703,14 @@ class SocialCaseTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'No tienes una delegación activa autorizada')
         self.assertFalse(AtencionSocial.objects.exists())
-        self.assertFalse(Solicitante.objects.exists())
+        self.assertFalse(Beneficiado.objects.exists())
 
     def test_cancel_does_not_create_case_or_applicant(self):
         response = self.client.get(reverse('funcionario:atencion_social'))
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(AtencionSocial.objects.exists())
-        self.assertFalse(Solicitante.objects.exists())
+        self.assertFalse(Beneficiado.objects.exists())
 
     def test_user_cannot_add_attention_to_another_users_case(self):
         case_record = AtencionSocial.objects.create(
@@ -585,7 +719,7 @@ class SocialCaseTests(TestCase):
             fecha='2026-10-20',
         )
         case = CasoSocial.objects.create(atencion_social=case_record)
-        other_user = get_user_model().objects.create_user(
+        other_user = create_user(
             email='otro-funcionario@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=self.user.cargo,
@@ -603,7 +737,7 @@ class SocialCaseTests(TestCase):
         self.assertFalse(GestionAtencion.objects.filter(atencion=case_record).exists())
 
     def test_employee_pages_require_employee_cargo(self):
-        user = get_user_model().objects.create_user(
+        user = create_user(
             email='delegado-social@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=Cargo.objects.create(nombre='delegado'),
@@ -622,20 +756,26 @@ class SocialCaseTests(TestCase):
 
     def test_assigned_employee_can_update_commitment_with_history(self):
         delegation = Delegacion.objects.create(nombre='Delegación de agenda')
-        self.user.delegacion = delegation
-        self.user.save(update_fields=['delegacion'])
+        UsuarioDelegacion.objects.filter(
+            usuario=self.user,
+            fecha_fin__isnull=True,
+        ).update(fecha_fin=timezone.now())
+        UsuarioDelegacion.objects.create(
+            usuario=self.user,
+            delegacion=delegation,
+        )
         period = Periodo.objects.create(
             nombre='Agenda de funcionario',
             fecha_inicio='2026-10-01',
             fecha_fin='2026-12-31',
         )
         agenda = Agenda.objects.create(delegacion=delegation, periodo=period)
-        commitment = Compromiso.objects.create(
+        commitment = self.create_commitment(
             agenda=agenda,
             descripcion='Compromiso asignado',
             fecha='2026-10-25',
         )
-        commitment.responsables.add(self.user)
+        commitment.responsable.add(self.user)
 
         response = self.client.post(reverse('funcionario:agenda_colectiva'), {
             'action': 'estado_compromiso',
@@ -654,15 +794,21 @@ class SocialCaseTests(TestCase):
 
     def test_unassigned_employee_cannot_update_commitment(self):
         delegation = Delegacion.objects.create(nombre='Delegación restringida')
-        self.user.delegacion = delegation
-        self.user.save(update_fields=['delegacion'])
+        UsuarioDelegacion.objects.filter(
+            usuario=self.user,
+            fecha_fin__isnull=True,
+        ).update(fecha_fin=timezone.now())
+        UsuarioDelegacion.objects.create(
+            usuario=self.user,
+            delegacion=delegation,
+        )
         period = Periodo.objects.create(
             nombre='Agenda restringida',
             fecha_inicio='2026-10-01',
             fecha_fin='2026-12-31',
         )
         agenda = Agenda.objects.create(delegacion=delegation, periodo=period)
-        commitment = Compromiso.objects.create(
+        commitment = self.create_commitment(
             agenda=agenda,
             descripcion='No asignado',
             fecha='2026-10-25',
@@ -694,15 +840,15 @@ class SocialCaseTests(TestCase):
         })
         self.assertRedirects(response, reverse('funcionario:agenda_colectiva'))
         commitment = Compromiso.objects.get(descripcion='Compromiso propio')
-        self.assertEqual(list(commitment.responsables.values_list('pk', flat=True)), [self.user.pk])
+        self.assertEqual(list(commitment.responsable.values_list('pk', flat=True)), [self.user.pk])
 
-        other_user = get_user_model().objects.create_user(
+        other_user = create_user(
             email='responsable-delegado@sgr.test',
             password='Sgr-Test-Password-418!',
             cargo=self.user.cargo,
             delegacion=self.delegation,
         )
-        commitment.responsables.add(other_user)
+        commitment.responsable.add(other_user)
         response = self.client.post(
             reverse('funcionario:compromiso_editar', args=[commitment.pk]),
             {
@@ -716,7 +862,7 @@ class SocialCaseTests(TestCase):
         self.assertRedirects(response, reverse('funcionario:agenda_colectiva'))
         commitment.refresh_from_db()
         self.assertEqual(commitment.descripcion, 'Compromiso modificado')
-        self.assertEqual(set(commitment.responsables.values_list('pk', flat=True)), {self.user.pk, other_user.pk})
+        self.assertEqual(set(commitment.responsable.values_list('pk', flat=True)), {self.user.pk, other_user.pk})
 
     def test_employee_can_upload_commitment_evidence_and_supervisor_inbox_opens(self):
         period = Periodo.objects.create(
@@ -724,10 +870,10 @@ class SocialCaseTests(TestCase):
             fecha_fin='2026-12-31', estado=Periodo.Estado.ABIERTO,
         )
         agenda = Agenda.objects.create(delegacion=self.delegation, periodo=period)
-        commitment = Compromiso.objects.create(
+        commitment = self.create_commitment(
             agenda=agenda, descripcion='Compromiso con respaldo', fecha='2026-10-20',
         )
-        commitment.responsables.add(self.user)
+        commitment.responsable.add(self.user)
         with TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
             response = self.client.post(
                 reverse('funcionario:compromiso_evidencia', args=[commitment.pk]),
@@ -750,8 +896,14 @@ class SocialCaseTests(TestCase):
                 accion='Cargar evidencia de compromiso',
             ).exists())
 
-            self.user.cargo = Cargo.objects.create(nombre='supervisor')
-            self.user.save(update_fields=['cargo'])
+            UsuarioCargo.objects.filter(
+                usuario=self.user,
+                fecha_fin__isnull=True,
+            ).update(fecha_fin=timezone.now())
+            UsuarioCargo.objects.create(
+                usuario=self.user,
+                cargo=Cargo.objects.create(nombre='supervisor'),
+            )
             response = self.client.get(reverse('supervisor:home'))
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, 'Compromiso')
@@ -765,10 +917,10 @@ class SocialCaseTests(TestCase):
             fecha_fin='2026-12-31', estado=Periodo.Estado.ABIERTO,
         )
         agenda = Agenda.objects.create(delegacion=other_delegation, periodo=period)
-        commitment = Compromiso.objects.create(
+        commitment = self.create_commitment(
             agenda=agenda, descripcion='Compromiso fuera de alcance', fecha='2026-10-20',
         )
-        commitment.responsables.add(self.user)
+        commitment.responsable.add(self.user)
 
         response = self.client.get(
             reverse('funcionario:compromiso_editar', args=[commitment.pk]),
@@ -782,7 +934,7 @@ class SocialCaseTests(TestCase):
             fecha_fin='2026-12-31', estado=Periodo.Estado.ABIERTO,
         )
         agenda = Agenda.objects.create(delegacion=self.delegation, periodo=period)
-        commitment = Compromiso.objects.create(
+        commitment = self.create_commitment(
             agenda=agenda, descripcion='Compromiso no asignado', fecha='2026-10-20',
         )
 
@@ -810,10 +962,10 @@ class SocialCaseTests(TestCase):
         self.assertFalse(Compromiso.objects.filter(descripcion='No debe crearse').exists())
 
         agenda = Agenda.objects.create(delegacion=self.delegation, periodo=closed_period)
-        commitment = Compromiso.objects.create(
+        commitment = self.create_commitment(
             agenda=agenda, descripcion='Compromiso cerrado', fecha='2026-09-20',
         )
-        commitment.responsables.add(self.user)
+        commitment.responsable.add(self.user)
         edit_response = self.client.get(
             reverse('funcionario:compromiso_editar', args=[commitment.pk]),
         )
@@ -834,10 +986,10 @@ class SocialCaseTests(TestCase):
             fecha_fin='2026-12-31', estado=Periodo.Estado.ABIERTO,
         )
         agenda = Agenda.objects.create(delegacion=self.delegation, periodo=period)
-        commitment = Compromiso.objects.create(
+        commitment = self.create_commitment(
             agenda=agenda, descripcion='Compromiso archivo inválido', fecha='2026-10-20',
         )
-        commitment.responsables.add(self.user)
+        commitment.responsable.add(self.user)
 
         response = self.client.post(
             reverse('funcionario:compromiso_evidencia', args=[commitment.pk]),
@@ -851,8 +1003,14 @@ class SocialCaseTests(TestCase):
         self.assertContains(response, 'No se pudo cargar la evidencia')
 
     def test_administrator_can_access_employee_commitment_routes(self):
-        self.user.cargo = Cargo.objects.create(nombre='administrador')
-        self.user.save(update_fields=['cargo'])
+        UsuarioCargo.objects.filter(
+            usuario=self.user,
+            fecha_fin__isnull=True,
+        ).update(fecha_fin=timezone.now())
+        UsuarioCargo.objects.create(
+            usuario=self.user,
+            cargo=Cargo.objects.create(nombre='administrador'),
+        )
 
         response = self.client.get(reverse('funcionario:compromiso_nuevo'))
 
@@ -862,15 +1020,19 @@ class SocialCaseTests(TestCase):
 class TargetSchemaFuncionarioModelTests(TestCase):
     def setUp(self):
         self.delegacion = Delegacion.objects.create(nombre='Delegación para territorio')
+        self.territorio = Territorio.objects.create(
+            nombre='Territorio',
+            delegacion=self.delegacion,
+        )
         self.junta = JuntaVecinos.objects.create(
             nombre='Junta para cargo',
             domicilio_legal='Domicilio',
-            territorio='Territorio',
+            territorio=self.territorio,
             delegacion=self.delegacion,
             fecha_constitucion='2020-01-01',
-            numero_personalidad_juridica='RPJ-001',
-            fecha_inscripcion='2020-02-01',
-            numero_registro='REG-001',
+            numero_rpj=1,
+            fecha_ingreso='2020-02-01',
+            numero_registro=1,
         )
 
     def test_territorio_creation_and_delegacion_relation(self):
@@ -881,7 +1043,10 @@ class TargetSchemaFuncionarioModelTests(TestCase):
 
         territorio.refresh_from_db()
         self.assertEqual(territorio.delegacion, self.delegacion)
-        self.assertEqual(self.delegacion.territorios_objetivo.get(), territorio)
+        self.assertEqual(
+            self.delegacion.territorios.get(pk=territorio.pk),
+            territorio,
+        )
 
     def test_delegacion_with_territorio_is_protected(self):
         Territorio.objects.create(nombre='Sector protegido', delegacion=self.delegacion)
@@ -898,7 +1063,7 @@ class TargetSchemaFuncionarioModelTests(TestCase):
 
         cargo.refresh_from_db()
         self.assertEqual(cargo.junta_vecino, self.junta)
-        self.assertEqual(self.junta.cargos_objetivo.get(), cargo)
+        self.assertEqual(self.junta.cargos.get(), cargo)
 
     def test_junta_with_cargo_is_protected(self):
         CargoJv.objects.create(

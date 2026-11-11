@@ -32,9 +32,97 @@ from AdminApp.models import (
 )
 from AdminApp.maintainers import excel_response, maintainer
 from config.decorators import cargo_required
+from config.permissions import PERMISSION_BY_VIEW, can_access_permission
 from CoordinadorApp.authorization_forms import AuthorizationDecisionForm, AuthorizationRevokeForm
-from CoordinadorApp.models import SolicitudAutorizacionPeriodo
+from CoordinadorApp.models import Periodo, SolicitudAutorizacionPeriodo
 from CoordinadorApp.services import _authorization_snapshot, expire_authorizations
+from FuncionarioApp.models import Registro
+
+
+ADMIN_DASHBOARD_LINK_GROUPS = (
+    ('Organización', (
+        ('Usuarios', 'administracion:home'),
+        ('Cargos', 'administracion:cargos'),
+        ('Funciones', 'administracion:funciones'),
+        ('Cargos por función', 'administracion:cargos-funciones'),
+        ('Delegaciones', 'administracion:delegaciones'),
+        ('Roles y permisos', 'administracion:roles'),
+    )),
+    ('Territorio', (
+        ('Vecinos', 'administracion:vecinos'),
+        ('Juntas de Vecinos', 'administracion:juntas'),
+        ('Hitos', 'administracion:hitos'),
+    )),
+    ('Operación', (
+        ('Registros', 'administracion:registros'),
+        ('Atenciones Sociales', 'administracion:atenciones-sociales'),
+        ('Compromisos', 'administracion:compromisos'),
+        ('Ausencias', 'administracion:ausencias'),
+        ('Felicitaciones', 'administracion:felicitaciones'),
+        ('Reclamos', 'administracion:reclamos'),
+        ('Tipos de Atención', 'administracion:tipos-atencion'),
+        ('Subatenciones', 'administracion:subatenciones'),
+    )),
+    ('Metas y seguimiento', (
+        ('Ítems y metas', 'administracion:items'),
+        ('Metas', 'administracion:metas'),
+        ('Ajustes de Metas', 'administracion:ajustes-metas'),
+        ('Ponderaciones', 'coordinador:ponderaciones'),
+        ('Resumen de Delegación', 'administracion:resumen-delegacion'),
+    )),
+    ('Informes', (
+        ('Informes de Coordinación', 'coordinador:informes'),
+        ('Informes Generados', 'administracion:informes-generados'),
+        ('Tendencias históricas', 'coordinador:tendencias'),
+    )),
+    ('Auditoría', (
+        ('Historial', 'administracion:historial'),
+        ('Auditoría de recuperación', 'administracion:auditoria-recuperacion'),
+        ('Solicitudes de autorización', 'administracion:solicitudes-autorizacion'),
+    )),
+)
+
+
+def _admin_dashboard_modules(user):
+    modules = []
+    for label, shortcuts in ADMIN_DASHBOARD_LINK_GROUPS:
+        links = []
+        for link_label, route_name in shortcuts:
+            definition = PERMISSION_BY_VIEW.get(route_name)
+            if definition and can_access_permission(
+                user,
+                definition.codename,
+                definition.cargos,
+            ):
+                links.append({
+                    'label': link_label,
+                    'url_name': route_name,
+                })
+        if links:
+            modules.append({'label': label, 'links': links})
+    return modules
+
+
+@cargo_required(
+    'admin',
+    'administrador',
+    permission='access_admin_dashboard',
+)
+def dashboard(request):
+    active_delegations = Delegacion.objects.filter(
+        Q(estado=Delegacion.Estado.ACTIVA)
+        | Q(estado__iexact='activo'),
+    ).count()
+    return render(request, 'AdminApp/dashboard.html', {
+        'sgr_role': 'Administración',
+        'active_user_count': Usuario.objects.filter(is_active=True).count(),
+        'active_delegation_count': active_delegations,
+        'open_period_count': Periodo.objects.filter(
+            estado=Periodo.Estado.ABIERTO,
+        ).count(),
+        'record_count': Registro.objects.count(),
+        'dashboard_modules': _admin_dashboard_modules(request.user),
+    })
 
 
 def _user_snapshot(user):

@@ -1,0 +1,303 @@
+{% extends 'base.html' %}
+{% block title %}Gestión de Casos Sociales | SGR{% endblock %}
+{% block page_title %}Gestión de Casos Sociales{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+    <!-- SECCIÓN 1: FORMULARIO DE REGISTRO DE GESTIÓN SOCIAL -->
+    <section class="content-section split-layout">
+      <div>
+        <p class="eyebrow">NUEVA GESTIÓN</p>
+        <h2>Registrar gestión social</h2>
+        <p class="section-note">Ingresa la fecha y las observaciones para generar una nueva gestión social. El código alfanumérico único de 20 caracteres se asignará automáticamente.</p>
+
+        <form id="form-crear-gestion" novalidate>
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label" for="id_fecha">Fecha de la gestión <span class="required-mark">*</span></label>
+            <input type="date" class="form-control" id="id_fecha" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="id_observaciones">Observaciones</label>
+            <textarea class="form-control" id="id_observaciones" rows="3" placeholder="Detalles u observaciones de la gestión..."></textarea>
+          </div>
+
+          <button class="btn btn-primary" type="button" id="btn-registrar-gestion">Registrar gestión</button>
+        </form>
+      </div>
+
+      <aside class="side-note">
+        <span class="side-note-mark">i</span>
+        <h3>Identificación única</h3>
+        <p>Cada gestión social cuenta con un código alfanumérico aleatorio e inalterable de 20 caracteres que vinculará todas las atenciones asociadas.</p>
+      </aside>
+    </section>
+
+    <!-- SECCIÓN 2: HISTORIAL Y BARRA DE BÚSQUEDA KEYUP -->
+    <section class="content-section">
+      <div class="section-head d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+          <p class="eyebrow">HISTORIAL</p>
+          <h2>Gestiones registradas</h2>
+        </div>
+        <span class="count-pill">{{ gestion_count }} gestiones</span>
+      </div>
+
+      <!-- CONTROLES DE BÚSQUEDA KEYUP/INPUT -->
+      <div class="row g-2 my-2">
+        <div class="col-md-4">
+          <label class="form-label small text-muted mb-1">Filtrar por Fecha</label>
+          <input type="date" id="filter-fecha" class="form-control" placeholder="dd/mm/aaaa">
+        </div>
+        <div class="col-md-8">
+          <label class="form-label small text-muted mb-1">Filtrar por Código u Observaciones</label>
+          <input type="text" id="filter-texto" class="form-control" placeholder="Escribe para buscar instantáneamente...">
+        </div>
+      </div>
+
+      <div class="table-responsive mt-3">
+        <table class="table align-middle" id="tabla-gestiones">
+          <thead>
+            <tr>
+              <th>CÓDIGO GESTIÓN</th>
+              <th>FECHA</th>
+              <th>OBSERVACIONES</th>
+              <th class="text-center">ATENCIONES ASOCIADAS</th>
+              <th class="text-end">ACCIONES</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for g in gestiones %}
+            <tr class="gestion-row" data-fecha="{{ g.fecha|date:'Y-m-d' }}" data-texto="{{ g.codigo }} {{ g.observaciones }}">
+              <td><strong class="font-monospace text-primary">{{ g.codigo }}</strong></td>
+              <td>{{ g.fecha|date:'d/m/Y' }}</td>
+              <td>{{ g.observaciones|default:'—' }}</td>
+              <td class="text-center">
+                <span class="badge bg-secondary rounded-pill px-3 py-2 fs-6">
+                  {{ g.total_atenciones }} atenciones
+                </span>
+              </td>
+              <td class="text-end">
+                <button type="button" class="btn btn-sm btn-outline-primary btn-editar-gestion" data-id="{{ g.pk }}">
+                  <i class="bi bi-pencil me-1"></i>Editar
+                </button>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="5" class="empty-state text-center py-4">Todavía no hay gestiones sociales registradas.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- MODAL DE EDICIÓN DE GESTIÓN SOCIAL -->
+<div class="modal fade" id="modalEditarGestion" tabindex="-1" aria-labelledby="modalEditarGestionLabel" aria-hidden="true">
+  <div class="modal-dialog modal-md">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold" id="modalEditarGestionLabel">Editar Gestión Social</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <form id="form-editar-gestion">
+          <input type="hidden" id="modal-gestion-id">
+          
+          <div class="mb-3">
+            <label class="form-label text-muted">Código de Gestión (Inmutable)</label>
+            <input type="text" class="form-control font-monospace bg-light" id="modal-codigo" readonly>
+          </div>
+
+          <div class="mb-3">
+            <label for="modal-fecha" class="form-label fw-bold">Fecha *</label>
+            <input type="date" class="form-control" id="modal-fecha" required>
+          </div>
+
+          <div class="mb-3">
+            <label for="modal-observaciones" class="form-label fw-bold">Observaciones</label>
+            <textarea class="form-control" id="modal-observaciones" rows="3"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btn-guardar-edicion-gestion">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+    // 1. FILTRO DINÁMICO KEYUP Y FECHA
+    const filterFecha = document.getElementById('filter-fecha');
+    const filterTexto = document.getElementById('filter-texto');
+    const rows = document.querySelectorAll('#tabla-gestiones tbody tr.gestion-row');
+
+    function aplicarFiltros() {
+        const valFecha = filterFecha.value;
+        const valTexto = filterTexto.value.toLowerCase().trim();
+
+        rows.forEach(row => {
+            const rowFecha = row.getAttribute('data-fecha');
+            const rowTexto = row.getAttribute('data-texto').toLowerCase();
+
+            const coincideFecha = !valFecha || rowFecha === valFecha;
+            const coincideTexto = !valTexto || rowTexto.includes(valTexto);
+
+            if (coincideFecha && coincideTexto) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
+
+    if (filterFecha) filterFecha.addEventListener('change', aplicarFiltros);
+    if (filterTexto) filterTexto.addEventListener('input', aplicarFiltros);
+
+    // 2. CREACIÓN VÍA AJAX CON SWEETALERT2
+    const btnRegistrar = document.getElementById('btn-registrar-gestion');
+    btnRegistrar.addEventListener('click', function() {
+        const fecha = document.getElementById('id_fecha').value;
+        const observaciones = document.getElementById('id_observaciones').value;
+
+        if (!fecha) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Campo Requerido',
+                text: 'Por favor selecciona la fecha de la gestión social.'
+            });
+            return;
+        }
+
+        fetch("{% url 'funcionario:crear_gestion_social_ajax' %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({ fecha: fecha, observaciones: observaciones })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Gestión Creada!',
+                    text: data.message,
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => location.reload());
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error de validación',
+                    text: data.message
+                });
+            }
+        })
+        .catch(err => {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error del servidor',
+                text: 'No se pudo procesar la solicitud.'
+            });
+        });
+    });
+
+    // 3. EDICIÓN MEDIANTE MODAL EMERGENTE CON SWEETALERT2
+    const modalElement = document.getElementById('modalEditarGestion');
+    const modalEditar = new bootstrap.Modal(modalElement);
+
+    document.querySelectorAll('.btn-editar-gestion').forEach(button => {
+        button.addEventListener('click', function() {
+            const gestionId = this.getAttribute('data-id');
+            const urlDetail = "{% url 'funcionario:detalle_gestion_social_json' gestion_id=0 %}".replace('0', gestionId);
+
+            fetch(urlDetail)
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('modal-gestion-id').value = data.id;
+                    document.getElementById('modal-codigo').value = data.codigo;
+                    document.getElementById('modal-fecha').value = data.fecha;
+                    document.getElementById('modal-observaciones').value = data.observaciones;
+                    modalEditar.show();
+                })
+                .catch(() => {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: 'No se pudieron recuperar los datos de la gestión.'
+                    });
+                });
+        });
+    });
+
+    document.getElementById('btn-guardar-edicion-gestion').addEventListener('click', function() {
+        const gestionId = document.getElementById('modal-gestion-id').value;
+        const fecha = document.getElementById('modal-fecha').value;
+        const observaciones = document.getElementById('modal-observaciones').value;
+
+        if (!fecha) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Campo Requerido',
+                text: 'La fecha no puede quedar vacía.'
+            });
+            return;
+        }
+
+        const urlUpdate = "{% url 'funcionario:editar_gestion_social_ajax' gestion_id=0 %}".replace('0', gestionId);
+
+        fetch(urlUpdate, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({ fecha: fecha, observaciones: observaciones })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                modalEditar.hide();
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Actualizado!',
+                    text: data.message,
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => location.reload());
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error al actualizar',
+                    text: data.message
+                });
+            }
+        })
+        .catch(() => {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error del servidor',
+                text: 'Ocurrió una falla al guardar la edición.'
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

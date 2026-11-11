@@ -6,23 +6,22 @@ from django.db import models
 from django.utils import timezone
 
 
-
 def normalizar_telefono(value):
 	return re.sub(r'\D', '', value or '')
 
 #Modelo : Tipo (OK)
 class Tipo(models.Model):
 	class Estado(models.TextChoices):
-		ACTIVADO = 'activado','Activado'
-		DESACTIVADO = 'desactivado','Desactivado'
-	nombre = models.CharField(max_length=100,db_column='NOMBRE')
+		ACTIVADO = 'ACTIVADO', 'Activado'
+		DESACTIVADO = 'DESACTIVADO', 'Desactivado'
+	nombre = models.CharField(max_length=100, db_column='NOMBRE')
 	estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.ACTIVADO)
 	
 	class Meta:
-			ordering = ['-nombre', '-estado']
-			db_table = "tipo"
-			verbose_name = "Tipo"
-			verbose_name_plural = "Tipos"
+		ordering = ['-nombre', '-estado']
+		db_table = "tipo"
+		verbose_name = "Tipo"
+		verbose_name_plural = "Tipos"
 	
 	def __str__(self):
 		return f'{self.nombre} - {self.estado}'
@@ -30,17 +29,17 @@ class Tipo(models.Model):
 #Modelo : Subtipo (OK)
 class Subtipo(models.Model):
 	class Estado(models.TextChoices):
-		ACTIVADO = 'activado','Activado'
-		DESACTIVADO = 'desactivado','Desactivado'
-	nombre = models.CharField(max_length=100,db_column='NOMBRE')
-	estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.ACTIVADO,db_column='ESTADO')
-	tipo = models.ForeignKey(Tipo,on_delete=models.PROTECT,db_column='TIPO',related_name='subtipos')
+		ACTIVADO = 'ACTIVADO', 'Activado'
+		DESACTIVADO = 'DESACTIVADO', 'Desactivado'
+	nombre = models.CharField(max_length=100, db_column='NOMBRE')
+	estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.ACTIVADO, db_column='ESTADO')
+	tipo = models.ForeignKey(Tipo, on_delete=models.PROTECT, db_column='TIPO', related_name='subtipos')
 	
 	class Meta:
-			ordering = ['-nombre', '-estado']
-			db_table = "subtipo"
-			verbose_name = "subtipo"
-			verbose_name_plural = "Subtipos"
+		ordering = ['-nombre', '-estado']
+		db_table = "subtipo"
+		verbose_name = "subtipo"
+		verbose_name_plural = "Subtipos"
 	
 	def __str__(self):
 		return f'{self.nombre} - {self.estado}'
@@ -52,28 +51,35 @@ class Registro(models.Model):
 		VALIDADA = 'validada', 'Validada'
 		OBSERVADA = 'observada', 'Observada'
 		ANULADA = 'anulada', 'Anulada'
-	codigo = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-	fecha = models.DateField()
+	codigo = models.UUIDField(default=uuid.uuid4, unique=True, editable=False,db_column='CODIGO')
+	fecha = models.DateField(db_column='FECHA')
 	item = models.ForeignKey('CoordinadorApp.Item',on_delete=models.PROTECT,db_column='ITEM',related_name='registros',)
 	periodo = models.ForeignKey('CoordinadorApp.Periodo',on_delete=models.PROTECT,db_column='PERIODO',related_name='registros',)
-	descripcion = models.CharField(max_length=240)
-	contacto = models.CharField(max_length=160, blank=True)
-	telefono = models.IntegerField(blank=True, null=True)
-	accion = models.TextField(blank=True)
+	descripcion = models.CharField(max_length=240,db_column='DESCRIPCION')
+	contacto = models.CharField(max_length=160, blank=True,db_column='CONTACTO')
+	telefono = models.IntegerField(blank=True, null=True,db_column='TELEFONO')
+	accion = models.TextField(blank=True,db_column='ACCION')
 	autor = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,db_column='AUTOR',related_name='registros',)
-	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.PENDIENTE)
-	incluir_en_agenda = models.BooleanField(default=False)
+	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.PENDIENTE,db_column='ESTADO')
+	incluir_en_agenda = models.BooleanField(default=False,db_column='INCLUIR_EN_AGENDA')
 	creado = models.DateTimeField(auto_now_add=True)
 	fecha_cierre = models.DateTimeField(default=timezone.now, db_column='FECHA_CIERRE')
 	genera_puntaje = models.CharField(max_length=45, null=True, blank=True, db_column='GENERA_PUNTAJE')
 	tipo = models.ForeignKey(Tipo,on_delete=models.PROTECT,db_column='TIPO',related_name='registros')
 	subtipo = models.ForeignKey(Subtipo,on_delete=models.PROTECT,db_column='SUBTIPO',related_name='registros')
+	evidencia = models.ForeignKey('SupervisorApp.Evidencia',on_delete=models.SET_NULL,db_column='EVIDENCIA',related_name='registros',null=True,blank=True,verbose_name='Evidencia principal')
 
 	class Meta:
 		ordering = ['-fecha', '-creado']
 		db_table = "registro"
 		verbose_name = "Registro"
 		verbose_name_plural = "Registros"
+
+	@property
+	def evidencias_registros(self):
+		"""Retorna un QuerySet vacío de Evidencia dado que el modelo Evidencia no posee relación con Registro."""
+		from SupervisorApp.models import Evidencia
+		return Evidencia.objects.none()
 
 	def __str__(self):
 		return f'{self.codigo} - {self.descripcion}'
@@ -87,7 +93,7 @@ class Registro(models.Model):
 				raise ValueError('El código de registro es inmutable.')
 		return super().save(*args, **kwargs)
 
-#Modelo Beneficiado (EX Solicitante) (OK)
+#Modelo Beneficiado
 class Beneficiado(models.Model):
 	nombre = models.CharField(max_length=50, db_column='NOMBRE')
 	apellido = models.CharField(max_length=50, db_column='APELLIDO')
@@ -105,6 +111,10 @@ class Beneficiado(models.Model):
 
 #Modelo : Vecino (OK)
 class Vecino(models.Model):
+	class Estado(models.TextChoices):
+		ACTIVADO = 'ACTIVADO', 'Activado'
+		DESACTIVADO = 'DESACTIVADO', 'Desactivado'
+
 	nombre = models.CharField(max_length=100, db_column='NOMBRE')
 	telefono = models.CharField(max_length=15, null=True, blank=True, db_column='TELEFONO')
 	direccion = models.CharField(max_length=250, null=True, blank=True, db_column='DIRECCION')
@@ -112,7 +122,7 @@ class Vecino(models.Model):
 	delegacion = models.ForeignKey('AdminApp.Delegacion',on_delete=models.PROTECT,db_column='DELEGACION',related_name='vecinos',)
 	cargo_jv = models.ForeignKey('CargoJV',on_delete=models.PROTECT,db_column='CARGO_JV',related_name='vecinos',)
 	junta_vecino = models.ForeignKey('JuntaVecino',on_delete=models.PROTECT,db_column='JUNTA_VECINO',related_name='vecinos',)
-	solicitante = models.OneToOneField(Beneficiado,on_delete=models.PROTECT,null=True,blank=True,related_name='vecino',)
+	estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.ACTIVADO, db_column='ESTADO')
 	activo = models.BooleanField(default=True)
 	creado = models.DateTimeField(auto_now_add=True)
 	actualizado = models.DateTimeField(auto_now=True)
@@ -155,6 +165,7 @@ class Vecino(models.Model):
 
 	def __str__(self):
 		return self.nombre
+
 #Modelo : Territorio (OK)
 class Territorio(models.Model):
 	nombre = models.CharField(max_length=100, db_column='NOMBRE')

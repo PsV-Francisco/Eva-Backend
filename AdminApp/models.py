@@ -338,10 +338,12 @@ class Usuario(AbstractUser):
     username = None
     uuid = models.AutoField(primary_key=True, db_column='UUID')
     email = models.EmailField(max_length=50, unique=True, db_column='EMAIL')
-    contraseña = models.CharField(max_length=300, blank=True, default='', db_column='CONTRASEÑA')
     nombre = models.CharField(max_length=50, default='', db_column='NOMBRE')
     estado = models.CharField(max_length=30, default='activo', db_column='ESTADO')
     limite_actividad = models.IntegerField(default=0, db_column='LIMITE_ACTIVIDAD')
+    dias_libres = models.IntegerField(null=True, blank=True, db_column='DIAS_LIBRES')
+    vacaciones = models.IntegerField(null=True, blank=True, db_column='VACACIONES')
+    dias_adm = models.IntegerField(null=True, blank=True, db_column='DIAS_ADM')
     objects = UsuarioManager()
 
     #Username Email
@@ -684,6 +686,10 @@ class ParametroSistema(models.Model):
     class Clave(models.TextChoices):
         TOPE_CUMPLIMIENTO = 'tope_cumplimiento', 'Tope de cumplimiento (%)'
         UMBRAL_DELEGACION = 'umbral_delegacion', 'Umbral de delegación (%)'
+        MAX_DIAS_AUTORIZACION = (
+            'max_dias_autorizacion',
+            'Días máximos de autorización de período',
+        )
 
     clave = models.CharField(max_length=40, choices=Clave.choices, unique=True)
     valor = models.DecimalField(max_digits=6, decimal_places=2)
@@ -711,6 +717,7 @@ class ParametroSistema(models.Model):
         defaults = {
             cls.Clave.TOPE_CUMPLIMIENTO: 150,
             cls.Clave.UMBRAL_DELEGACION: 80,
+            cls.Clave.MAX_DIAS_AUTORIZACION: 7,
         }
         value = cls.objects.filter(clave=clave).values_list('valor', flat=True).first()
         return value if value is not None else defaults[clave]

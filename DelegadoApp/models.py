@@ -1,8 +1,10 @@
 import secrets
 from django.conf import settings
 from django.db import models
-from FuncionarioApp.models import Tipo,Subtipo
+from FuncionarioApp.models import Tipo,Subtipo,Beneficiado,Territorio
+from django.utils import timezone
 
+from django.urls import reverse
 #Modelo : Agenda (OK)
 class Agenda(models.Model):
 
@@ -30,6 +32,11 @@ class Compromiso(models.Model):
 		EN_PROCESO = 'en_proceso', 'En proceso'
 		REALIZADO = 'realizado', 'Realizado'
 
+	class Ambito(models.TextChoices):
+		INTERNO = 'interno','Interno'
+		EXTERNO = 'externo','Externo'
+
+
 	# Identificador público y no secuencial para seguimiento sin login.
 	seguimiento_token = models.CharField(max_length=64, unique=True, null=True, blank=True, db_index=True)
 	seguimiento_activo = models.BooleanField(default=True)
@@ -38,24 +45,26 @@ class Compromiso(models.Model):
 
 	#Atributos del Compromiso
 	agenda = models.ForeignKey(Agenda, on_delete=models.PROTECT, related_name='compromisos')
-	descripcion = models.CharField(max_length=240)
-	solicitante = models.CharField(max_length=160, blank=True)
-	territorio = models.CharField(max_length=160, blank=True)
-	responsable = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='compromisos')
-	fecha = models.DateTimeField(db_column='FECHA')
-	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.INGRESADO)
-	observaciones = models.TextField(blank=True)
-	umbral_minimo = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True, db_column='UMBRAL_MINIMO')
+	fecha_solicitud = models.DateTimeField(default=timezone.now, db_column='FECHA_SOLICITUD')
+	fecha_compromiso = models.DateTimeField(default=timezone.now, db_column='FECHA_COMPROMISO')
+	descripcion = models.CharField(max_length=240,db_column='DESCRIPCION')
+	ambito = models.CharField(max_length=10,choices=Ambito.choices,default=Ambito.EXTERNO,db_column='AMBITO')
+	solicitante = models.ForeignKey(Beneficiado,on_delete=models.PROTECT,related_name='compromisos',null=True,blank=True,verbose_name='Solicitante/Beneficiario',db_column='SOLICITANTE')
+	territorio = models.ForeignKey(Territorio,on_delete=models.PROTECT,db_column='TERRITORIO',related_name='compromisos',null=True,blank=True,verbose_name='Territorio')
+	responsable = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='compromisos',db_column="RESPONSABLE")
+	mes = models.IntegerField(default=1, db_column='MES')
+	area_apoyo = models.CharField(max_length=100, default='', blank=True, db_column='AREA_APOYO')
+	observaciones = models.TextField(blank=True,db_column="OBSERVACIONES")
+	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.INGRESADO,db_column='ESTADO')
 	genera_puntaje = models.DecimalField(max_digits=3, decimal_places=1, default=0, db_column='GENERA_PUNTAJE')
-	periodo_agenda = models.IntegerField(default=0, db_column='PERIODO_AGENDA')
-	delegacion_agenda = models.IntegerField(default=0, db_column='DELEGACION_AGENDA')
-	creado = models.DateTimeField(auto_now_add=True)
-	actualizado = models.DateTimeField(auto_now=True)
 	tipo = models.ForeignKey(Tipo,on_delete=models.PROTECT,db_column='TIPO',related_name='Compromiso')
 	subtipo = models.ForeignKey(Subtipo,on_delete=models.PROTECT,db_column='SUBTIPO',related_name='Compromiso')
+	evidencia = models.ForeignKey('SupervisorApp.Evidencia',on_delete=models.SET_NULL,db_column='EVIDENCIA',related_name='compromisos',null=True,blank=True,verbose_name='Evidencia principal')
+	creado = models.DateTimeField(auto_now_add=True)
+	actualizado = models.DateTimeField(auto_now=True)
 
 	class Meta:
-		ordering = ['-fecha', 'descripcion']
+		ordering = ['-fecha_compromiso', 'descripcion']
 		db_table = "compromiso"
 		verbose_name = "Compromiso"
 		verbose_name_plural = "Compromisos"
@@ -93,6 +102,8 @@ class Compromiso(models.Model):
 			self.periodo_agenda = self.agenda.periodo_id
 			self.delegacion_agenda = self.agenda.delegacion_id
 		return super().save(*args, **kwargs)
+
+	
 
 #Modelo : Felicitacion (OK)
 class Felicitacion(models.Model):
@@ -321,3 +332,13 @@ class SeguimientoAcceso(models.Model):
 		ordering = ['-created_at']
 		verbose_name = 'acceso a seguimiento público'
 		verbose_name_plural = 'accesos a seguimiento público'
+
+	def get_seguimiento_url(self, request=None):
+			if not self.seguimiento_token:
+				self.generar_token_seguimiento()
+				self.save()
+			
+			path = reverse('delegado:seguimiento_publico', kwargs={'token': self.seguimiento_token})
+			if request:
+				return request.build_absolute_uri(path)
+			return path

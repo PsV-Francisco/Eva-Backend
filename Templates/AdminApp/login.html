@@ -1,11 +1,211 @@
 {% extends 'base.html' %}
+{% load static %}
+
 {% block title %}Ingresar | SGR{% endblock %}
-{% block page_title %}Ingreso al sistema{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* 1. Fondo e ilustración SOLO para la página de login */
+  body {
+    background-image: url("{% static 'img/fondo.png' %}") !important;
+    background-repeat: no-repeat !important;
+    background-position: center bottom !important;
+    background-size: cover !important;
+    background-attachment: fixed !important;
+  }
+
+  /* 2. Ocultar el título/encabezado heredado del Dashboard solo en esta página */
+  .page-heading {
+    display: none !important;
+  }
+
+  .page-shell {
+    padding: 0 !important;
+    background: transparent !important;
+  }
+
+  /* 3. Estilos de la Tarjeta Flotante */
+  .login-page-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 120px);
+    padding: 2rem 1rem;
+  }
+
+  .login-card-central {
+    width: 100%;
+    max-width: 420px;
+    background: #ffffff;
+    padding: 2.5rem 2rem;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    border: 1px solid #e9ecef;
+    text-align: center;
+    position: relative;
+    z-index: 5;
+  }
+
+  .login-card-central h2 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 0.3rem;
+  }
+
+  .login-subtitle {
+    color: #6c757d;
+    font-size: 0.85rem;
+    margin-bottom: 1.8rem;
+    display: block;
+  }
+
+  .login-form-custom {
+    text-align: left;
+  }
+
+  .form-group-custom {
+    margin-bottom: 1.25rem;
+  }
+
+  .form-group-custom label {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #333333;
+    margin-bottom: 0.4rem;
+  }
+
+  .input-icon-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .input-icon-wrapper input {
+    width: 100%;
+    padding: 0.65rem 0.8rem 0.65rem 2.5rem;
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    background-color: #ffffff;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .input-icon-wrapper input:focus {
+    border-color: #AD0000;
+    box-shadow: 0 0 0 3px rgba(173, 0, 0, 0.12);
+    outline: none;
+  }
+
+  .field-icon {
+    position: absolute;
+    left: 0.85rem;
+    color: #999999;
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+  }
+
+  .password-eye-toggle {
+    position: absolute;
+    right: 0.6rem;
+    background: transparent;
+    border: none;
+    color: #999999;
+    padding: 0.3rem;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+  }
+
+  .password-eye-toggle:hover {
+    color: #AD0000;
+  }
+
+  .btn-login-red {
+    width: 100%;
+    padding: 0.8rem;
+    border-radius: 25px;
+    font-size: 0.95rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    margin-top: 0.8rem;
+    background-color: #AD0000;
+    border-color: #AD0000;
+    color: #ffffff;
+  }
+
+  .btn-login-red:hover {
+    background-color: #800000;
+    border-color: #800000;
+  }
+
+  .login-footer-link {
+    margin-top: 1.5rem;
+    text-align: center;
+  }
+
+  .login-footer-link .auth-link {
+    color: #AD0000;
+    font-size: 0.88rem;
+    font-weight: 700;
+    text-decoration: underline;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<section class="login-layout"><div class="login-intro"><p class="eyebrow">ACCESO PERSONAL</p><h2>Continúa tu trabajo en SGR.</h2><p>Usa el correo y la contraseña asociados a tu cuenta.</p></div>
-  <form method="post" class="form-panel" data-loading>{% csrf_token %}{% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
-    {% for field in form %}<div class="mb-3"><label class="form-label" for="{{ field.id_for_label }}">{% if field.name == 'username' %}Correo electrónico{% else %}{{ field.label }}{% endif %}</label>{{ field }}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}
-    <input type="hidden" name="next" value="{{ next }}"><button class="btn btn-primary w-100" type="submit">Ingresar</button>
-  </form>
-</section>
+<div class="login-page-container">
+  <div class="login-card-central">
+    <h2>Ingreso al Sistema</h2>
+    <span class="login-subtitle">Por favor, inicie sesión con sus credenciales de funcionario</span>
+
+    <form method="post" class="login-form-custom" data-loading>
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="alert alert-danger mb-3">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      {% for field in form %}
+        <div class="form-group-custom">
+          <label for="{{ field.id_for_label }}">
+            {% if field.name == 'username' %}Correo electrónico{% else %}{{ field.label }}{% endif %}
+          </label>
+          <div class="input-icon-wrapper">
+            {% if field.name == 'username' %}
+              <span class="field-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+              </span>
+              {{ field }}
+            {% elif field.name == 'password' %}
+              <span class="field-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </span>
+              {{ field }}
+              <button type="button" class="password-eye-toggle" data-password-toggle="{{ field.id_for_label }}" aria-label="Mostrar contraseña">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            {% else %}
+              {{ field }}
+            {% endif %}
+          </div>
+          {% for error in field.errors %}
+            <div class="invalid-feedback d-block">{{ error }}</div>
+          {% endfor %}
+        </div>
+      {% endfor %}
+
+      <input type="hidden" name="next" value="{{ next }}">
+      
+      <button class="btn btn-primary btn-login-red" type="submit">
+        INGRESAR
+      </button>
+    </form>
+
+    <div class="login-footer-link">
+      <a href="{% url 'password_reset' %}" class="auth-link">¿Olvidaste tu contraseña?</a>
+    </div>
+  </div>
+</div>
 {% endblock %}

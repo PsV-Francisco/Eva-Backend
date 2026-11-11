@@ -5,7 +5,8 @@ from django.db.models.base import ModelState
 from unittest.mock import Mock
 
 from DelegadoApp.models import Compromiso
-from FuncionarioApp.models import GestionAtencion, Registro
+from CoordinadorApp.models import GestionAtencion
+from FuncionarioApp.models import Registro
 from SupervisorApp.files import validate_evidence_file
 from SupervisorApp.models import Evidencia
 

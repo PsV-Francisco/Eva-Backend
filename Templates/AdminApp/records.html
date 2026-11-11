@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}{{ title }} | SGR{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+    <section class="content-section">
+      <div class="section-head">
+        <div><p class="eyebrow">ADMINISTRACIÓN</p><h2>{{ title }}</h2></div>
+        <div class="maintainer-actions">
+          {% if is_administrator and spec.create_route %}
+          <a class="btn btn-primary" href="{% url spec.create_route %}?delegacion={{ selected_delegation }}">Crear</a>
+          {% endif %}
+          <a class="btn btn-outline-primary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}export=csv">Exportar CSV</a>
+        </div>
+      </div>
+
+      <form method="get" class="maintainer-filters" data-loading data-loading-title="Buscando">
+        <label class="visually-hidden" for="record-search">Buscar</label>
+        <input id="record-search" class="form-control" type="search" name="q" value="{{ query }}" placeholder="Buscar registros">
+        <label class="visually-hidden" for="record-delegation">Delegación</label>
+        <select id="record-delegation" class="form-select" name="delegacion">
+          {% if is_administrator %}<option value="todas"{% if selected_delegation == 'todas' %} selected{% endif %}>Todas las delegaciones</option>{% endif %}
+          {% for delegation in delegaciones %}
+          <option value="{{ delegation.pk }}"{% if selected_delegation == delegation.pk|stringformat:'s' %} selected{% endif %}>{{ delegation.nombre }}</option>
+          {% endfor %}
+        </select>
+        {% if spec.status_field %}
+        <label class="form-check">
+          <input class="form-check-input" type="checkbox" name="inactivos" value="1"{% if show_inactive %} checked{% endif %}>
+          <span class="form-check-label">Incluir inactivos</span>
+        </label>
+        {% endif %}
+        <button class="btn btn-primary" type="submit">Buscar</button>
+      </form>
+
+      <p class="results-count">
+        {% if page_obj.paginator.count %}Mostrando {{ page_obj.start_index }} a {{ page_obj.end_index }} de {{ page_obj.paginator.count }}{% else %}Mostrando 0 a 0 de 0{% endif %}
+      </p>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>{% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}{% if is_administrator and spec.edit_route %}<th scope="col">Acciones</th>{% endif %}</tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr>
+              {% for cell in row.values %}<td>{{ cell|default:'—' }}</td>{% endfor %}
+              {% if is_administrator and spec.edit_route %}
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <a class="btn btn-sm btn-outline-primary" href="{% url spec.edit_route row.object.pk %}?delegacion={{ selected_delegation }}">Editar</a>
+                  {% if spec.delete_route %}
+                  <form method="post" action="{% url spec.delete_route row.object.pk %}?delegacion={{ selected_delegation }}" data-confirm="¿Eliminar este registro?">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+              {% endif %}
+            </tr>
+            {% empty %}
+            <tr><td colspan="{{ columns|length }}" class="empty-state">No hay registros para los filtros seleccionados.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if page_obj.paginator.num_pages > 1 %}
+      <nav class="maintainer-pagination" aria-label="Paginación de resultados">
+        {% if page_obj.has_previous %}<a class="btn btn-sm btn-outline-secondary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Anterior</a>{% endif %}
+        <span>Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}<a class="btn btn-sm btn-outline-secondary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Siguiente</a>{% endif %}
+      </nav>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

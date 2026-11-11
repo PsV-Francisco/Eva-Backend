@@ -1,15 +1,5 @@
 from django.contrib import admin
-
-from .models import (
-    Agenda,
-    Ausencia,
-    Compromiso,
-    Felicitacion,
-    Hito,
-    Informe,
-    Licencia,
-    Reclamo,
-)
+from .models import (Agenda,Ausencia,Compromiso,Felicitacion,Hito,Informe,Licencia,Reclamo,)
 
 
 @admin.register(Agenda)
@@ -21,10 +11,9 @@ class AgendaAdmin(admin.ModelAdmin):
 
 @admin.register(Compromiso)
 class CompromisoAdmin(admin.ModelAdmin):
-	list_display = ('descripcion', 'agenda', 'fecha', 'estado')
-	list_filter = ('estado', 'agenda__delegacion', 'fecha')
-	search_fields = ('descripcion', 'responsable__email')
-	filter_horizontal = ('responsable',)
+    list_display = ('descripcion', 'solicitante', 'fecha_compromiso', 'fecha_solicitud', 'estado', 'ambito')
+    list_filter = ('estado', 'ambito', 'fecha_compromiso')
+    search_fields = ('descripcion', 'observaciones', 'area_apoyo')
 
 
 @admin.register(Hito)

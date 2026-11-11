@@ -1,11 +1,364 @@
 {% extends 'base.html' %}
-{% block title %}Gestión de Juntas de Vecinos | SGR{% endblock %}
-{% block page_title %}Gestión de Juntas de Vecinos{% endblock %}
+{% block title %}Gestión de Junta de Vecinos | SGR{% endblock %}
+{% block page_title %}Gestión de Junta de Vecinos{% endblock %}
+
 {% block content %}
-<div class="dashboard-layout">{% include 'includes/role_sidebar.html' %}<div class="dashboard-main"><section class="content-section">
-  <div class="section-head"><div><p class="eyebrow">ORGANIZACIÓN COMUNITARIA</p><h2>Juntas de Vecinos</h2></div>{% if request.user.cargo.nombre|lower == 'admin' or request.user.cargo.nombre|lower == 'administrador' %}<a class="btn btn-primary" href="{% url 'funcionario:junta_nueva' %}">Ingresar junta</a>{% endif %}</div>
-  <form method="get" class="search-panel mb-3"><div><label class="form-label" for="q">Buscar</label><input class="form-control" id="q" name="q" value="{{ search_query }}" placeholder="Nombre, domicilio, territorio o registro"></div><button class="btn btn-outline-primary align-self-end" type="submit">Buscar</button></form>
-  <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Nombre</th><th>Territorio</th><th>Delegación</th><th>N.º RPJ</th><th>Vecinos</th><th>Acciones</th></tr></thead><tbody>
-  {% for junta in page_obj %}<tr><td><strong>{{ junta.nombre }}</strong><small class="d-block text-muted">{{ junta.domicilio_legal }}</small></td><td>{{ junta.territorio }}</td><td>{{ junta.delegacion }}</td><td>{{ junta.numero_rpj }}</td><td>{{ junta.vecinos.count }}</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'funcionario:junta_editar' junta.pk %}">Editar</a><form class="d-inline" method="post" action="{% url 'funcionario:junta_eliminar' junta.pk %}" data-confirm="¿Eliminar esta junta?">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button></form></td></tr>{% empty %}<tr><td colspan="6" class="empty-state">No hay juntas para los filtros seleccionados.</td></tr>{% endfor %}
-  </tbody></table></div>{% if page_obj.paginator.num_pages > 1 %}<nav aria-label="Paginación"><ul class="pagination">{% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ search_query|urlencode }}&page={{ page_obj.previous_page_number }}">Anterior</a></li>{% endif %}<li class="page-item disabled"><span class="page-link">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span></li>{% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?q={{ search_query|urlencode }}&page={{ page_obj.next_page_number }}">Siguiente</a></li>{% endif %}</ul></nav>{% endif %}
-</section></div></div>{% endblock %}
+<div class="dashboard-layout">
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+    
+    <!-- 1. Formulario para Ingresar Nueva Junta de Vecinos -->
+    <section class="content-section mb-4">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">ORGANIZACIÓN COMUNITARIA</p>
+          <h2>Ingresar Nueva Junta de Vecinos</h2>
+        </div>
+      </div>
+      <form method="post" id="form-nueva-junta" novalidate>
+      {% csrf_token %}
+        <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Nombre *</label>
+      {{ form.nombre }}
+      </div>
+    <div class="col-md-6">
+      <label class="form-label">Domicilio Legal *</label>
+      {{ form.domicilio_legal }}
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Número RPJ *</label>
+      {{ form.numero_rpj }}
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Socios Activos</label>
+      {{ form.socios_activos }}
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Número Registro</label>
+      {{ form.numero_registro }}
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Fecha Constitución</label>
+      {{ form.fecha_constitucion }}
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Fecha Ingreso</label>
+      {{ form.fecha_ingreso }}
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Delegación *</label>
+      {{ form.delegacion }}
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Territorio *</label>
+      {{ form.territorio }}
+    </div>
+  </div>
+  <div class="mt-4">
+        <button type="submit" class="btn btn-primary">Guardar Junta de Vecinos</button>
+      </div>
+      </form>
+    </section>
+
+    <!-- 2. Tabla de Juntas de Vecinos con Búsqueda Keyup -->
+    <section class="content-section">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">PADRÓN COMUNITARIO</p>
+          <h2>Listado de Juntas de Vecinos</h2>
+        </div>
+      </div>
+
+      <!-- Barra de búsqueda keyup -->
+      <div class="search-panel mb-3">
+        <div class="w-100">
+          <label class="form-label" for="search-junta">Buscar Junta de Vecinos</label>
+          <input type="text" class="form-control" id="search-junta" placeholder="Buscar por NOMBRE, NUMERO_RPJ o DELEGACION...">
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table align-middle" id="tabla-juntas">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Domicilio Legal</th>
+              <th>Socios Activos</th>
+              <th>N.º RPJ</th>
+              <th>Delegación</th>
+              <th>Territorio</th>
+              <th class="text-end">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for junta in juntas %}
+            <tr data-nombre="{{ junta.nombre|lower }}" 
+                data-rpj="{{ junta.numero_rpj }}" 
+                data-delegacion="{{ junta.delegacion.nombre|lower }}">
+              <td><strong>{{ junta.nombre }}</strong></td>
+              <td>{{ junta.domicilio_legal }}</td>
+              <td>{{ junta.socios_activos|default:"0" }}</td>
+              <td>{{ junta.numero_rpj }}</td>
+              <td>{{ junta.delegacion.nombre }}</td>
+              <td>ID: {{ junta.territorio.pk }} - {{ junta.territorio.nombre }}</td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-outline-primary btn-editar-junta" data-id="{{ junta.pk }}">
+                  Editar
+                </button>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="7" class="empty-state">No hay juntas de vecinos registradas.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- 3. Modal Emergente para Editar Junta de Vecinos -->
+<div class="modal fade" id="modalEditarJunta" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Editar Junta de Vecinos</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <form id="form-editar-junta">
+          <input type="hidden" id="edit-junta-id">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Nombre *</label>
+              <input type="text" class="form-control" id="edit-junta-nombre" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Domicilio Legal *</label>
+              <input type="text" class="form-control" id="edit-junta-domicilio" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Número RPJ *</label>
+              <input type="number" class="form-control" id="edit-junta-rpj" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Socios Activos</label>
+              <input type="number" class="form-control" id="edit-junta-socios">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Número Registro</label>
+              <input type="number" class="form-control" id="edit-junta-registro">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Fecha Constitución</label>
+              <input type="datetime-local" class="form-control" id="edit-junta-constitucion">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Fecha Ingreso</label>
+              <input type="datetime-local" class="form-control" id="edit-junta-ingreso">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Delegación *</label>
+              <select class="form-select" id="edit-junta-delegacion" required>
+                {% for del in delegaciones %}
+                <option value="{{ del.pk }}">{{ del.nombre }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Territorio *</label>
+              <select class="form-select" id="edit-junta-territorio" required></select>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btn-guardar-edit-junta">Guardar Cambios</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const getCookie = (name) => {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  };
+  const csrftoken = getCookie('csrftoken');
+
+  const delegacionSelectForm = document.getElementById('id_junta_delegacion');
+  const territorioSelectForm = document.getElementById('id_junta_territorio');
+
+  // Función para obtener y llenar los territorios por AJAX
+  function cargarTerritorios(delegacionId, selectTarget, territorioSeleccionado = null) {
+    if (!delegacionId) {
+      return;
+    }
+    fetch(`/funcionario/territorios-por-delegacion/${delegacionId}/`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.territorios && data.territorios.length > 0) {
+          selectTarget.innerHTML = '<option value="">Seleccione un territorio</option>';
+          data.territorios.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.pk;
+            opt.textContent = `ID: ${t.pk} - ${t.nombre}`;
+            if (territorioSeleccionado && t.pk == territorioSeleccionado) {
+              opt.selected = true;
+            }
+            selectTarget.appendChild(opt);
+          });
+        }
+      })
+      .catch(err => console.error('Error al cargar territorios:', err));
+  }
+
+  // Cambio dinámico de territorios según delegación
+  if (delegacionSelectForm) {
+    delegacionSelectForm.addEventListener('change', function() {
+      cargarTerritorios(this.value, territorioSelectForm);
+    });
+
+    // Si ya hay una delegación seleccionada (o viene por defecto), cargar los territorios altiro
+    if (delegacionSelectForm.value) {
+      cargarTerritorios(delegacionSelectForm.value, territorioSelectForm);
+    }
+  }
+
+  // Validaciones del formulario principal con SweetAlert
+  document.getElementById('form-nueva-junta').addEventListener('submit', function(e) {
+    const nombre = document.getElementById('id_junta_nombre').value.trim();
+    const domicilio = document.getElementById('id_junta_domicilio_legal').value.trim();
+    const rpj = document.getElementById('id_junta_numero_rpj').value.trim();
+    const delegacion = document.getElementById('id_junta_delegacion').value;
+    const territorio = document.getElementById('id_junta_territorio').value;
+
+    if (!nombre || !domicilio || !rpj || !delegacion || !territorio) {
+      e.preventDefault();
+      Swal.fire({
+        icon: 'error',
+        title: 'Campos Vacíos',
+        text: 'Por favor completa los campos obligatorios (*): Nombre, Domicilio, RPJ, Delegación y Territorio.'
+      });
+    }
+  });
+
+  // Búsqueda Keyup por NOMBRE, NUMERO_RPJ o DELEGACION
+  const searchInput = document.getElementById('search-junta');
+  if (searchInput) {
+    searchInput.addEventListener('keyup', function() {
+      const term = this.value.toLowerCase().trim();
+      const rows = document.querySelectorAll('#tabla-juntas tbody tr');
+
+      rows.forEach(row => {
+        const nombre = row.getAttribute('data-nombre') || '';
+        const rpj = row.getAttribute('data-rpj') || '';
+        const delegacion = row.getAttribute('data-delegacion') || '';
+
+        if (nombre.includes(term) || rpj.includes(term) || delegacion.includes(term)) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    });
+  }
+
+  // Precargar Modal Emergente para Editar Junta
+  const modalElem = document.getElementById('modalEditarJunta');
+  const modalEdit = new bootstrap.Modal(modalElem);
+
+  document.querySelectorAll('.btn-editar-junta').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const id = this.getAttribute('data-id');
+      fetch(`/funcionario/juntas/${id}/detalle-json/`)
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById('edit-junta-id').value = data.id;
+          document.getElementById('edit-junta-nombre').value = data.nombre;
+          document.getElementById('edit-junta-domicilio').value = data.domicilio_legal;
+          document.getElementById('edit-junta-rpj').value = data.numero_rpj;
+          document.getElementById('edit-junta-socios').value = data.socios_activos || '';
+          document.getElementById('edit-junta-registro').value = data.numero_registro || '';
+          document.getElementById('edit-junta-constitucion').value = data.fecha_constitucion || '';
+          document.getElementById('edit-junta-ingreso').value = data.fecha_ingreso || '';
+          document.getElementById('edit-junta-delegacion').value = data.delegacion_id;
+
+          const territorioModalSelect = document.getElementById('edit-junta-territorio');
+          cargarTerritorios(data.delegacion_id, territorioModalSelect, data.territorio_id);
+
+          modalEdit.show();
+        })
+        .catch(() => {
+          Swal.fire('Error', 'No se pudieron cargar los datos de la junta.', 'error');
+        });
+    });
+  });
+
+  document.getElementById('edit-junta-delegacion').addEventListener('change', function() {
+    cargarTerritorios(this.value, document.getElementById('edit-junta-territorio'));
+  });
+
+  // Guardar Cambios AJAX desde el Modal
+  document.getElementById('btn-guardar-edit-junta').addEventListener('click', function() {
+    const id = document.getElementById('edit-junta-id').value;
+    const payload = {
+      nombre: document.getElementById('edit-junta-nombre').value.trim(),
+      domicilio_legal: document.getElementById('edit-junta-domicilio').value.trim(),
+      numero_rpj: document.getElementById('edit-junta-rpj').value,
+      socios_activos: document.getElementById('edit-junta-socios').value || null,
+      numero_registro: document.getElementById('edit-junta-registro').value || null,
+      fecha_constitucion: document.getElementById('edit-junta-constitucion').value || null,
+      fecha_ingreso: document.getElementById('edit-junta-ingreso').value || null,
+      delegacion_id: document.getElementById('edit-junta-delegacion').value,
+      territorio_id: document.getElementById('edit-junta-territorio').value
+    };
+
+    if (!payload.nombre || !payload.domicilio_legal || !payload.numero_rpj || !payload.delegacion_id || !payload.territorio_id) {
+      Swal.fire('Campos Obligatorios', 'Por favor completa todos los campos requeridos (*).', 'warning');
+      return;
+    }
+
+    fetch(`/funcionario/juntas/${id}/editar-ajax/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrftoken
+      },
+      body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        modalEdit.hide();
+        Swal.fire('¡Éxito!', data.message, 'success').then(() => {
+          window.location.reload();
+        });
+      } else {
+        Swal.fire('Error', data.message, 'error');
+      }
+    })
+    .catch(() => {
+      Swal.fire('Error', 'Ocurrió un error al intentar guardar en el servidor.', 'error');
+    });
+  });
+});
+</script>
+{% endblock %}

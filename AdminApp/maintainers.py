@@ -60,6 +60,8 @@ class MaintainerSpec:
 
 
 def _delegation_delete_block(delegation):
+    if delegation.estado != Delegacion.Estado.INACTIVA:
+        return 'Desactiva la delegación antes de eliminarla.'
     if UsuarioDelegacion.objects.filter(delegacion=delegation).exists():
         return 'La delegación tiene usuarios asociados. Desactívala para conservar esas relaciones.'
     return ''
@@ -429,6 +431,12 @@ def display_value(record, field_name):
     if field_name == 'is_active':
         return 'Activo' if record.is_active else 'Inactivo'
     if field_name == 'estado' or field_name == 'alcance':
+        if (
+            field_name == 'estado'
+            and isinstance(record, Delegacion)
+            and record.estado.casefold() == 'activo'
+        ):
+            return Delegacion.Estado.ACTIVA.label
         display_method = getattr(record, f'get_{field_name}_display', None)
         if display_method:
             return display_method()
@@ -461,9 +469,18 @@ def _queryset_for(spec, request, *, global_scope=False):
             str(spec.inactive_value): spec.inactive_value,
         }
         if status in status_values:
-            queryset = queryset.filter(**{
-                spec.status_filter_field: status_values[status],
-            })
+            if (
+                spec.key == 'delegaciones'
+                and status == str(spec.active_value)
+            ):
+                queryset = queryset.filter(
+                    Q(estado=spec.active_value)
+                    | Q(estado__iexact='activo')
+                )
+            else:
+                queryset = queryset.filter(**{
+                    spec.status_filter_field: status_values[status],
+                })
 
     return queryset.order_by(*spec.ordering)
 
@@ -525,7 +542,10 @@ def _snapshot(spec, record):
     }
 
 
-def _form_kwargs(spec, request, *, global_scope=False, allow_closed_periods=False):
+def _form_kwargs(
+    spec, request, *, global_scope=False, allow_closed_periods=False,
+    meta_only=False,
+):
     if spec.key == 'roles':
         return {'actor': request.user}
     if spec.key == 'metas':
@@ -534,6 +554,7 @@ def _form_kwargs(spec, request, *, global_scope=False, allow_closed_periods=Fals
             'delegation': active_delegation(request),
             'global_scope': global_scope,
             'allow_closed_periods': allow_closed_periods,
+            'meta_only': meta_only,
         }
     return {}
 
@@ -558,6 +579,7 @@ def _maintainer_context(
     spec, request, form, editing, queryset, base_count, *,
     route_name=None, sgr_role=None, sidebar_modules=(),
     coordinator_meta_delete=False,
+    update_only=False,
 ):
     page_obj = Paginator(queryset, 25).get_page(request.GET.get('page'))
     rows = [
@@ -567,7 +589,7 @@ def _maintainer_context(
                 display_value(record, field)
                 for _, field in spec.display_fields
             ],
-            'can_delete': not bool(_delete_block(
+            'can_delete': not update_only and not bool(_delete_block(
                 spec, record, coordinator_meta_delete=coordinator_meta_delete,
             )),
             'can_edit': not (
@@ -606,6 +628,7 @@ def _maintainer_context(
         'is_meta_maintainer': spec.key == 'metas',
         'is_role_maintainer': spec.key == 'roles',
         'sidebar_modules': sidebar_modules,
+        'update_only': update_only,
     }
 
 
@@ -614,6 +637,7 @@ def maintainer(
     protect_closed_periods=False, global_scope=False,
     coordinator_meta_delete=False, warn_weight_total=False,
     closed_period_authorization=False,
+    update_only=False,
 ):
     spec = SPECS[key]
     status = request.GET.get('estado', '')
@@ -639,6 +663,10 @@ def maintainer(
     if request.method == 'POST':
         action = request.POST.get('action', 'guardar')
         object_id = request.POST.get('object_id')
+        if update_only and (action != 'guardar' or not object_id):
+            return HttpResponseBadRequest(
+                'Esta pantalla solo permite editar metas existentes.',
+            )
         if action not in {'guardar', 'eliminar', 'cambiar_estado', 'duplicar'}:
             return HttpResponseBadRequest('Acción no válida.')
         if action == 'duplicar':
@@ -748,7 +776,13 @@ def maintainer(
                 current_value = getattr(record, spec.status_field)
                 new_value = (
                     spec.inactive_value
-                    if current_value == spec.active_value
+                    if (
+                        current_value == spec.active_value
+                        or (
+                            spec.key == 'delegaciones'
+                            and current_value.casefold() == 'activo'
+                        )
+                    )
                     else spec.active_value
                 )
                 before = _snapshot(spec, record)
@@ -780,7 +814,13 @@ def maintainer(
         form = spec.form_class(
             request.POST,
             instance=editing,
-            **_form_kwargs(spec, request, global_scope=global_scope, allow_closed_periods=closed_period_authorization),
+            **_form_kwargs(
+                spec,
+                request,
+                global_scope=global_scope,
+                allow_closed_periods=closed_period_authorization,
+                meta_only=update_only,
+            ),
         )
         if form.is_valid():
             authorization = None
@@ -833,7 +873,13 @@ def maintainer(
             return redirect(request.path)
         form = spec.form_class(
             instance=editing,
-            **_form_kwargs(spec, request, global_scope=global_scope, allow_closed_periods=closed_period_authorization),
+            **_form_kwargs(
+                spec,
+                request,
+                global_scope=global_scope,
+                allow_closed_periods=closed_period_authorization,
+                meta_only=update_only,
+            ),
         )
 
     context = _maintainer_context(
@@ -847,6 +893,7 @@ def maintainer(
         sgr_role=sgr_role,
         sidebar_modules=sidebar_modules,
         coordinator_meta_delete=coordinator_meta_delete,
+        update_only=update_only,
     )
     if request.GET.get('export') == 'excel':
         return excel_response(

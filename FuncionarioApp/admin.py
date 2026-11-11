@@ -43,8 +43,8 @@ class AtencionSocialAdmin(admin.ModelAdmin):
 
 @admin.register(GestionAtencion)
 class GestionAtencionAdmin(admin.ModelAdmin):
-	list_display = ('numero_gestion', 'fecha', 'observaciones')
-	list_filter = ('numero_gestion', 'fecha')
+	list_display = ('fecha', 'observaciones',)
+	list_filter = ('fecha',)
 	search_fields = ('observaciones',)
 	readonly_fields = ('codigo',)
 

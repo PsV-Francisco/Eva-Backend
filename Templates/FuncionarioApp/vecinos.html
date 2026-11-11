@@ -1,27 +1,337 @@
 {% extends 'base.html' %}
 {% block title %}Gestión de Vecinos | SGR{% endblock %}
 {% block page_title %}Gestión de Vecinos{% endblock %}
+
 {% block content %}
 <div class="dashboard-layout">
-{% include 'includes/role_sidebar.html' %}
-<div class="dashboard-main">
-<section class="content-section">
-  <div class="section-head"><div><p class="eyebrow">PADRÓN TERRITORIAL</p><h2>Vecinos</h2></div><a class="btn btn-primary" href="{% url 'funcionario:vecino_nuevo' %}">Ingresar vecino</a></div>
-  <form method="get" class="search-panel mb-3">
-    <div><label class="form-label" for="q">Buscar</label><input class="form-control" id="q" name="q" value="{{ search_query }}" placeholder="Nombre, teléfono, dirección o territorio"></div>
-    <div class="form-check align-self-end"><input class="form-check-input" type="checkbox" id="inactivos" name="inactivos" value="1" {% if show_inactive %}checked{% endif %}><label class="form-check-label" for="inactivos">Incluir inactivos</label></div>
-    <button class="btn btn-outline-primary align-self-end" type="submit">Buscar</button>
-  </form>
-  <div class="table-responsive"><table class="table align-middle">
-    <thead><tr><th>Nombre</th><th>Teléfono</th><th>Territorio</th><th>Delegación</th><th>Estado</th><th>Acciones</th></tr></thead>
-    <tbody>{% for vecino in page_obj %}<tr>
-      <td><strong>{{ vecino.nombre }}</strong>{% if vecino.direccion %}<small class="d-block text-muted">{{ vecino.direccion }}</small>{% endif %}</td>
-      <td>{{ vecino.telefono }}</td><td>{{ vecino.territorio }}</td><td>{{ vecino.delegacion }}</td>
-      <td><span class="tag">{% if vecino.activo %}Activo{% else %}Inactivo{% endif %}</span></td>
-      <td><a class="btn btn-sm btn-outline-primary" href="{% url 'funcionario:vecino_editar' vecino.pk %}">Editar</a>{% if vecino.activo %}<form class="d-inline" method="post" action="{% url 'funcionario:vecino_desactivar' vecino.pk %}" data-confirm="¿Desactivar este vecino?">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" type="submit">Desactivar</button></form>{% else %}<form class="d-inline" method="post" action="{% url 'funcionario:vecino_eliminar' vecino.pk %}" data-confirm="¿Eliminar este vecino?">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button></form>{% endif %}</td>
-    </tr>{% empty %}<tr><td colspan="6" class="empty-state">No hay vecinos para los filtros seleccionados.</td></tr>{% endfor %}</tbody>
-  </table></div>
-  {% if page_obj.paginator.num_pages > 1 %}<nav aria-label="Paginación"><ul class="pagination">{% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ search_query|urlencode }}&inactivos={% if show_inactive %}1{% endif %}&page={{ page_obj.previous_page_number }}">Anterior</a></li>{% endif %}<li class="page-item disabled"><span class="page-link">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span></li>{% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?q={{ search_query|urlencode }}&inactivos={% if show_inactive %}1{% endif %}&page={{ page_obj.next_page_number }}">Siguiente</a></li>{% endif %}</ul></nav>{% endif %}
-</section>
-</div></div>
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+    
+    <!-- 1. Formulario para Ingresar Nuevo Vecino -->
+    <section class="content-section mb-4">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">REGISTRO TERRITORIAL</p>
+          <h2>Ingresar Nuevo Vecino</h2>
+        </div>
+      </div>
+      <form method="post" id="form-nuevo-vecino" novalidate>
+        {% csrf_token %}
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Nombre *</label>
+            {{ form.nombre }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Teléfono</label>
+            {{ form.telefono }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Dirección</label>
+            {{ form.direccion }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Delegación *</label>
+            {{ form.delegacion }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Junta de Vecinos *</label>
+            {{ form.junta_vecino }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Cargo en Junta *</label>
+            {{ form.cargo_jv }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Territorio *</label>
+            {{ form.territorio }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Estado *</label>
+            {{ form.estado }}
+          </div>
+          <div class="col-md-4 d-flex align-items-center mt-4">
+            <div class="form-check">
+              {{ form.activo }}
+              <label class="form-check-label ms-1" for="id_activo">Vecino Activo</label>
+            </div>
+          </div>
+        </div>
+        <div class="mt-4">
+          <button type="submit" class="btn btn-primary">Guardar Vecino</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 2. Tabla con Barra de Búsqueda Keyup -->
+    <section class="content-section">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">PADRÓN TERRITORIAL</p>
+          <h2>Listado de Vecinos</h2>
+        </div>
+      </div>
+
+      <!-- Barra de búsqueda keyup -->
+      <div class="search-panel mb-3">
+        <div class="w-100">
+          <label class="form-label" for="search-vecino">Buscar Vecino</label>
+          <input type="text" class="form-control" id="search-vecino" placeholder="Buscar por NOMBRE, CARGO o JUNTA DE VECINOS...">
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table align-middle" id="tabla-vecinos">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Teléfono</th>
+              <th>Dirección</th>
+              <th>Cargo JV</th>
+              <th>Junta de Vecinos</th>
+              <th>Territorio</th>
+              <th>Delegación</th>
+              <th>Estado</th>
+              <th>Activo</th>
+              <th class="text-end">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for vecino in vecinos %}
+            <tr data-nombre="{{ vecino.nombre|lower }}" 
+                data-cargo="{{ vecino.cargo_jv.nombre|lower }}" 
+                data-junta="{{ vecino.junta_vecino.nombre|lower }}">
+              <td><strong>{{ vecino.nombre }}</strong></td>
+              <td>{{ vecino.telefono|default:"-" }}</td>
+              <td>{{ vecino.direccion|default:"-" }}</td>
+              <td>{{ vecino.cargo_jv.nombre }} ({{ vecino.cargo_jv.permisos }})</td>
+              <td>RPJ {{ vecino.junta_vecino.numero_rpj }} - {{ vecino.junta_vecino.nombre }}</td>
+              <td>ID: {{ vecino.territorio.pk }} - {{ vecino.territorio.nombre }}</td>
+              <td>{{ vecino.delegacion.nombre }}</td>
+              <td>
+                <span class="badge {% if vecino.estado == 'ACTIVADO' %}bg-success{% else %}bg-secondary{% endif %}">
+                  {{ vecino.estado }}
+                </span>
+              </td>
+              <td>
+                <span class="tag">{% if vecino.activo %}Sí{% else %}No{% endif %}</span>
+              </td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-outline-primary btn-editar-vecino" data-id="{{ vecino.pk }}">
+                  Editar
+                </button>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="10" class="empty-state">No hay vecinos registrados.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- 3. Modal Emergente para Editar Vecino -->
+<div class="modal fade" id="modalEditarVecino" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Editar Vecino</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <form id="form-editar-vecino">
+          <input type="hidden" id="edit-vecino-id">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Nombre *</label>
+              <input type="text" class="form-control" id="edit-nombre" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Teléfono</label>
+              <input type="text" class="form-control" id="edit-telefono">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Dirección</label>
+              <input type="text" class="form-control" id="edit-direccion">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Delegación *</label>
+              <select class="form-select" id="edit-delegacion" required>
+                {% for del in delegaciones %}
+                <option value="{{ del.pk }}">{{ del.nombre }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Junta de Vecinos *</label>
+              <select class="form-select" id="edit-junta" required></select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Cargo en Junta *</label>
+              <select class="form-select" id="edit-cargo" required></select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Territorio *</label>
+              <select class="form-select" id="edit-territorio" required></select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Estado *</label>
+              <select class="form-select" id="edit-estado" required>
+                <option value="ACTIVADO">ACTIVADO</option>
+                <option value="DESACTIVADO">DESACTIVADO</option>
+              </select>
+            </div>
+            <div class="col-md-12">
+              <div class="form-check mt-2">
+                <input class="form-check-input" type="checkbox" id="edit-activo">
+                <label class="form-check-label ms-1" for="edit-activo">Vecino Activo</label>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btn-guardar-edit-vecino">Guardar Cambios</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const getCookie = (name) => {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  };
+  const csrftoken = getCookie('csrftoken');
+
+  // Validar envío del formulario nuevo con SweetAlert
+  document.getElementById('form-nuevo-vecino').addEventListener('submit', function(e) {
+    const nombre = document.getElementById('id_nombre').value.trim();
+    if (!nombre) {
+      e.preventDefault();
+      Swal.fire({
+        icon: 'error',
+        title: 'Campo Obligatorio',
+        text: 'Por favor ingresa el NOMBRE del vecino.'
+      });
+    }
+  });
+
+  // Búsqueda Keyup por NOMBRE, CARGO o JUNTA DE VECINOS
+  const searchInput = document.getElementById('search-vecino');
+  searchInput.addEventListener('keyup', function() {
+    const term = this.value.toLowerCase().trim();
+    const rows = document.querySelectorAll('#tabla-vecinos tbody tr');
+
+    rows.forEach(row => {
+      const nombre = row.getAttribute('data-nombre') || '';
+      const cargo = row.getAttribute('data-cargo') || '';
+      const junta = row.getAttribute('data-junta') || '';
+
+      if (nombre.includes(term) || cargo.includes(term) || junta.includes(term)) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+  });
+
+  // Modal de edición
+  const modalElem = document.getElementById('modalEditarVecino');
+  const modalEdit = new bootstrap.Modal(modalElem);
+
+  document.querySelectorAll('.btn-editar-vecino').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const id = this.getAttribute('data-id');
+      fetch(`/funcionario/vecinos/${id}/detalle-json/`)
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById('edit-vecino-id').value = data.id;
+          document.getElementById('edit-nombre').value = data.nombre;
+          document.getElementById('edit-telefono').value = data.telefono;
+          document.getElementById('edit-direccion').value = data.direccion;
+          document.getElementById('edit-activo').checked = data.activo;
+          document.getElementById('edit-estado').value = data.estado;
+          document.getElementById('edit-delegacion').value = data.delegacion_id;
+
+          // Clonar opciones del formulario principal para los selectores
+          document.getElementById('edit-junta').innerHTML = document.getElementById('id_junta_vecino').innerHTML;
+          document.getElementById('edit-cargo').innerHTML = document.getElementById('id_cargo_jv').innerHTML;
+          document.getElementById('edit-territorio').innerHTML = document.getElementById('id_territorio').innerHTML;
+
+          document.getElementById('edit-junta').value = data.junta_vecino_id;
+          document.getElementById('edit-cargo').value = data.cargo_jv_id;
+          document.getElementById('edit-territorio').value = data.territorio_id;
+
+          modalEdit.show();
+        })
+        .catch(() => {
+          Swal.fire('Error', 'No se pudieron cargar los datos del vecino.', 'error');
+        });
+    });
+  });
+
+  // Guardar Cambios AJAX
+  document.getElementById('btn-guardar-edit-vecino').addEventListener('click', function() {
+    const id = document.getElementById('edit-vecino-id').value;
+    const payload = {
+      nombre: document.getElementById('edit-nombre').value.trim(),
+      telefono: document.getElementById('edit-telefono').value.trim(),
+      direccion: document.getElementById('edit-direccion').value.trim(),
+      activo: document.getElementById('edit-activo').checked,
+      estado: document.getElementById('edit-estado').value,
+      delegacion_id: document.getElementById('edit-delegacion').value,
+      junta_vecino_id: document.getElementById('edit-junta').value,
+      cargo_jv_id: document.getElementById('edit-cargo').value,
+      territorio_id: document.getElementById('edit-territorio').value
+    };
+
+    if (!payload.nombre || !payload.delegacion_id || !payload.junta_vecino_id || !payload.cargo_jv_id || !payload.territorio_id) {
+      Swal.fire('Campos Incompletos', 'Por favor completa todos los campos requeridos (*).', 'warning');
+      return;
+    }
+
+    fetch(`/funcionario/vecinos/${id}/editar-ajax/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrftoken
+      },
+      body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        modalEdit.hide();
+        Swal.fire('¡Éxito!', data.message, 'success').then(() => {
+          window.location.reload();
+        });
+      } else {
+        Swal.fire('Error', data.message, 'error');
+      }
+    })
+    .catch(() => {
+      Swal.fire('Error', 'Ocurrió un fallo en el servidor.', 'error');
+    });
+  });
+});
+</script>
 {% endblock %}

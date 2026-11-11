@@ -1,4 +1,123 @@
 {% extends 'base.html' %}
+
 {% block title %}{% if compromiso %}Modificar compromiso{% else %}Nuevo compromiso{% endif %} | SGR{% endblock %}
 {% block page_title %}{% if compromiso %}Modificar compromiso{% else %}Nuevo compromiso{% endif %}{% endblock %}
-{% block content %}<div class="dashboard-layout">{% include 'includes/role_sidebar.html' %}<div class="dashboard-main"><section class="content-section"><form method="post">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary" type="submit">Guardar</button> <a class="btn btn-outline-secondary" href="{% url 'funcionario:agenda_colectiva' %}">Cancelar</a></form></section></div></div>{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+    {% include 'includes/role_sidebar.html' %}
+    
+    <div class="dashboard-main">
+        <section class="content-section py-4 px-3">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-journal-plus me-2"></i>
+                        {% if compromiso %}Modificar Compromiso{% else %}Registrar Nuevo Compromiso{% endif %}
+                    </h5>
+                </div>
+                
+                <div class="card-body">
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+                        
+                        {% if form.non_field_errors %}
+                            <div class="alert alert-danger">
+                                {% for error in form.non_field_errors %}
+                                    <div>{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label for="{{ form.descripcion.id_for_label }}" class="form-label fw-bold">Descripción del Compromiso</label>
+                                {{ form.descripcion }}
+                                {% if form.descripcion.errors %}<div class="text-danger small">{{ form.descripcion.errors.0 }}</div>{% endif %}
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="{{ form.solicitante.id_for_label }}" class="form-label fw-bold">Solicitante (Beneficiario)</label>
+                                {{ form.solicitante }}
+                                {% if form.solicitante.errors %}<div class="text-danger small">{{ form.solicitante.errors.0 }}</div>{% endif %}
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="{{ form.territorio.id_for_label }}" class="form-label fw-bold">Territorio</label>
+                                {{ form.territorio }}
+                                {% if form.territorio.errors %}<div class="text-danger small">{{ form.territorio.errors.0 }}</div>{% endif %}
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="{{ form.tipo.id_for_label }}" class="form-label fw-bold">Tipo</label>
+                                {{ form.tipo }}
+                                {% if form.tipo.errors %}<div class="text-danger small">{{ form.tipo.errors.0 }}</div>{% endif %}
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="{{ form.subtipo.id_for_label }}" class="form-label fw-bold">Subtipo</label>
+                                {{ form.subtipo }}
+                                {% if form.subtipo.errors %}<div class="text-danger small">{{ form.subtipo.errors.0 }}</div>{% endif %}
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="{{ form.fecha.id_for_label }}" class="form-label fw-bold">Fecha del Compromiso</label>
+                                {{ form.fecha }}
+                                {% if form.fecha.errors %}<div class="text-danger small">{{ form.fecha.errors.0 }}</div>{% endif %}
+                            </div>
+
+                            <div class="col-12">
+                                <label for="{{ form.observaciones.id_for_label }}" class="form-label fw-bold">Observaciones</label>
+                                {{ form.observaciones }}
+                                {% if form.observaciones.errors %}<div class="text-danger small">{{ form.observaciones.errors.0 }}</div>{% endif %}
+                            </div>
+                        </div>
+
+                        <div class="mt-4 d-flex gap-2 justify-content-end">
+                            <a class="btn btn-outline-secondary px-4" href="{% url 'funcionario:agenda_colectiva' %}">Cancelar</a>
+                            <button class="btn btn-primary px-4" type="submit">Guardar Compromiso</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const tipoSelect = document.getElementById('id_tipo');
+    const subtipoSelect = document.getElementById('id_subtipo');
+
+    if (tipoSelect && subtipoSelect) {
+        tipoSelect.addEventListener('change', function() {
+            const tipoId = this.value;
+            subtipoSelect.innerHTML = '<option value="">Cargando subtipos...</option>';
+
+            if (!tipoId) {
+                subtipoSelect.innerHTML = '<option value="">Seleccione un subtipo</option>';
+                return;
+            }
+
+            fetch(`/funcionario/subatenciones-tipo/${tipoId}/`)
+                .then(response => response.json())
+                .then(data => {
+                    subtipoSelect.innerHTML = '<option value="">Seleccione un subtipo</option>';
+                    if (data.results && data.results.length > 0) {
+                        data.results.forEach(item => {
+                            const option = document.createElement('option');
+                            option.value = item.pk;
+                            option.textContent = item.nombre;
+                            subtipoSelect.appendChild(option);
+                        });
+                    }
+                })
+                .catch(err => {
+                    console.error('Error cargando subtipos:', err);
+                    subtipoSelect.innerHTML = '<option value="">Error al cargar subtipos</option>';
+                });
+        });
+    }
+});
+</script>
+{% endblock %}

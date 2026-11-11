@@ -3,23 +3,23 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
-import csv
 import math
-from io import StringIO
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef
 from django.core.paginator import Paginator
-from django.http import HttpResponse, HttpResponseNotAllowed
+from django.http import HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
 from AdminApp.audit import registrar_historial
+from AdminApp.csv_utils import csv_response
 from AdminApp.maintainers import maintainer
 from AdminApp.models import Cargo, Delegacion, ParametroSistema
 from config.decorators import cargo_required
 from CoordinadorApp.forms import PeriodoForm
 from CoordinadorApp.models import Desempeno, Periodo, SolicitudAutorizacionPeriodo
+from CoordinadorApp.reporting import consolidated_report_csv_rows
 from CoordinadorApp.authorization_forms import AuthorizationRequestForm
 from CoordinadorApp.services import _authorization_snapshot
 from CoordinadorApp.services import (
@@ -194,15 +194,91 @@ def home(request):
     if edit_id:
         return redirect(f"{reverse('coordinador:periodos')}?editar={edit_id}")
 
-    assigned_periods = Periodo.objects.filter(
-        desempenos__usuario=request.user,
-    ).distinct().order_by('-fecha_inicio')
-    period_id = request.GET.get('periodo')
+    periodos = Periodo.objects.order_by('-fecha_inicio', '-pk')
+    period_id = request.GET.get('periodo', '')
     period = (
-        assigned_periods.filter(pk=int(period_id)).first()
-        if period_id and period_id.isdecimal()
+        periodos.filter(pk=period_id).first()
+        if period_id.isdecimal()
         else None
-    ) or assigned_periods.first()
+    )
+    if period is None:
+        period = periodos.filter(
+            estado=Periodo.Estado.ABIERTO,
+        ).first() or periodos.first()
+
+    desempenos = (
+        Desempeno.objects.filter(periodo=period)
+        if period else Desempeno.objects.none()
+    )
+    registros = (
+        Registro.objects.filter(periodo=period)
+        if period else Registro.objects.none()
+    )
+    evidencias_pendientes = (
+        Evidencia.objects.filter(
+            registro__periodo=period,
+            estado=Evidencia.Estado.PENDIENTE,
+        )
+        if period else Evidencia.objects.none()
+    )
+    return render(request, 'CoordinadorApp/dashboard.html', {
+        'sgr_role': 'Coordinación',
+        'sidebar_modules': _coordinator_management_modules(),
+        'periodos': periodos,
+        'periodo_seleccionado': period,
+        'open_period_count': periodos.filter(
+            estado=Periodo.Estado.ABIERTO,
+        ).count(),
+        'closed_period_count': periodos.filter(
+            estado=Periodo.Estado.CERRADO,
+        ).count(),
+        'goal_count': desempenos.count(),
+        'employee_count': desempenos.values('usuario_id').distinct().count(),
+        'activity_count': registros.count(),
+        'validated_activity_count': registros.filter(
+            estado=Registro.Estado.VALIDADA,
+        ).count(),
+        'pending_activity_count': registros.filter(
+            estado=Registro.Estado.PENDIENTE,
+        ).count(),
+        'pending_evidence_count': evidencias_pendientes.count(),
+    })
+
+
+def _coordinator_management_modules():
+    return (
+        {'label': 'Panel de Coordinación', 'url_name': 'coordinador:home'},
+        {'label': 'Tablero Personal', 'url_name': 'coordinador:personal'},
+        {'label': 'Gestión de períodos', 'url_name': 'coordinador:periodos'},
+        {'label': 'Gestión de metas', 'url_name': 'coordinador:metas'},
+        {'label': 'Funciones por cargo', 'url_name': 'coordinador:cargos_funciones'},
+        {'label': 'Ponderaciones', 'url_name': 'coordinador:ponderaciones'},
+        {'label': 'Informes de gestión', 'url_name': 'coordinador:informes'},
+        {'label': 'Tendencias históricas', 'url_name': 'coordinador:tendencias'},
+        {'label': 'Solicitar autorización', 'url_name': 'coordinador:solicitudes_autorizacion'},
+    )
+
+
+@cargo_required(
+    'coordinador', 'admin', 'administrador',
+    permission='view_coordinator_personal',
+)
+def personal(request):
+    edit_id = request.GET.get('editar')
+    if edit_id:
+        return redirect(f"{reverse('coordinador:periodos')}?editar={edit_id}")
+
+    periodos = Periodo.objects.order_by('-fecha_inicio', '-pk')
+    period_id = request.GET.get('periodo', '')
+    period = (
+        periodos.filter(pk=period_id).first()
+        if period_id.isdecimal()
+        else None
+    )
+    if period is None:
+        period = periodos.filter(
+            estado=Periodo.Estado.ABIERTO,
+        ).first() or periodos.first()
     performances = (
         Desempeno.objects.filter(
             usuario=request.user, periodo=period,
@@ -213,11 +289,8 @@ def home(request):
     has_items = bool(summary['items'])
     return render(request, 'FuncionarioApp/cumplimiento.html', {
         'sgr_role': 'Coordinación',
-        'sidebar_modules': (
-            {'label': 'Tablero Personal', 'url_name': 'coordinador:home'},
-            {'label': 'Gestión de períodos', 'url_name': 'coordinador:periodos'},
-        ),
-        'periodos': assigned_periods,
+        'sidebar_modules': _coordinator_management_modules(),
+        'periodos': periodos,
         'periodo_seleccionado': period,
         'summary': summary,
         'item_count': len(summary['items']),
@@ -226,19 +299,6 @@ def home(request):
             summary['avance_real'], tiene_items=has_items,
         ),
     })
-
-
-def _coordinator_management_modules():
-    return (
-        {'label': 'Tablero Personal', 'url_name': 'coordinador:home'},
-        {'label': 'Gestión de períodos', 'url_name': 'coordinador:periodos'},
-        {'label': 'Gestión de metas', 'url_name': 'coordinador:metas'},
-        {'label': 'Funciones por cargo', 'url_name': 'coordinador:cargos_funciones'},
-        {'label': 'Ponderaciones', 'url_name': 'coordinador:ponderaciones'},
-        {'label': 'Informes de gestión', 'url_name': 'coordinador:informes'},
-        {'label': 'Tendencias históricas', 'url_name': 'coordinador:tendencias'},
-        {'label': 'Solicitar autorización', 'url_name': 'coordinador:solicitudes_autorizacion'},
-    )
 
 
 @cargo_required(
@@ -363,7 +423,14 @@ def ponderaciones(request):
             'total': Decimal('0'),
         })
         grouped[key]['rows'].append(record)
-        grouped[key]['total'] += record.item.ponderacion or Decimal('0')
+
+        # Validación híbrida: lee de Desempeno, luego de Item o asigna Decimal(0)
+        ponderacion_val = getattr(record, 'ponderacion', None)
+        if ponderacion_val is None and record.item:
+            ponderacion_val = getattr(record.item, 'ponderacion', Decimal('0'))
+
+        grouped[key]['total'] += ponderacion_val or Decimal('0')
+
     summaries = []
     for summary in grouped.values():
         total = summary['total']
@@ -390,11 +457,6 @@ def ponderaciones(request):
     })
 
 
-def _csv_safe(value):
-    value = '' if value is None else str(value)
-    return "'" + value if value[:1] in {'=', '+', '-', '@'} else value
-
-
 def _report_filters(request):
     periods = Periodo.objects.order_by('-fecha_inicio')
     period_id = request.GET.get('periodo', '')
@@ -408,7 +470,7 @@ def _report_filters(request):
     return periods, period, period_id, delegation_id, cargo_id, user_id
 
 
-def _consolidated_report_rows(request):
+def consolidated_report_rows(request):
     periods, period, period_id, delegation_id, cargo_id, user_id = _report_filters(request)
     cap = ParametroSistema.obtener(ParametroSistema.Clave.TOPE_CUMPLIMIENTO)
     threshold = ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_DELEGACION)
@@ -493,41 +555,24 @@ def _consolidated_report_rows(request):
 def informes(request):
     if request.method != 'GET':
         return HttpResponseNotAllowed(['GET'])
-    data = _consolidated_report_rows(request)
+    data = consolidated_report_rows(request)
     periods, period, period_id, delegation_id, cargo_id, user_id, rows, summaries = data
     if request.GET.get('export') == 'csv':
-        output = StringIO(newline='')
-        writer = csv.writer(output)
-        writer.writerow(['Informe consolidado'])
-        writer.writerow(['Período', period.nombre if period else ''])
-        writer.writerow([])
-        writer.writerow(['Detalle', 'Delegación', 'Cargo', 'Funcionario', 'Avance real', 'Avance esperado', 'Clasificación', 'Ítems'])
-        for row in rows:
-            summary = row['summary']
-            writer.writerow([
-                _csv_safe(''), _csv_safe(row['delegacion']), _csv_safe(row['cargo']),
-                _csv_safe(row['usuario'].get_full_name() or row['usuario'].email),
-                summary['avance_real'], summary['avance_esperado'],
-                _csv_safe(row['clasificacion'] or 'Sin ítems'), len(summary['items']),
-            ])
-        writer.writerow([])
-        writer.writerow(['Resumen consolidado'])
-        writer.writerow(['Delegación', 'Cargo', 'Promedio avance real', 'Sobre umbral', 'Bajo umbral', 'Sin ítems'])
-        for summary in summaries:
-            writer.writerow([_csv_safe(summary['delegacion']), _csv_safe(summary['cargo']), summary['promedio_avance_real'], summary['sobre'], summary['bajo'], summary['sin_items']])
-        registrar_historial(
-            actor=request.user,
-            action='Exportar informe consolidado CSV',
+        return csv_response(
+            request,
+            filename='informe_consolidado.csv',
+            rows=consolidated_report_csv_rows(period, rows, summaries),
             entity='InformeConsolidado',
-            after={
-                'filtros': {'periodo': period_id, 'delegacion': delegation_id, 'cargo': cargo_id, 'funcionario': user_id},
-                'filas': len(rows),
+            action='Exportar informe consolidado CSV',
+            filters={
+                'periodo': period_id,
+                'delegacion': delegation_id,
+                'cargo': cargo_id,
+                'funcionario': user_id,
             },
+            row_count=len(rows),
             period=period,
         )
-        response = HttpResponse('\ufeff' + output.getvalue(), content_type='text/csv; charset=utf-8')
-        response['Content-Disposition'] = 'attachment; filename="informe_consolidado.csv"'
-        return response
     page = Paginator(rows, 25).get_page(request.GET.get('page'))
     return render(request, 'CoordinadorApp/informes.html', {
         'sgr_role': 'Coordinación',
@@ -697,42 +742,30 @@ def tendencias(request):
         empty_message = ''
 
     if request.GET.get('export') == 'csv':
-        output = StringIO(newline='')
-        writer = csv.writer(output)
-        writer.writerow([
+        csv_rows = [[
             'Período',
             'Funcionarios considerados',
             'Promedio de avance real (%)',
             'Funcionarios sobre el umbral (%)',
             'Funcionarios sin ítems',
-        ])
-        for row in series:
-            writer.writerow([
-                _csv_safe(row['periodo'].nombre),
-                row['funcionarios_considerados'],
-                row['promedio_avance_real'],
-                row['porcentaje_sobre_umbral'],
-                row['funcionarios_sin_items'],
-            ])
-        registrar_historial(
-            actor=request.user,
-            action='Exportar tendencias históricas CSV',
+        ]]
+        csv_rows.extend([
+            row['periodo'].nombre,
+            row['funcionarios_considerados'],
+            row['promedio_avance_real'],
+            row['porcentaje_sobre_umbral'],
+            row['funcionarios_sin_items'],
+        ] for row in series)
+        return csv_response(
+            request,
+            filename='tendencias_historicas.csv',
+            rows=csv_rows,
             entity='TendenciasHistoricas',
-            after={
-                'filtros': {
-                    **raw_filters,
-                    'periodos': period_limit,
-                },
-                'filas': len(series),
-            },
+            action='Exportar tendencias históricas CSV',
+            filters={**raw_filters, 'periodos': period_limit},
+            row_count=len(series),
             period=selected_periods[-1] if selected_periods else None,
         )
-        response = HttpResponse(
-            '\ufeff' + output.getvalue(),
-            content_type='text/csv; charset=utf-8',
-        )
-        response['Content-Disposition'] = 'attachment; filename="tendencias_historicas.csv"'
-        return response
 
     return render(request, 'CoordinadorApp/tendencias.html', {
         'sgr_role': 'Coordinación',

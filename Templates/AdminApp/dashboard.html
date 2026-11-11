@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+
+{% block title %}Inicio de Administración | SGR{% endblock %}
+{% block page_title %}Panel de Administración{% endblock %}
+
+{% block extra_css %}
+<style>
+  .admin-dashboard .metric-grid.metric-grid-four {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .admin-dashboard-modules {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .admin-dashboard-module {
+    min-width: 0;
+    padding: 1.15rem;
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--teal);
+  }
+  .admin-dashboard-module h3 {
+    margin: 0 0 .75rem;
+    font-size: 1rem;
+    font-weight: 750;
+  }
+  .admin-dashboard-module ul {
+    display: grid;
+    gap: .45rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .admin-dashboard-module a {
+    display: block;
+    padding: .5rem .6rem;
+    border: 1px solid var(--line);
+    color: var(--teal-dark);
+    font-size: .88rem;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+  .admin-dashboard-module a:hover,
+  .admin-dashboard-module a:focus-visible {
+    background: #f7eeee;
+    text-decoration: underline;
+  }
+  @media (max-width: 1199.98px) {
+    .admin-dashboard-modules { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 991.98px) {
+    .admin-dashboard .metric-grid.metric-grid-four {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 767.98px) {
+    .admin-dashboard-modules { grid-template-columns: minmax(0, 1fr); }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main admin-dashboard">
+    <p class="section-note">Acceso a la gestión municipal, organizada por módulos. Las opciones se muestran según los permisos de esta cuenta.</p>
+
+    <div class="metric-grid metric-grid-four">
+      <article class="metric"><span>Usuarios activos</span><strong>{{ active_user_count }}</strong></article>
+      <article class="metric"><span>Delegaciones activas</span><strong>{{ active_delegation_count }}</strong></article>
+      <article class="metric"><span>Períodos abiertos</span><strong>{{ open_period_count }}</strong></article>
+      <article class="metric"><span>Registros</span><strong>{{ record_count }}</strong></article>
+    </div>
+
+    <section class="content-section">
+      <div class="section-head">
+        <div><p class="eyebrow">MÓDULOS</p><h2>Accesos rápidos</h2></div>
+      </div>
+      <div class="admin-dashboard-modules">
+        {% for module in dashboard_modules %}
+        <section class="admin-dashboard-module" aria-labelledby="admin-module-{{ forloop.counter }}">
+          <h3 id="admin-module-{{ forloop.counter }}">{{ module.label }}</h3>
+          <ul>
+            {% for link in module.links %}
+            <li><a href="{% url link.url_name %}">{{ link.label }}</a></li>
+            {% endfor %}
+          </ul>
+        </section>
+        {% empty %}
+        <p class="section-note">No hay módulos disponibles para esta cuenta.</p>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

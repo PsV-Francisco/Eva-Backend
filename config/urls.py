@@ -13,7 +13,7 @@ urlpatterns = [
     path(
         '',
         auth_views.LoginView.as_view(
-            template_name='config/index.html',
+            template_name='AdminApp/login.html',
             authentication_form=password_reset.FormularioAcceso,
         ),
         name='login',
@@ -68,6 +68,10 @@ urlpatterns = [
     path('coordinador/', include('CoordinadorApp.urls')),
     path('admin-app/', include('AdminApp.urls')),
     path('consulta/', include('VistaFApp.urls')),
+
+    path('admin/', admin.site.urls),
+    path('funcionario/', include('FuncionarioApp.urls')),
+    path('delegado/', include('DelegadoApp.urls')),
 
 ]
 
