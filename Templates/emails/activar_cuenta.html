@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+  <body style="margin:0; padding:0; background-color:#F5F5F5; color:#333333; font-family:Arial, Helvetica, sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; background-color:#F5F5F5; border-collapse:collapse;">
+      <tr>
+        <td align="center" style="padding:24px 12px;">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; background-color:#FFFFFF; border-collapse:collapse;">
+            <tr>
+              <td align="center" bgcolor="#AD0000" style="padding:5px 20px; background-color:#AD0000;">
+                <img src="cid:logo_serena" width="145" height="40" alt="Ilustre Municipalidad de La Serena" style="display:block; width:145px; height:40px; border:0; outline:none; text-decoration:none;">
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 36px 12px; color:#333333; font-family:Arial, Helvetica, sans-serif;">
+                <h1 style="margin:0 0 20px; color:#333333; font-size:24px; line-height:1.3; font-weight:700;">Activación de cuenta SGR</h1>
+                <p style="margin:0 0 16px; font-size:16px; line-height:1.5;">Hola {{ nombre }},</p>
+                <p style="margin:0 0 16px; font-size:16px; line-height:1.5;">Se ha creado tu cuenta en el Sistema de Gestión de Resultados de la Ilustre Municipalidad de La Serena.</p>
+                {% if temp_password %}
+                <p style="margin:0 0 20px; padding:12px 16px; background-color:#F5F5F5; border-left:4px solid #AD0000; font-size:14px; line-height:1.5;">
+                  <strong>Correo de acceso:</strong> {{ email }}<br>
+                  <strong>Credencial temporal (primer ingreso):</strong> <code>{{ temp_password }}</code>
+                </p>
+                {% endif %}
+                <p style="margin:0 0 24px; font-size:15px; line-height:1.5;">Para activar tu cuenta y definir tu contraseña definitiva, haz clic en el siguiente botón:</p>
+                <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 24px; border-collapse:separate;">
+                  <tr>
+                    <td align="center" bgcolor="#AD0000" style="border-radius:4px; background-color:#AD0000;">
+                      <a href="{{ activation_url }}" style="display:inline-block; padding:14px 28px; color:#FFFFFF; font-size:16px; line-height:1.3; font-weight:700; text-decoration:none;">Activar cuenta y crear contraseña</a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:0 0 8px; font-size:14px; line-height:1.5;">Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
+                <p style="margin:0 0 24px; overflow-wrap:anywhere; font-size:13px; line-height:1.5;"><a href="{{ activation_url }}" style="color:#AD0000;">{{ activation_url }}</a></p>
+                <p style="margin:0 0 24px; font-size:15px; line-height:1.5;">Este enlace tiene una vigencia de {{ horas }} horas y solo puede utilizarse una vez.</p>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:8px 24px 28px; color:#333333; text-align:center;">
+                <p style="margin:0 0 8px; font-size:13px; line-height:1.5;">Sistema de Gestión de Resultados · Ilustre Municipalidad de La Serena</p>
+                <p style="margin:0; color:#555555; font-size:11px; line-height:1.5;">Mensaje automático, no respondas a este correo.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

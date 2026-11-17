@@ -49,15 +49,19 @@
             {{ form.subtipo }}
           </div>
           <div class="col-md-4">
+            <label class="form-label">Vecino Registrado (Autocompletar)</label>
+            {{ form.vecino }}
+          </div>
+
+          <div class="col-md-4">
             <label class="form-label">Contacto</label>
             {{ form.contacto }}
           </div>
-
           <div class="col-md-4">
             <label class="form-label">Teléfono</label>
             {{ form.telefono }}
           </div>
-          <div class="col-md-8">
+          <div class="col-md-4">
             <label class="form-label">Actividad / Solicitud *</label>
             {{ form.descripcion }}
           </div>
@@ -169,91 +173,116 @@
 
 <!-- 3. Modal Emergente para Editar Registro -->
 <div class="modal fade" id="modalEditarRegistro" tabindex="-1" aria-hidden="true">
-	<div class="modal-dialog modal-lg">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
-		<div class="modal-header">
+      <div class="modal-header">
         <h5 class="modal-title">Editar Actividad / Registro</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-    </div>
-    <div class="modal-body">
-    <form id="form-editar-registro">
-        <input type="hidden" id="edit-registro-id">
+      </div>
+      <div class="modal-body">
+        <form id="form-editar-registro">
+          <input type="hidden" id="edit-registro-id">
 
-        <div class="row g-3">
+          <div class="row g-3">
             <div class="col-md-4">
               <label class="form-label">Fecha de Actividad *</label>
-            <input type="date" class="form-control" id="edit-fecha" required>
+              <input type="date" class="form-control" id="edit-fecha" required>
             </div>
             <div class="col-md-4">
               <label class="form-label">Período *</label>
-            <select class="form-select" id="edit-periodo" required>
+              <select class="form-select" id="edit-periodo" required>
                 {% for p in periodos %}
                 <option value="{{ p.pk }}">{{ p.nombre }}</option>
                 {% endfor %}
-            </select>
+              </select>
             </div>
             <div class="col-md-4">
               <label class="form-label">Ítem de Medición *</label>
-            <select class="form-select" id="edit-item" required>
+              <select class="form-select" id="edit-item" required>
                 {% for item in items %}
                 <option value="{{ item.pk }}">{{ item.nombre }}</option>
                 {% endfor %}
-        </select>
+              </select>
             </div>
 
             <div class="col-md-6">
               <label class="form-label">Tipo *</label>
-            <select class="form-select" id="edit-tipo" required>
+              <select class="form-select" id="edit-tipo" required>
                 <option value="">Seleccione un tipo</option>
                 {% for tipo in tipos %}
                 <option value="{{ tipo.pk }}">{{ tipo.nombre }}</option>
                 {% endfor %}
-            </select>
+              </select>
             </div>
             <div class="col-md-6">
               <label class="form-label">Subtipo *</label>
-        <select class="form-select" id="edit-subtipo" required>
+              <select class="form-select" id="edit-subtipo" required>
                 <option value="">Seleccione un tipo primero</option>
-            </select>
+              </select>
             </div>
 
             <div class="col-md-6">
-            <label class="form-label">Contacto</label>
-            <input type="text" class="form-control" id="edit-contacto">
+              <label class="form-label">Contacto</label>
+              <input type="text" class="form-control" id="edit-contacto">
             </div>
             <div class="col-md-6">
-            <label class="form-label">Teléfono</label>
-            <input type="text" class="form-control" id="edit-telefono">
+              <label class="form-label">Teléfono</label>
+              <input type="text" class="form-control" id="edit-telefono">
             </div>
 
             <div class="col-md-12">
               <label class="form-label">Actividad / Solicitud *</label>
-            <input type="text" class="form-control" id="edit-descripcion" required>
+              <input type="text" class="form-control" id="edit-descripcion" required>
             </div>
 
             <div class="col-md-12">
-            <label class="form-label">Acción Realizada</label>
-            <textarea class="form-control" id="edit-accion" rows="3"></textarea>
+              <label class="form-label">Acción Realizada</label>
+              <textarea class="form-control" id="edit-accion" rows="3"></textarea>
             </div>
 
             <div class="col-md-12">
-            <div class="form-check mt-2">
+              <div class="form-check mt-2">
                 <input class="form-check-input" type="checkbox" id="edit-incluir-agenda">
                 <label class="form-check-label ms-1" for="edit-incluir-agenda">
-                Relacionar con la agenda colectiva
+                  Relacionar con la agenda colectiva
                 </label>
+              </div>
             </div>
+
+            <!-- Sección dinámica de Evidencia -->
+            <div class="col-md-12" id="edit-evidencia-upload-wrapper" style="display: none;">
+              <label class="form-label" for="edit-evidencia">Agregar Archivo de Evidencia (Opcional)</label>
+              <input type="file" class="form-control" id="edit-evidencia" accept="image/jpeg,image/png,application/pdf">
+              <div class="form-text">Esta actividad aún no tiene evidencia. Puedes adjuntar JPG, PNG o PDF (máx. 5 MB).</div>
             </div>
-        </div>
-    </form>
-    </div>
-    <div class="modal-footer">
+
+            <div class="col-md-12" id="edit-evidencia-existente-wrapper" style="display: none;">
+              <label class="form-label d-block">Evidencia Asociada</label>
+              <a id="edit-evidencia-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-info">
+                📎 Ver evidencia cargada
+              </a>
+              <span class="text-muted small ms-2">Este registro ya posee evidencia vinculada.</span>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
         <button type="button" class="btn btn-primary" id="btn-guardar-edit-registro">Guardar Cambios</button>
+      </div>
     </div>
-    </div>
+  </div>
 </div>
-</div>
+
+{% if form.errors %}
+<script type="application/json" id="django-form-errors">
+[
+  {% for field in form %}{% for error in field.errors %}"<b>{{ field.label|escapejs }}</b>: {{ error|escapejs }}",{% endfor %}{% endfor %}
+  {% for error in form.non_field_errors %}"{{ error|escapejs }}",{% endfor %}
+  ""
+]
+</script>
+{% endif %}
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
@@ -274,11 +303,50 @@ document.addEventListener('DOMContentLoaded', function() {
   };
   const csrftoken = getCookie('csrftoken');
 
+  // 0. Mostrar errores del servidor (Django Form) en SweetAlert2
+  const errorsNode = document.getElementById('django-form-errors');
+  if (errorsNode) {
+    try {
+      const erroresDjango = JSON.parse(errorsNode.textContent).filter(Boolean);
+      if (erroresDjango.length > 0) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Error al ingresar el registro',
+          html: '<ul style="text-align:left; margin-bottom:0;">' + erroresDjango.map(e => `<li>${e}</li>`).join('') + '</ul>'
+        });
+      }
+    } catch (e) {
+      console.error('Error leyendo errores de validación:', e);
+    }
+  }
+
+  // 0.1 Autocompletado al seleccionar un Vecino Registrado
+  const selectVecinoActividad = document.getElementById('id_vecino_actividad');
+  if (selectVecinoActividad) {
+    selectVecinoActividad.addEventListener('change', function() {
+      const vecinoId = this.value;
+      if (!vecinoId) return;
+      fetch(`/funcionario/vecinos/${vecinoId}/detalle-json/`)
+        .then(res => res.json())
+        .then(data => {
+          const contactoInput = document.getElementById('id_contacto');
+          const telefonoInput = document.getElementById('id_telefono');
+          if (contactoInput) {
+            contactoInput.value = data.rut ? `${data.nombre_completo} (${data.rut})` : data.nombre_completo;
+          }
+          if (telefonoInput && data.telefono) {
+            telefonoInput.value = data.telefono.replace(/\D/g, '');
+          }
+        })
+        .catch(err => console.error('Error autocompletando vecino:', err));
+    });
+  }
+
   // 1. Carga en cascada de Subtipos según Tipo
   const selectTipoForm = document.getElementById('id_tipo');
   const selectSubtipoForm = document.getElementById('id_subtipo');
 
-  function cargarSubtipos(tipoId, targetSelect, selectedSubtipoId = null) {
+  function cargarSubtipos(tipoId, targetSelect, selectedSubtipoId = null, selectedSubtipoNombre = '') {
     if (!tipoId) {
       targetSelect.innerHTML = '<option value="">Seleccione un tipo primero</option>';
       return;
@@ -286,18 +354,33 @@ document.addEventListener('DOMContentLoaded', function() {
     fetch(`/funcionario/actividades/subtipos-por-tipo/${tipoId}/`)
       .then(res => res.json())
       .then(data => {
-        targetSelect.innerHTML = '<option value="">Seleccione un subtipo</option>';
-        if (data.subtipos && data.subtipos.length > 0) {
-          data.subtipos.forEach(s => {
-            const opt = document.createElement('option');
-            opt.value = s.pk;
-            opt.textContent = s.nombre;
-            if (selectedSubtipoId && s.pk == selectedSubtipoId) {
-              opt.selected = true;
-            }
-            targetSelect.appendChild(opt);
-          });
+        targetSelect.innerHTML = '';
+        let lista = data.subtipos || [];
+
+        if (selectedSubtipoId) {
+          const actual = lista.find(s => String(s.pk) === String(selectedSubtipoId));
+          const nombreActual = actual ? actual.nombre : selectedSubtipoNombre;
+          if (nombreActual) {
+            const firstOpt = document.createElement('option');
+            firstOpt.value = selectedSubtipoId;
+            firstOpt.textContent = nombreActual;
+            firstOpt.selected = true;
+            targetSelect.appendChild(firstOpt);
+          }
+          lista = lista.filter(s => String(s.pk) !== String(selectedSubtipoId));
+        } else {
+          const defaultOpt = document.createElement('option');
+          defaultOpt.value = '';
+          defaultOpt.textContent = 'Seleccione un subtipo';
+          targetSelect.appendChild(defaultOpt);
         }
+
+        lista.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.pk;
+          opt.textContent = s.nombre;
+          targetSelect.appendChild(opt);
+        });
       })
       .catch(err => console.error('Error al cargar subtipos:', err));
   }
@@ -308,21 +391,33 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // 2. Validación de Formulario Principal con SweetAlert2
+  // 2. Validación detallada de campos vacíos con SweetAlert2 antes de enviar
   document.getElementById('form-nuevo-registro').addEventListener('submit', function(e) {
-    const fecha = document.getElementById('id_fecha').value;
-    const descripcion = document.getElementById('id_descripcion').value.trim();
-    const item = document.getElementById('id_item').value;
-    const periodo = document.getElementById('id_periodo').value;
-    const tipo = selectTipoForm ? selectTipoForm.value : '';
-    const subtipo = selectSubtipoForm ? selectSubtipoForm.value : '';
+    const camposObligatorios = [
+      { id: 'id_fecha', nombre: 'Fecha de Actividad' },
+      { id: 'id_periodo', nombre: 'Período' },
+      { id: 'id_item', nombre: 'Ítem de Medición' },
+      { id: 'id_tipo', nombre: 'Tipo' },
+      { id: 'id_subtipo', nombre: 'Subtipo' },
+      { id: 'id_descripcion', nombre: 'Actividad / Solicitud' }
+    ];
 
-    if (!fecha || !descripcion || !item || !periodo || !tipo || !subtipo) {
+    let faltantes = [];
+    camposObligatorios.forEach(campo => {
+      const el = document.getElementById(campo.id);
+      if (!el || !el.value || !el.value.trim()) {
+        faltantes.push(campo.nombre);
+      }
+    });
+
+    if (faltantes.length > 0) {
       e.preventDefault();
       Swal.fire({
         icon: 'error',
-        title: 'Campos Vacíos',
-        text: 'Por favor completa todos los campos requeridos (*): Fecha, Actividad, Ítem, Período, Tipo y Subtipo.'
+        title: 'Campos Obligatorios Incompletos',
+        html: '<p>Por favor completa los siguientes campos:</p><ul style="text-align:left;">' +
+              faltantes.map(f => `<li><b>${f}</b></li>`).join('') +
+              '</ul>'
       });
     }
   });
@@ -349,6 +444,22 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
+  function seleccionarPrimeroEnSelect(selectElement, selectedId, fallbackLabel) {
+    if (!selectElement || !selectedId) return;
+    let targetOption = Array.from(selectElement.options).find(opt => String(opt.value) === String(selectedId));
+    if (!targetOption && fallbackLabel) {
+      targetOption = document.createElement('option');
+      targetOption.value = selectedId;
+      targetOption.textContent = fallbackLabel;
+    }
+    if (targetOption) {
+      selectElement.removeChild(targetOption);
+      selectElement.insertBefore(targetOption, selectElement.firstChild);
+      targetOption.selected = true;
+      selectElement.value = String(selectedId);
+    }
+  }
+
   // 4. Precargar Modal Emergente para Editar Registro
   const modalElem = document.getElementById('modalEditarRegistro');
   const modalEdit = new bootstrap.Modal(modalElem);
@@ -366,12 +477,29 @@ document.addEventListener('DOMContentLoaded', function() {
           document.getElementById('edit-telefono').value = data.telefono;
           document.getElementById('edit-accion').value = data.accion;
           document.getElementById('edit-incluir-agenda').checked = data.incluir_en_agenda;
-          document.getElementById('edit-item').value = data.item_id;
-          document.getElementById('edit-periodo').value = data.periodo_id;
-          document.getElementById('edit-tipo').value = data.tipo_id;
+
+          seleccionarPrimeroEnSelect(document.getElementById('edit-periodo'), data.periodo_id, data.periodo_nombre);
+          seleccionarPrimeroEnSelect(document.getElementById('edit-item'), data.item_id, data.item_nombre);
+          seleccionarPrimeroEnSelect(document.getElementById('edit-tipo'), data.tipo_id, data.tipo_nombre);
 
           const subtipoSelectModal = document.getElementById('edit-subtipo');
-          cargarSubtipos(data.tipo_id, subtipoSelectModal, data.subtipo_id);
+          cargarSubtipos(data.tipo_id, subtipoSelectModal, data.subtipo_id, data.subtipo_nombre);
+
+          const inputEvidenciaModal = document.getElementById('edit-evidencia');
+          const uploadWrapper = document.getElementById('edit-evidencia-upload-wrapper');
+          const existenteWrapper = document.getElementById('edit-evidencia-existente-wrapper');
+          const linkEvidencia = document.getElementById('edit-evidencia-link');
+
+          if (inputEvidenciaModal) inputEvidenciaModal.value = '';
+
+          if (data.evidencia_url) {
+            uploadWrapper.style.display = 'none';
+            existenteWrapper.style.display = 'block';
+            linkEvidencia.href = data.evidencia_url;
+          } else {
+            existenteWrapper.style.display = 'none';
+            uploadWrapper.style.display = 'block';
+          }
 
           modalEdit.show();
         })
@@ -388,31 +516,59 @@ document.addEventListener('DOMContentLoaded', function() {
   // 5. Guardar Cambios AJAX desde el Modal de Edición
   document.getElementById('btn-guardar-edit-registro').addEventListener('click', function() {
     const id = document.getElementById('edit-registro-id').value;
-    const payload = {
-      fecha: document.getElementById('edit-fecha').value,
-      descripcion: document.getElementById('edit-descripcion').value.trim(),
-      contacto: document.getElementById('edit-contacto').value.trim(),
-      telefono: document.getElementById('edit-telefono').value.trim(),
-      accion: document.getElementById('edit-accion').value.trim(),
-      incluir_en_agenda: document.getElementById('edit-incluir-agenda').checked,
-      item_id: document.getElementById('edit-item').value,
-      periodo_id: document.getElementById('edit-periodo').value,
-      tipo_id: document.getElementById('edit-tipo').value,
-      subtipo_id: document.getElementById('edit-subtipo').value
-    };
+    const fecha = document.getElementById('edit-fecha').value;
+    const descripcion = document.getElementById('edit-descripcion').value.trim();
+    const contacto = document.getElementById('edit-contacto').value.trim();
+    const telefono = document.getElementById('edit-telefono').value.trim();
+    const accion = document.getElementById('edit-accion').value.trim();
+    const incluirAgenda = document.getElementById('edit-incluir-agenda').checked;
+    const itemId = document.getElementById('edit-item').value;
+    const periodoId = document.getElementById('edit-periodo').value;
+    const tipoId = document.getElementById('edit-tipo').value;
+    const subtipoId = document.getElementById('edit-subtipo').value;
 
-    if (!payload.fecha || !payload.descripcion || !payload.item_id || !payload.periodo_id || !payload.tipo_id || !payload.subtipo_id) {
-      Swal.fire('Campos Incompletos', 'Por favor completa todos los campos requeridos (*).', 'warning');
+    let faltantesModal = [];
+    if (!fecha) faltantesModal.push('Fecha de Actividad');
+    if (!periodoId) faltantesModal.push('Período');
+    if (!itemId) faltantesModal.push('Ítem de Medición');
+    if (!tipoId) faltantesModal.push('Tipo');
+    if (!subtipoId) faltantesModal.push('Subtipo');
+    if (!descripcion) faltantesModal.push('Actividad / Solicitud');
+
+    if (faltantesModal.length > 0) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Campos Incompletos',
+        html: '<p>Completa los siguientes campos requeridos:</p><ul style="text-align:left;">' +
+              faltantesModal.map(f => `<li><b>${f}</b></li>`).join('') +
+              '</ul>'
+      });
       return;
+    }
+
+    const formData = new FormData();
+    formData.append('fecha', fecha);
+    formData.append('descripcion', descripcion);
+    formData.append('contacto', contacto);
+    formData.append('telefono', telefono);
+    formData.append('accion', accion);
+    formData.append('incluir_en_agenda', incluirAgenda);
+    formData.append('item_id', itemId);
+    formData.append('periodo_id', periodoId);
+    formData.append('tipo_id', tipoId);
+    formData.append('subtipo_id', subtipoId);
+
+    const inputEvidencia = document.getElementById('edit-evidencia');
+    if (inputEvidencia && inputEvidencia.files && inputEvidencia.files.length > 0) {
+      formData.append('evidencia', inputEvidencia.files[0]);
     }
 
     fetch(`/funcionario/actividades/${id}/editar-ajax/`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
         'X-CSRFToken': csrftoken
       },
-      body: JSON.stringify(payload)
+      body: formData
     })
     .then(res => res.json())
     .then(data => {

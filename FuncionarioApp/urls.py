@@ -16,6 +16,10 @@ urlpatterns = [
     path('vecinos/<int:vecino_id>/eliminar/', views.eliminar_vecino, name='vecino_eliminar'),
     path('vecinos/nuevo/', views.vecino_form, name='vecino_form'),
     path('vecinos/<int:vecino_id>/editar/', views.editar_vecino, name='editar_vecino'),
+    path('vecinos/juntas-por-delegacion/<int:delegacion_id>/', views.juntas_por_delegacion_vecino, name='juntas_por_delegacion_vecino'),
+    path('vecinos/cargos-por-junta/<int:junta_id>/', views.cargos_por_junta_vecino, name='cargos_por_junta_vecino'),
+    path('vecinos/territorios-por-delegacion/<int:delegacion_id>/', views.territorios_por_delegacion_vecino, name='territorios_por_delegacion_vecino'),
+
     # URLS de Junta de Vecinos
     path('juntas/', views.juntas, name='juntas'),
     path('juntas/<int:junta_id>/detalle-json/', views.detalle_junta_json, name='detalle_junta_json'),
@@ -25,12 +29,15 @@ urlpatterns = [
     path('juntas/nueva/', views.junta_form, name='junta_form'),
     path('juntas/<int:junta_id>/editar/', views.editar_junta, name='editar_junta'),
     path('territorios-por-delegacion/<int:delegacion_id>/', views.territorios_por_delegacion, name='territorios_por_delegacion'),
+    
     # URLS de Atención Social
     path('atencion-social/', views.atencion_social, name='atencion_social'),
     path('atencion-social/<int:atencion_id>/detalle-json/', views.detalle_atencion_json, name='detalle_atencion_json'),
     path('atencion-social/<int:atencion_id>/editar-ajax/', views.editar_atencion_ajax, name='editar_atencion_ajax'),
     path('atencion-social/solicitantes/', views.buscar_solicitantes, name='buscar_solicitantes'),
+    path('atencion-social/buscar-solicitantes/', views.buscar_solicitantes_vista, name='buscar_solicitantes_vista'),
     path('atencion-social/tipos/<int:tipo_id>/subatenciones/', views.subatenciones_tipo, name='subatenciones_tipo'),
+
     # URLS de Gestión de Casos / Gestiones Sociales
     path('casos-sociales/', views.casos_sociales, name='casos_sociales'),
     path('casos-sociales/crear-ajax/', views.crear_gestion_social_ajax, name='crear_gestion_social_ajax'),
@@ -41,4 +48,8 @@ urlpatterns = [
     path('compromisos/nuevo/', views.nuevo_compromiso, name='compromiso_nuevo'),
     path('compromisos/<int:compromiso_id>/editar/',views.editar_compromiso,name='compromiso_editar',),
     path('compromisos/<int:compromiso_id>/evidencia/',views.cargar_evidencia_compromiso,name='compromiso_evidencia',),
+    # URLS de Tubo de Cartas (HU-38)
+    path('tubo-cartas/', views.tubo_cartas, name='tubo_cartas'),
+    path('tubo-cartas/<int:carta_id>/detalle-json/', views.detalle_carta_json, name='detalle_carta_json'),
+    path('tubo-cartas/<int:carta_id>/editar-ajax/', views.editar_carta_ajax, name='editar_carta_ajax'),
 ]

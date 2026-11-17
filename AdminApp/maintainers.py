@@ -42,6 +42,8 @@ from config.delegations import active_delegation
 from DelegadoApp.models import Compromiso
 from FuncionarioApp.models import Registro, Subtipo, Tipo
 
+from FuncionarioApp.forms import VecinoForm
+from FuncionarioApp.models import Registro, Subtipo, Tipo, Vecino
 
 @dataclass(frozen=True)
 class MaintainerSpec:
@@ -137,8 +139,9 @@ def _cargo_delete_block(cargo):
     if (
         UsuarioCargo.objects.filter(cargo=cargo).exists()
         or cargo.asignaciones_funciones.exists()
+        or cargo.asignaciones_items.exists()
     ):
-        return 'El cargo tiene usuarios o asignaciones asociadas. Desactívalo para conservarlas.'
+        return 'El cargo tiene usuarios, funciones o ítems asociados. Desactívalo para conservarlas.'
     return ''
 
 
@@ -149,20 +152,55 @@ def _function_delete_block(function):
 
 
 SPECS = {
+    'vecinos': MaintainerSpec(
+        key='vecinos',
+        title='Vecinos',
+        model=Vecino,
+        form_class=VecinoForm,
+        search_fields=('rut', 'nombre', 'telefono', 'territorio__nombre', 'delegacion__nombre', 'junta_vecino__nombre'),
+        display_fields=(
+            ('RUT', 'rut'),
+            ('Nombre', 'nombre'),
+            ('Teléfono', 'telefono'),
+            ('Territorio', 'territorio__nombre'),
+            ('Delegación', 'delegacion__nombre'),
+            ('Junta de Vecinos', 'junta_vecino__nombre'),
+            ('Estado', 'estado'),
+        ),
+        export_fields=(
+            ('RUT', 'rut'),
+            ('Nombre', 'nombre'),
+            ('Teléfono', 'telefono'),
+            ('Dirección', 'direccion'),
+            ('Territorio', 'territorio__nombre'),
+            ('Delegación', 'delegacion__nombre'),
+            ('Junta de Vecinos', 'junta_vecino__nombre'),
+            ('Estado', 'estado'),
+        ),
+        ordering=('nombre',),
+        active_value=Vecino.Estado.ACTIVADO,
+        inactive_value=Vecino.Estado.DESACTIVADO,
+    ),
     'cargos': MaintainerSpec(
         key='cargos',
         title='Cargos',
         model=Cargo,
         form_class=CargoForm,
-        search_fields=('nombre', 'asignaciones_funciones__funcion__nombre'),
+        search_fields=(
+            'nombre',
+            'asignaciones_funciones__funcion__nombre',
+            'asignaciones_items__item__nombre',
+        ),
         display_fields=(
             ('Cargo', 'nombre'),
-            ('Funciones asociadas', 'funciones_asignadas'),
+            ('Funciones vigentes', 'funciones_asignadas'),
+            ('Ítems vigentes', 'items_asignados'),
             ('Estado', 'estado'),
         ),
         export_fields=(
             ('Cargo', 'nombre'),
-            ('Funciones asociadas', 'funciones_asignadas'),
+            ('Funciones vigentes', 'funciones_asignadas'),
+            ('Ítems vigentes', 'items_asignados'),
             ('Estado', 'estado'),
         ),
         ordering=('nombre',),
@@ -198,12 +236,16 @@ SPECS = {
         display_fields=(
             ('Cargo', 'cargo__nombre'),
             ('Función', 'funcion__nombre'),
+            ('Vigente desde', 'vigente_desde'),
+            ('Vigente hasta', 'vigente_hasta'),
         ),
         export_fields=(
             ('Cargo', 'cargo__nombre'),
             ('Función', 'funcion__nombre'),
+            ('Vigente desde', 'vigente_desde'),
+            ('Vigente hasta', 'vigente_hasta'),
         ),
-        ordering=('cargo__nombre', 'funcion__nombre'),
+        ordering=('cargo__nombre', '-vigente_desde', 'funcion__nombre'),
         status_field=None,
         status_filter_field=None,
     ),
@@ -398,12 +440,19 @@ def _safe_spreadsheet_value(value):
 
 
 def display_value(record, field_name):
-    if field_name == 'roles':
-        return ', '.join(sorted(role.nombre for role in record.roles.all()))
     if field_name == 'funciones_asignadas':
         return ', '.join(
-            assignment.funcion.nombre
-            for assignment in record.asignaciones_funciones.select_related('funcion')
+            f"{a.funcion.nombre} (desde {a.vigente_desde:%d/%m/%Y})"
+            for a in record.asignaciones_funciones.filter(
+                vigente_hasta__isnull=True,
+            ).select_related('funcion')
+        )
+    if field_name == 'items_asignados':
+        return ', '.join(
+            f"{a.item.nombre} (desde {a.vigente_desde:%d/%m/%Y})"
+            for a in record.asignaciones_items.filter(
+                vigente_hasta__isnull=True,
+            ).select_related('item')
         )
     if field_name == 'permisos_resumen':
         group = ensure_role_group(record)
@@ -454,6 +503,7 @@ def display_value(record, field_name):
 def _queryset_for(spec, request, *, global_scope=False):
     queryset = _authorized_queryset(
         spec, request, global_scope=global_scope,
+        
     )
     query = request.GET.get('q', '').strip()
     if query:
@@ -493,7 +543,10 @@ def _authorized_queryset(spec, request, *, global_scope=False):
     if spec.key == 'metas':
         queryset = Desempeno.objects.select_related(
             'usuario', 'item', 'periodo',
+            
         )
+        if spec.key == 'vecinos':
+            return Vecino.objects.select_related('territorio', 'delegacion', 'junta_vecino')
         if (not global_scope and request.user.cargo
                 and request.user.cargo.nombre.strip().casefold() not in {
             'admin', 'administrador',

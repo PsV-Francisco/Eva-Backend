@@ -93,21 +93,6 @@ class Registro(models.Model):
 				raise ValueError('El código de registro es inmutable.')
 		return super().save(*args, **kwargs)
 
-#Modelo Beneficiado
-class Beneficiado(models.Model):
-	nombre = models.CharField(max_length=50, db_column='NOMBRE')
-	apellido = models.CharField(max_length=50, db_column='APELLIDO')
-	telefono = models.IntegerField(db_column='TELEFONO')
-	email = models.CharField(max_length=90, null=True, blank=True, db_column='EMAIL')
-
-	class Meta:
-		ordering = ['nombre']
-		db_table = 'beneficiado'
-		verbose_name = "beneficiado"
-		verbose_name_plural = "Beneficiados"
-
-	def __str__(self):
-		return f'{self.nombre} {self.apellido}'
 
 #Modelo : Vecino (OK)
 class Vecino(models.Model):
@@ -115,13 +100,15 @@ class Vecino(models.Model):
 		ACTIVADO = 'ACTIVADO', 'Activado'
 		DESACTIVADO = 'DESACTIVADO', 'Desactivado'
 
+	rut = models.CharField(max_length=12, null=True, blank=True, db_column='RUT')
 	nombre = models.CharField(max_length=100, db_column='NOMBRE')
+	apellido = models.CharField(max_length=50, null=True, blank=True, db_column='APELLIDO') # Opcional si lo separas del nombre
 	telefono = models.CharField(max_length=15, null=True, blank=True, db_column='TELEFONO')
+	email = models.CharField(max_length=90, null=True, blank=True, db_column='EMAIL') # Heredado de beneficiado
 	direccion = models.CharField(max_length=250, null=True, blank=True, db_column='DIRECCION')
-	territorio = models.ForeignKey('Territorio',on_delete=models.PROTECT,db_column='TERRITORIO',related_name='vecinos',)
-	delegacion = models.ForeignKey('AdminApp.Delegacion',on_delete=models.PROTECT,db_column='DELEGACION',related_name='vecinos',)
-	cargo_jv = models.ForeignKey('CargoJV',on_delete=models.PROTECT,db_column='CARGO_JV',related_name='vecinos',)
-	junta_vecino = models.ForeignKey('JuntaVecino',on_delete=models.PROTECT,db_column='JUNTA_VECINO',related_name='vecinos',)
+	territorio = models.ForeignKey('Territorio', on_delete=models.PROTECT, db_column='TERRITORIO', related_name='vecinos')
+	delegacion = models.ForeignKey('AdminApp.Delegacion', on_delete=models.PROTECT, db_column='DELEGACION', related_name='vecinos')
+	junta_vecino = models.ForeignKey('JuntaVecino', on_delete=models.PROTECT, db_column='JUNTA_VECINO', related_name='vecinos')
 	estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.ACTIVADO, db_column='ESTADO')
 	activo = models.BooleanField(default=True)
 	creado = models.DateTimeField(auto_now_add=True)
@@ -130,10 +117,6 @@ class Vecino(models.Model):
 	class Meta:
 		db_table = 'vecino'
 		ordering = ['nombre']
-		indexes = [
-			models.Index(fields=['delegacion', 'activo', 'nombre']),
-			models.Index(fields=['delegacion', 'telefono']),
-		]
 		verbose_name = 'vecino'
 		verbose_name_plural = 'vecinos'
 
@@ -151,9 +134,6 @@ class Vecino(models.Model):
 			errors['territorio'] = 'Ingresa un territorio.'
 		if self.territorio_id and self.territorio.delegacion_id != self.delegacion_id:
 			errors['territorio'] = 'El territorio debe pertenecer a la misma delegación.'
-		if self.cargo_jv_id and self.junta_vecino_id:
-			if self.cargo_jv.junta_vecino_id != self.junta_vecino_id:
-				errors['cargo_jv'] = 'El cargo debe pertenecer a la junta seleccionada.'
 		if errors:
 			raise ValidationError(errors)
 
@@ -234,7 +214,8 @@ class JuntaVecino(models.Model):
 class CargoJv(models.Model):
 	nombre = models.CharField(max_length=100, db_column='NOMBRE')
 	permisos = models.CharField(max_length=500, db_column='PERMISOS')
-	junta_vecino = models.ForeignKey(JuntaVecino,on_delete=models.PROTECT,db_column='JUNTA_VECINO',related_name='cargos',)
+	junta_vecino = models.ForeignKey(JuntaVecino, on_delete=models.PROTECT, db_column='JUNTA_VECINO', related_name='cargos')
+	vecino = models.ForeignKey(Vecino, on_delete=models.SET_NULL, null=True, blank=True, db_column='VECINO', related_name='cargos_ejercidos')
 
 	class Meta:
 		db_table = 'cargo_jv'
@@ -258,3 +239,73 @@ def tipo_subtipo_predeterminados(tipo=None):
 		defaults={'estado': Subtipo.Estado.ACTIVADO},
 	)
 	return tipo, subtipo
+
+
+# Modelo: Carta (HU-38: Tubo de Cartas y Correspondencia Formal)
+class Carta(models.Model):
+	class Estado(models.TextChoices):
+		INGRESADA = 'INGRESADA', 'Ingresada'
+		DERIVADA = 'DERIVADA', 'Derivada'
+		EN_PROCESO = 'EN_PROCESO', 'En proceso'
+		APROBADA = 'APROBADA', 'Aprobada'
+		FINALIZADA = 'FINALIZADA', 'Finalizada'
+		NO_APLICA = 'NO_APLICA', 'No aplica'
+
+	numero_carta = models.CharField(max_length=80, db_column='NUMERO_CARTA')
+	fecha = models.DateField(db_column='FECHA')
+	remitente = models.CharField(max_length=160, db_column='REMITENTE')
+	destinatario = models.CharField(max_length=160, db_column='DESTINATARIO')
+	telefono = models.CharField(max_length=20, blank=True, null=True, db_column='TELEFONO')
+	materia = models.CharField(max_length=255, db_column='MATERIA')
+	fecha_respuesta = models.DateField(blank=True, null=True, db_column='FECHA_RESPUESTA')
+	responsable_seguimiento = models.ForeignKey(
+		settings.AUTH_USER_MODEL,
+		on_delete=models.PROTECT,
+		related_name='cartas_asignadas',
+		db_column='RESPONSABLE_SEGUIMIENTO',
+	)
+	area_derivada = models.CharField(max_length=160, blank=True, db_column='AREA_DERIVADA')
+	pronunciamiento = models.TextField(blank=True, db_column='PRONUNCIAMIENTO')
+	observaciones = models.TextField(blank=True, db_column='OBSERVACIONES')
+	documento_adjunto = models.ForeignKey(
+		'SupervisorApp.Evidencia',
+		on_delete=models.SET_NULL,
+		null=True,
+		blank=True,
+		related_name='cartas',
+		db_column='DOCUMENTO_ADJUNTO',
+	)
+	fecha_cierre = models.DateField(blank=True, null=True, db_column='FECHA_CIERRE')
+	estado = models.CharField(
+		max_length=20,
+		choices=Estado.choices,
+		default=Estado.INGRESADA,
+		db_column='ESTADO',
+	)
+	delegacion = models.ForeignKey(
+		'AdminApp.Delegacion',
+		on_delete=models.PROTECT,
+		related_name='cartas',
+		db_column='DELEGACION',
+	)
+	autor = models.ForeignKey(
+		settings.AUTH_USER_MODEL,
+		on_delete=models.PROTECT,
+		related_name='cartas_creadas',
+		db_column='AUTOR',
+	)
+	creado = models.DateTimeField(auto_now_add=True)
+	actualizado = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		db_table = 'carta'
+		ordering = ['-fecha', '-creado']
+		indexes = [
+			models.Index(fields=['delegacion', 'estado', 'fecha']),
+			models.Index(fields=['numero_carta']),
+		]
+		verbose_name = 'carta'
+		verbose_name_plural = 'cartas'
+
+	def __str__(self):
+		return f'{self.numero_carta} - {self.materia}'

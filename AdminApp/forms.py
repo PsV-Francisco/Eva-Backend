@@ -26,10 +26,11 @@ from AdminApp.roles import (
     permission_codenames_for,
     role_group_name,
 )
-from CoordinadorApp.models import CargoFuncion, Desempeno, Funcion, Item, Periodo
 from config.forms import BootstrapFormMixin
 from config.permissions import PERMISSION_CATALOG, PERMISSION_DESCRIPTIONS
 
+from datetime import timedelta
+from CoordinadorApp.models import CargoFuncion, CargoItem, Desempeno, Funcion, Item, Periodo
 
 class PermissionCheckboxSelectMultiple(forms.CheckboxSelectMultiple):
     def __init__(self, *args, permission_metadata=None, **kwargs):
@@ -198,6 +199,13 @@ def _sync_user_assignments(user, cleaned_data):
 
 
 class UsuarioCreationForm(BootstrapFormMixin, forms.ModelForm):
+    rut = forms.CharField(
+        max_length=12,
+        required=True,
+        label='RUT',
+        help_text='Formato sin puntos y con guión (ej: 12345678-9).',
+        widget=forms.TextInput(attrs={'placeholder': '12345678-9'}),
+    )
     delegacion = forms.ModelChoiceField(
         queryset=Delegacion.objects.none(),
         required=False,
@@ -218,23 +226,42 @@ class UsuarioCreationForm(BootstrapFormMixin, forms.ModelForm):
         required=False,
         label='Roles',
     )
-    password1 = forms.CharField(label='Contraseña', widget=forms.PasswordInput)
-    password2 = forms.CharField(label='Confirmar contraseña', widget=forms.PasswordInput)
 
     class Meta:
         model = Usuario
-        fields = ('email', 'nombre', 'estado', 'is_active')
+        fields = ('rut', 'email', 'nombre')
         labels = {
+            'rut': 'RUT',
             'email': 'Correo electrónico',
-            'nombre': 'Nombre',
-            'estado': 'Estado',
-            'is_active': 'Cuenta activa',
+            'nombre': 'Nombre de usuario',
         }
 
     def __init__(self, *args, **kwargs):
         actor = kwargs.pop('actor', None)
         super().__init__(*args, **kwargs)
+        self.fields['nombre'].required = True
         _configure_user_form_fields(self, actor)
+
+    def clean_rut(self):
+        from AdminApp.models import validar_y_normalizar_rut_usuario
+        rut = validar_y_normalizar_rut_usuario(self.cleaned_data.get('rut'))
+        if Usuario.objects.filter(rut__iexact=rut).exists():
+            raise forms.ValidationError('Ya existe una cuenta registrada con este RUT.')
+        return rut
+
+    def clean_email(self):
+        email = (self.cleaned_data.get('email') or '').strip().lower()
+        if Usuario.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError('Ya existe una cuenta registrada con este correo electrónico.')
+        return email
+
+    def clean_nombre(self):
+        nombre = (self.cleaned_data.get('nombre') or '').strip()
+        if not nombre:
+            raise forms.ValidationError('El nombre de usuario es obligatorio.')
+        if Usuario.objects.filter(nombre__iexact=nombre).exists():
+            raise forms.ValidationError('Ya existe una cuenta registrada con este nombre de usuario.')
+        return nombre
 
     def clean(self):
         cleaned_data = super().clean()
@@ -246,17 +273,18 @@ class UsuarioCreationForm(BootstrapFormMixin, forms.ModelForm):
                     *authorized,
                     delegation,
                 ]
-        password = cleaned_data.get('password1')
-        password_confirmation = cleaned_data.get('password2')
-        if password and password_confirmation and password != password_confirmation:
-            self.add_error('password2', 'Las contraseñas no coinciden.')
-        elif password:
-            validate_password(password)
         return cleaned_data
 
     def save(self, commit=True):
+        import secrets
         user = super().save(commit=False)
-        user.set_password(self.cleaned_data['password1'])
+        user.estado = Usuario.EstadoCuenta.PENDIENTE_ACTIVACION
+        user.is_active = True
+        user.requiere_cambio_password = True
+        user.fecha_activacion = None
+        temp_password = f'Sgr#{secrets.token_urlsafe(9)}9'
+        user.set_password(temp_password)
+        user._generated_temp_password = temp_password
         if commit:
             user.save()
             _sync_user_assignments(user, self.cleaned_data)
@@ -264,6 +292,12 @@ class UsuarioCreationForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class UsuarioUpdateForm(BootstrapFormMixin, forms.ModelForm):
+    rut = forms.CharField(
+        max_length=12,
+        required=False,
+        label='RUT',
+        widget=forms.TextInput(attrs={'placeholder': '12345678-9'}),
+    )
     delegacion = forms.ModelChoiceField(
         queryset=Delegacion.objects.none(),
         required=False,
@@ -284,19 +318,61 @@ class UsuarioUpdateForm(BootstrapFormMixin, forms.ModelForm):
         required=False,
         label='Roles',
     )
-    password1 = forms.CharField(label='Nueva contraseña', widget=forms.PasswordInput, required=False)
+    password1 = forms.CharField(label='Nueva contraseña (opcional)', widget=forms.PasswordInput, required=False)
     password2 = forms.CharField(label='Confirmar contraseña', widget=forms.PasswordInput, required=False)
 
-    class Meta(UsuarioCreationForm.Meta):
-        pass
+    class Meta:
+        model = Usuario
+        fields = ('rut', 'email', 'nombre', 'estado', 'is_active')
+        labels = {
+            'rut': 'RUT',
+            'email': 'Correo electrónico',
+            'nombre': 'Nombre de usuario',
+            'estado': 'Estado',
+            'is_active': 'Cuenta activa',
+        }
 
     def __init__(self, *args, protected_admin=False, **kwargs):
         actor = kwargs.pop('actor', None)
         super().__init__(*args, **kwargs)
+        self.fields['nombre'].required = True
         _configure_user_form_fields(self, actor)
         if protected_admin:
             self.fields['cargo'].disabled = True
             self.fields['is_active'].disabled = True
+
+    def clean_rut(self):
+        from AdminApp.models import validar_y_normalizar_rut_usuario
+        raw = (self.cleaned_data.get('rut') or '').strip()
+        if not raw:
+            return None
+        rut = validar_y_normalizar_rut_usuario(raw)
+        qs = Usuario.objects.filter(rut__iexact=rut)
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise forms.ValidationError('Ya existe otra cuenta registrada con este RUT.')
+        return rut
+
+    def clean_email(self):
+        email = (self.cleaned_data.get('email') or '').strip().lower()
+        qs = Usuario.objects.filter(email__iexact=email)
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise forms.ValidationError('Ya existe otra cuenta registrada con este correo electrónico.')
+        return email
+
+    def clean_nombre(self):
+        nombre = (self.cleaned_data.get('nombre') or '').strip()
+        if not nombre:
+            raise forms.ValidationError('El nombre de usuario es obligatorio.')
+        qs = Usuario.objects.filter(nombre__iexact=nombre)
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise forms.ValidationError('Ya existe otra cuenta registrada con este nombre de usuario.')
+        return nombre
 
     def clean(self):
         cleaned_data = super().clean()
@@ -525,12 +601,37 @@ class RolForm(BootstrapFormMixin, forms.ModelForm):
         group.permissions.set(self.cleaned_data['permissions'])
         return role
 
+def _validate_vigencia_not_in_closed_period(form, vigencia, field_name='vigente_desde'):
+    if not vigencia:
+        return
+    closed_period = Periodo.objects.filter(
+        estado=Periodo.Estado.CERRADO,
+        fecha_inicio__lte=vigencia,
+        fecha_fin__gte=vigencia,
+    ).first()
+    if closed_period:
+        form.add_error(
+            field_name,
+            f'No se puede fijar vigencia en "{closed_period.nombre}" porque es un período cerrado.',
+        )
 
 class CargoForm(BootstrapFormMixin, forms.ModelForm):
     funciones = forms.ModelMultipleChoiceField(
         queryset=Funcion.objects.none(),
         required=False,
-        label='Funciones asociadas',
+        label='Funciones vigentes asociadas',
+    )
+    items = forms.ModelMultipleChoiceField(
+        queryset=Item.objects.none(),
+        required=False,
+        label='Ítems de medición vigentes',
+    )
+    vigente_desde = forms.DateField(
+        required=True,
+        label='Vigente desde',
+        initial=timezone.localdate,
+        widget=forms.DateInput(attrs={'type': 'date'}),
+        help_text='Fecha desde la cual rigen los cambios sin alterar períodos cerrados.',
     )
 
     class Meta:
@@ -543,26 +644,95 @@ class CargoForm(BootstrapFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        functions = Funcion.objects.filter(estado=Funcion.Estado.ACTIVO)
-        self.fields['funciones'].queryset = functions.order_by('nombre')
+        self.fields['funciones'].queryset = Funcion.objects.filter(
+            estado=Funcion.Estado.ACTIVO,
+        ).order_by('nombre')
+        self.fields['items'].queryset = Item.objects.filter(
+            estado=Item.Estado.ACTIVO,
+        ).order_by('nombre')
+
         if self.instance.pk:
-            self.initial['funciones'] = CargoFuncion.objects.filter(
+            hoy = timezone.localdate()
+            vigentes_fn = CargoFuncion.objects.filter(
                 cargo=self.instance,
-            ).values_list('funcion_id', flat=True)
+            ).filter(Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gte=hoy))
+            self.initial['funciones'] = list(vigentes_fn.values_list('funcion_id', flat=True))
+
+            vigentes_it = CargoItem.objects.filter(
+                cargo=self.instance,
+            ).filter(Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gte=hoy))
+            self.initial['items'] = list(vigentes_it.values_list('item_id', flat=True))
+
+            ultima_fecha = (
+                vigentes_fn.order_by('-vigente_desde').values_list('vigente_desde', flat=True).first()
+                or vigentes_it.order_by('-vigente_desde').values_list('vigente_desde', flat=True).first()
+            )
+            if ultima_fecha:
+                self.initial['vigente_desde'] = max(ultima_fecha, hoy)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        vigencia = cleaned_data.get('vigente_desde')
+        _validate_vigencia_not_in_closed_period(self, vigencia, 'vigente_desde')
+        if vigencia:
+            cierre = vigencia - timedelta(days=1)
+            _validate_vigencia_not_in_closed_period(self, cierre, 'vigente_desde')
+        return cleaned_data
 
     def save(self, commit=True):
         cargo = super().save(commit=commit)
         if commit:
-            selected = {
-                funcion.pk for funcion in self.cleaned_data.get('funciones', ())
-            }
-            existing = CargoFuncion.objects.filter(cargo=cargo)
-            existing.exclude(funcion_id__in=selected).delete()
-            current = set(existing.values_list('funcion_id', flat=True))
-            CargoFuncion.objects.bulk_create([
-                CargoFuncion(cargo=cargo, funcion_id=funcion_id)
-                for funcion_id in selected - current
-            ])
+            with transaction.atomic():
+                vigencia = self.cleaned_data.get('vigente_desde') or timezone.localdate()
+                fecha_cierre = vigencia - timedelta(days=1)
+
+                # 1. Sincronizar funciones vigentes sin borrar historial cerrado
+                selected_fn = {f.pk for f in self.cleaned_data.get('funciones', ())}
+                activas_fn = CargoFuncion.objects.filter(
+                    cargo=cargo,
+                    vigente_hasta__isnull=True,
+                )
+                for asig in activas_fn.exclude(funcion_id__in=selected_fn):
+                    if asig.vigente_desde >= vigencia:
+                        asig.delete()
+                    else:
+                        asig.vigente_hasta = fecha_cierre
+                        asig.save(update_fields=['vigente_hasta'])
+
+                current_fn = set(
+                    CargoFuncion.objects.filter(
+                        cargo=cargo,
+                        vigente_hasta__isnull=True,
+                    ).values_list('funcion_id', flat=True)
+                )
+                CargoFuncion.objects.bulk_create([
+                    CargoFuncion(cargo=cargo, funcion_id=fn_id, vigente_desde=vigencia)
+                    for fn_id in selected_fn - current_fn
+                ])
+
+                # 2. Sincronizar ítems medibles vigentes sin borrar historial cerrado
+                selected_it = {i.pk for i in self.cleaned_data.get('items', ())}
+                activas_it = CargoItem.objects.filter(
+                    cargo=cargo,
+                    vigente_hasta__isnull=True,
+                )
+                for asig in activas_it.exclude(item_id__in=selected_it):
+                    if asig.vigente_desde >= vigencia:
+                        asig.delete()
+                    else:
+                        asig.vigente_hasta = fecha_cierre
+                        asig.save(update_fields=['vigente_hasta'])
+
+                current_it = set(
+                    CargoItem.objects.filter(
+                        cargo=cargo,
+                        vigente_hasta__isnull=True,
+                    ).values_list('item_id', flat=True)
+                )
+                CargoItem.objects.bulk_create([
+                    CargoItem(cargo=cargo, item_id=it_id, vigente_desde=vigencia)
+                    for it_id in selected_it - current_it
+                ])
         return cargo
 
 
@@ -581,8 +751,17 @@ class FuncionForm(BootstrapFormMixin, forms.ModelForm):
 class CargoFuncionForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = CargoFuncion
-        fields = ('cargo', 'funcion')
-        labels = {'cargo': 'Cargo', 'funcion': 'Función'}
+        fields = ('cargo', 'funcion', 'vigente_desde', 'vigente_hasta')
+        labels = {
+            'cargo': 'Cargo',
+            'funcion': 'Función',
+            'vigente_desde': 'Vigente desde',
+            'vigente_hasta': 'Vigente hasta (opcional)',
+        }
+        widgets = {
+            'vigente_desde': forms.DateInput(attrs={'type': 'date'}),
+            'vigente_hasta': forms.DateInput(attrs={'type': 'date'}),
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -600,6 +779,17 @@ class CargoFuncionForm(BootstrapFormMixin, forms.ModelForm):
             )
         self.fields['cargo'].queryset = cargos.order_by('nombre')
         self.fields['funcion'].queryset = functions.order_by('nombre')
+
+    def clean(self):
+        cleaned_data = super().clean()
+        desde = cleaned_data.get('vigente_desde')
+        hasta = cleaned_data.get('vigente_hasta')
+        if self.instance.pk and self.instance.vigente_desde != desde:
+            _validate_vigencia_not_in_closed_period(self, self.instance.vigente_desde, 'vigente_desde')
+        _validate_vigencia_not_in_closed_period(self, desde, 'vigente_desde')
+        if hasta:
+            _validate_vigencia_not_in_closed_period(self, hasta, 'vigente_hasta')
+        return cleaned_data
 
 
 """class CatalogoForm(BootstrapFormMixin, forms.ModelForm):

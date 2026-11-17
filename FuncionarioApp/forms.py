@@ -2,14 +2,15 @@ from django import forms
 from django.db.models import Q
 from django.utils import timezone
 from django.db import models
-
+import re
 from AdminApp.models import Delegacion
 from CoordinadorApp.models import AtencionSocial, GestionAtencion, Item, Periodo
 from DelegadoApp.models import Compromiso
-from FuncionarioApp.models import (Beneficiado,CargoJv,JuntaVecino,Registro,Subtipo,Territorio,Tipo,Vecino,tipo_subtipo_predeterminados,)
+from FuncionarioApp.models import (CargoJv,JuntaVecino,Registro,Subtipo,Territorio,Tipo,Vecino,tipo_subtipo_predeterminados,)
 from config.forms import BootstrapFormMixin
 from SupervisorApp.files import validate_evidence_file
-
+from FuncionarioApp.models import Carta
+from django.contrib.auth import get_user_model
 
 def _assign_tipo_subtipo(form, instance):
     tipo = form.cleaned_data.get('tipo')
@@ -58,7 +59,7 @@ class TipoSubtipoFields:
 
 
 class FuncionarioCompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
-    solicitante = forms.ModelChoiceField(queryset=Beneficiado.objects.all().order_by('nombre', 'apellido'),required=False,label='Solicitante (Beneficiario)',empty_label='Seleccione un beneficiario',widget=forms.Select(attrs={'class': 'form-select'}),)
+    solicitante = forms.ModelChoiceField(queryset=Vecino.objects.filter(activo=True).order_by('nombre', 'apellido'),required=False,label='Solicitante (Vecino)',empty_label='Seleccione un vecino',widget=forms.Select(attrs={'class': 'form-select'}),)
     territorio = forms.ModelChoiceField(queryset=Territorio.objects.all().order_by('nombre'),required=False,label='Territorio',empty_label='Seleccione un territorio',widget=forms.Select(attrs={'class': 'form-select'}),)
     tipo = forms.ModelChoiceField(queryset=Tipo.objects.filter(estado=Tipo.Estado.ACTIVADO).order_by('nombre'),required=False,label='Tipo',empty_label='Seleccione un tipo',widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_tipo'}),)
     subtipo = forms.ModelChoiceField(queryset=Subtipo.objects.none(),required=False,label='Subtipo',empty_label='Seleccione un subtipo',widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_subtipo'}),)
@@ -142,71 +143,27 @@ class RegistroForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
 
 
 class VecinoForm(BootstrapFormMixin, forms.ModelForm):
-    territorio = forms.ModelChoiceField(
-        queryset=Territorio.objects.none(),
-        required=False,
-        label='Territorio existente',
-    )
-    junta_vecino = forms.ModelChoiceField(
-        queryset=JuntaVecino.objects.none(),
-        required=False,
-        label='Junta de vecinos existente',
-    )
-    cargo_jv = forms.ModelChoiceField(
-        queryset=CargoJv.objects.none(),
-        required=False,
-        label='Cargo en la junta existente',
-    )
-    nuevo_territorio = forms.CharField(
-        max_length=100,
-        required=False,
-        label='Crear territorio',
-    )
-    nuevo_nombre_junta = forms.CharField(
-        max_length=100,
-        required=False,
-        label='Crear junta de vecinos',
-    )
-    nuevo_domicilio_junta = forms.CharField(
-        max_length=100,
-        required=False,
-        label='Domicilio legal de la nueva junta',
-    )
-    nuevo_numero_rpj = forms.IntegerField(
-        min_value=1,
-        required=False,
-        label='Número de personalidad jurídica de la nueva junta',
-    )
-    nuevo_cargo_junta = forms.CharField(
-        max_length=100,
-        required=False,
-        label='Crear cargo en la junta',
-    )
-    nuevo_cargo_permisos = forms.CharField(
-        max_length=500,
-        required=False,
-        label='Permisos del nuevo cargo',
-    )
-    estado = forms.ChoiceField(
-        choices=Vecino.Estado.choices,
-        initial=Vecino.Estado.ACTIVADO,
-        widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_estado'}),
-        label='Estado'
-    )
-    activo = forms.BooleanField(
-        required=False,
-        initial=True,
-        widget=forms.CheckboxInput(attrs={'class': 'form-check-input', 'id': 'id_activo'}),
-        label='Activo'
-    )
+    rut = forms.CharField(max_length=12,required=True,label='RUT (Ej: 12345678-9 o 12.345.678-K)',widget=forms.TextInput(attrs={'class': 'form-control', 'id': 'id_rut', 'placeholder': '12345678-9'}))
+    territorio = forms.ModelChoiceField(queryset=Territorio.objects.none(),required=False,label='Territorio existente',)
+    junta_vecino = forms.ModelChoiceField(queryset=JuntaVecino.objects.none(),required=False,label='Junta de vecinos existente',)
+    cargo_jv = forms.ModelChoiceField(queryset=CargoJv.objects.none(),required=False,label='Cargo en la junta existente',)
+    nuevo_territorio = forms.CharField(max_length=100,required=False,label='Crear territorio',)
+    nuevo_nombre_junta = forms.CharField(max_length=100,required=False,label='Crear junta de vecinos',)
+    nuevo_domicilio_junta = forms.CharField(max_length=100,required=False,label='Domicilio legal de la nueva junta',)
+    nuevo_numero_rpj = forms.IntegerField(min_value=1,required=False,label='Número de personalidad jurídica de la nueva junta',)
+    nuevo_cargo_junta = forms.CharField(max_length=100,required=False,label='Crear cargo en la junta',)
+    nuevo_cargo_permisos = forms.CharField(max_length=500,required=False,label='Permisos del nuevo cargo',)
+    estado = forms.ChoiceField(choices=Vecino.Estado.choices,initial=Vecino.Estado.ACTIVADO,widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_estado'}),label='Estado')
+    activo = forms.BooleanField(required=False,initial=True,widget=forms.CheckboxInput(attrs={'class': 'form-check-input', 'id': 'id_activo'}),label='Activo')
 
     class Meta:
         model = Vecino
         fields = (
-            'nombre', 'telefono', 'direccion', 'activo', 'cargo_jv',
+            'rut', 'nombre', 'telefono', 'direccion', 'activo', 'cargo_jv',
             'delegacion', 'junta_vecino', 'territorio', 'estado'
         )
         labels = {
+            'rut': 'RUT',
             'nombre': 'Nombre',
             'telefono': 'Teléfono',
             'direccion': 'Dirección',
@@ -218,6 +175,7 @@ class VecinoForm(BootstrapFormMixin, forms.ModelForm):
             'estado': 'Estado',
         }
         widgets = {
+            'rut': forms.NumberInput(attrs={'class': 'form-control', 'id': 'id_rut'}),
             'nombre': forms.TextInput(attrs={'class': 'form-control', 'id': 'id_nombre'}),
             'telefono': forms.TextInput(attrs={'class': 'form-control', 'id': 'id_telefono', 'autocomplete': 'tel'}),
             'direccion': forms.TextInput(attrs={'class': 'form-control', 'id': 'id_direccion', 'autocomplete': 'street-address'}),
@@ -232,22 +190,62 @@ class VecinoForm(BootstrapFormMixin, forms.ModelForm):
         if delegaciones is None:
             delegaciones = Delegacion.objects.none()
         
+        # Requerimiento 1: Permitir cualquier delegación activa
         self.fields['delegacion'].queryset = delegaciones.order_by('nombre')
 
-        # Formateo de CARGO_JV: "Nombre + permisos"
-        cargos = CargoJv.objects.filter(junta_vecino__delegacion__in=delegaciones)
-        self.fields['cargo_jv'].queryset = cargos.distinct().order_by('nombre')
-        self.fields['cargo_jv'].label_from_instance = lambda obj: f"{obj.nombre} - {obj.permisos}"
+        # Control de dependencias iniciales (si hay datos por POST o instancia)
+        delegation_id = (self.data.get('delegacion') or self.initial.get('delegacion') or (self.instance.delegacion_id if self.instance and self.instance.pk else None))
+        junta_id = self.data.get('junta_vecino') or (self.instance.junta_vecino_id if self.instance and self.instance.pk else None)
 
-        # Formateo de JUNTA_VECINO: "NUMERO_RPJ + NOMBRE"
-        juntas = JuntaVecino.objects.filter(delegacion__in=delegaciones)
+        # Requerimiento 2: Filtrar juntas según delegación
+        if delegation_id:
+            juntas = JuntaVecino.objects.filter(delegacion_id=delegation_id)
+        else:
+            juntas = JuntaVecino.objects.none()
         self.fields['junta_vecino'].queryset = juntas.distinct().order_by('nombre')
         self.fields['junta_vecino'].label_from_instance = lambda obj: f"RPJ {obj.numero_rpj} - {obj.nombre}"
 
-        # Formateo de TERRITORIO: "ID + NOMBRE"
-        territories = Territorio.objects.filter(delegacion__in=delegaciones)
+        # Requerimiento 3: Filtrar cargos según junta
+        if junta_id:
+            cargos = CargoJv.objects.filter(junta_vecino_id=junta_id)
+        else:
+            cargos = CargoJv.objects.none()
+        self.fields['cargo_jv'].queryset = cargos.distinct().order_by('nombre')
+        self.fields['cargo_jv'].label_from_instance = lambda obj: f"{obj.nombre} - {obj.permisos}"
+
+        # Territorios según delegación
+        territories = Territorio.objects.filter(delegacion_id=delegation_id) if delegation_id else Territorio.objects.none()
         self.fields['territorio'].queryset = territories.distinct().order_by('nombre')
         self.fields['territorio'].label_from_instance = lambda obj: f"ID: {obj.pk} - {obj.nombre}"
+
+    
+    def clean_rut(self):
+        rut_input = self.cleaned_data.get('rut', '').strip()
+        
+        # 1. Limpiar puntos y espacios, dejar en mayúsculas
+        rut_limpio = rut_input.replace('.', '').replace(' ', '').upper()
+        
+        # 2. Validar formato con expresión regular (cuerpo de 7 a 8 dígitos + guión + dígito verificador 0-9 o K)
+        
+        if not re.match(r'^\d{7,8}-[\dK]$', rut_limpio):
+            raise forms.ValidationError('Formato de RUT inválido. Use el formato: 12345678-9')
+        
+        # 3. Validar algoritmo Módulo 11 (Dígito Verificador real)
+        cuerpo, dv = rut_limpio.split('-')
+        suma = 0
+        multiplo = 2
+        for r in reversed(cuerpo):
+            suma += int(r) * multiplo
+            multiplo += 1
+            if multiplo > 7:
+                multiplo = 2
+        esperado = 11 - (suma % 11)
+        dv_calculado = 'K' if esperado == 10 else ('0' if esperado == 11 else str(esperado))
+        
+        if dv_calculado != dv:
+            raise forms.ValidationError('El dígito verificador del RUT no es válido.')
+
+        return rut_limpio
 
     def clean_nombre(self):
         return self.cleaned_data['nombre'].strip()
@@ -255,6 +253,23 @@ class VecinoForm(BootstrapFormMixin, forms.ModelForm):
     def clean_telefono(self):
         telefono = self.cleaned_data.get('telefono')
         return telefono.strip() if telefono else telefono
+
+    def clean(self):
+        cleaned_data = super().clean()
+        delegacion = cleaned_data.get('delegacion')
+        junta_vecino = cleaned_data.get('junta_vecino')
+        cargo_jv = cleaned_data.get('cargo_jv')
+    
+        # Validar Requerimiento 2: La junta debe pertenecer a la delegación
+        if junta_vecino and delegacion and junta_vecino.delegacion_id != delegacion.pk:
+            self.add_error('junta_vecino', 'La junta de vecinos seleccionada no pertenece a la delegación elegida.')
+
+        # Validar Requerimiento 3: El cargo debe pertenecer a la junta elegida
+        if cargo_jv and junta_vecino and cargo_jv.junta_vecino_id != junta_vecino.pk:
+            self.add_error('cargo_jv', 'El cargo seleccionado debe pertenecer a la junta de vecinos elegida.')
+
+        return cleaned_data
+        
 
 
 class JuntaVecinoForm(BootstrapFormMixin, forms.ModelForm):
@@ -338,88 +353,24 @@ class JuntaVecinoForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class AtencionSocialForm(TipoSubtipoFields, BootstrapFormMixin, forms.Form):
-    tipo = forms.ModelChoiceField(
-        queryset=Tipo.objects.none(),
-        required=True,
-        label='Tipo',
-        empty_label='Seleccionar tipo',
-        widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_tipo'}),
-    )
-    subtipo = forms.ModelChoiceField(
-        queryset=Subtipo.objects.none(),
-        required=True,
-        label='Subtipo',
-        empty_label='Seleccionar subtipo',
-        widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_subtipo'}),
-    )
-    beneficiado = forms.ModelChoiceField(
-        queryset=Beneficiado.objects.none(),
-        required=False,
-        label='Beneficiado existente',
-        empty_label='Seleccionar beneficiado existente',
-        widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_beneficiado'}),
-    )
-    gestion_atencion = forms.ModelChoiceField(
-        queryset=GestionAtencion.objects.all().order_by('-fecha'),
-        required=True,
-        label='Gestión social',
-        empty_label='Seleccionar gestión social',
-        widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_gestion_atencion'}),
-    )
-    nombre = forms.CharField(
-        max_length=50,
-        required=False,
-        label='Nombre',
-        widget=forms.TextInput(attrs={'class': 'form-control', 'id': 'id_nombre'}),
-    )
-    apellido = forms.CharField(
-        max_length=50,
-        required=False,
-        label='Apellido',
-        widget=forms.TextInput(attrs={'class': 'form-control', 'id': 'id_apellido'}),
-    )
-    telefono = forms.IntegerField(
-        required=False,
-        label='Teléfono',
-        widget=forms.NumberInput(attrs={'class': 'form-control', 'id': 'id_telefono'}),
-    )
-    email = forms.EmailField(
-        max_length=90,
-        required=False,
-        label='Correo electrónico',
-        widget=forms.EmailInput(attrs={'class': 'form-control', 'id': 'id_email'}),
-    )
-    fecha = forms.DateTimeField(
-        label='Fecha de atención',
-        widget=forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
-    )
-    resultado = forms.CharField(
-        required=False,
-        label='Resultado',
-        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
-    )
-    observaciones = forms.CharField(
-        required=False,
-        label='Observaciones',
-        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-    )
-    evidencia = forms.FileField(
-        required=False,
-        label='Evidencia de la atención (Opcional)',
-        widget=forms.ClearableFileInput(attrs={
-            'class': 'form-control',
-            'accept': 'image/jpeg,image/png,application/pdf',
-        }),
-    )
+    gestion_atencion = forms.ModelChoiceField(queryset=GestionAtencion.objects.all().order_by('-fecha'), required=True, label='Gestión social (Caso)', empty_label='Seleccionar gestión social', widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_gestion_atencion'}))
+    etapa = forms.TypedChoiceField(choices=AtencionSocial.Etapa.choices, coerce=int, required=True, label='Etapa de la gestión', widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_etapa'}))
+    tipo = forms.ModelChoiceField(queryset=Tipo.objects.none(), required=True, label='Tipo', empty_label='Seleccionar tipo', widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_tipo'}))
+    subtipo = forms.ModelChoiceField(queryset=Subtipo.objects.none(), required=True, label='Subtipo', empty_label='Seleccionar subtipo', widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_subtipo'}))
+    vecino = forms.ModelChoiceField(queryset=Vecino.objects.filter(activo=True).order_by('nombre'),required=False,label='Vecino existente',empty_label='Seleccionar vecino existente', widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_vecino'}))
+    nombre = forms.CharField(max_length=50, required=False, label='Nombre', widget=forms.TextInput(attrs={'class': 'form-control', 'id': 'id_nombre'}))
+    apellido = forms.CharField(max_length=50, required=False, label='Apellido', widget=forms.TextInput(attrs={'class': 'form-control', 'id': 'id_apellido'}))
+    telefono = forms.IntegerField(required=False, label='Teléfono', widget=forms.NumberInput(attrs={'class': 'form-control', 'id': 'id_telefono'}))
+    email = forms.EmailField(max_length=90, required=False, label='Correo electrónico', widget=forms.EmailInput(attrs={'class': 'form-control', 'id': 'id_email'}))
+    fecha = forms.DateTimeField(label='Fecha de atención', widget=forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}))
+    resultado = forms.CharField(required=False, label='Resultado', widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}))
+    observaciones = forms.CharField(required=False, label='Observaciones', widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}))
+    evidencia = forms.FileField(required=False, label='Evidencia de la atención (Opcional)', widget=forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': 'image/jpeg,image/png,application/pdf'}))
 
     def __init__(self, *args, instance=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.instance = instance
-
-        # 1. Poblar los beneficiados existentes ordenados por nombre y apellido
-        self.fields['beneficiado'].queryset = Beneficiado.objects.all().order_by('nombre', 'apellido')
-
-        # 2. Poblar tipos activos
+        self.fields['vecino'].queryset = Vecino.objects.filter(activo=True).order_by('nombre')
         self.fields['tipo'].queryset = _active_catalog_queryset(Tipo).order_by('nombre')
 
         tipo_id = None
@@ -432,24 +383,30 @@ class AtencionSocialForm(TipoSubtipoFields, BootstrapFormMixin, forms.Form):
             tipo_id = instance.tipo_id
 
         if tipo_id:
-            self.fields['subtipo'].queryset = _active_catalog_queryset(Subtipo).filter(
-                tipo_id=tipo_id
-            ).order_by('nombre')
+            self.fields['subtipo'].queryset = _active_catalog_queryset(Subtipo).filter(tipo_id=tipo_id).order_by('nombre')
         else:
             self.fields['subtipo'].queryset = Subtipo.objects.none()
 
     def clean(self):
         cleaned_data = super().clean()
-        beneficiado = cleaned_data.get('beneficiado')
-        
-        # Si NO hay un beneficiado seleccionado, exigir la creación manual
-        if not beneficiado:
+        vecino = cleaned_data.get('vecino')
+        gestion = cleaned_data.get('gestion_atencion')
+        etapa = cleaned_data.get('etapa')
+
+        if gestion and etapa:
+            qs_gestion = AtencionSocial.objects.filter(gestion_atencion=gestion)
+            if self.instance and self.instance.pk:
+                qs_gestion = qs_gestion.exclude(pk=self.instance.pk)
+            if qs_gestion.filter(etapa=etapa).exists():
+                self.add_error('etapa', f'La etapa {etapa} ya se encuentra registrada en esta gestión social.')
+            if not (self.instance and self.instance.pk) and qs_gestion.count() >= 3:
+                self.add_error('gestion_atencion', 'Esta gestión social ya alcanzó el máximo permitido de 3 etapas.')
+
+        if not vecino:
             if not cleaned_data.get('nombre'):
-                self.add_error('nombre', 'Debes ingresar el nombre o seleccionar un beneficiado existente.')
-            if not cleaned_data.get('apellido'):
-                self.add_error('apellido', 'Debes ingresar el apellido o seleccionar un beneficiado existente.')
+                self.add_error('nombre', 'Debes ingresar el nombre o seleccionar un vecino existente.')
             if not cleaned_data.get('telefono'):
-                self.add_error('telefono', 'Debes ingresar el teléfono o seleccionar un beneficiado existente.')
+                self.add_error('telefono', 'Debes ingresar el teléfono o seleccionar un vecino existente.')
         return cleaned_data
 
     def clean_evidencia(self):
@@ -458,51 +415,44 @@ class AtencionSocialForm(TipoSubtipoFields, BootstrapFormMixin, forms.Form):
 
     def save(self, *, autor, instance=None):
         instance = instance or self.instance
-        beneficiado = self.cleaned_data.get('beneficiado')
-        
-        if beneficiado is None:
-            beneficiado = Beneficiado.objects.create(
-                nombre=self.cleaned_data['nombre'].strip(),
-                apellido=self.cleaned_data['apellido'].strip(),
-                telefono=self.cleaned_data['telefono'],
-                email=self.cleaned_data.get('email') or None,
-            )
+        vecino = self.cleaned_data.get('vecino')
+
+        if vecino is None:
+            # Si no se seleccionó existente, se crea un nuevo vecino base
+            vecino, _ = Vecino.objects.get_or_create(
+                nombre__iexact=self.cleaned_data['nombre'].strip(),
+                telefono=self.cleaned_data.get('telefono'),
+                defaults={'nombre': self.cleaned_data['nombre'].strip(),'apellido': self.cleaned_data.get('apellido', '').strip() or None,'email': self.cleaned_data.get('email') or None,},)
 
         tipo = self.cleaned_data['tipo']
         subtipo = self.cleaned_data['subtipo']
         gestion = self.cleaned_data['gestion_atencion']
+        etapa = self.cleaned_data['etapa']
 
         if instance is None:
             atencion = AtencionSocial.objects.create(
+                etapa=etapa,
                 fecha=self.cleaned_data['fecha'],
                 resultado=self.cleaned_data['resultado'],
                 observaciones=self.cleaned_data['observaciones'],
                 autor=autor,
-                beneficiado=beneficiado,
+                vecino=vecino,  # Relación unificada con Vecino
                 tipo=tipo,
                 subtipo=subtipo,
                 gestion_atencion=gestion,
             )
         else:
             atencion = instance
+            atencion.etapa = etapa
             atencion.fecha = self.cleaned_data['fecha']
             atencion.resultado = self.cleaned_data['resultado']
             atencion.observaciones = self.cleaned_data['observaciones']
             atencion.autor = autor
-            atencion.beneficiado = beneficiado
+            atencion.vecino = vecino
             atencion.tipo = tipo
             atencion.subtipo = subtipo
             atencion.gestion_atencion = gestion
-            atencion.save(update_fields=[
-                'fecha',
-                'resultado',
-                'observaciones',
-                'autor',
-                'beneficiado',
-                'tipo',
-                'subtipo',
-                'gestion_atencion',
-            ])
+            atencion.save()
         return gestion, atencion
 
 class CompromisoEvidenciaForm(BootstrapFormMixin, forms.Form):
@@ -535,3 +485,54 @@ class GestionAtencionForm(BootstrapFormMixin, forms.ModelForm):
         if not fecha:
             raise forms.ValidationError('La fecha de la gestión es obligatoria.')
         return fecha
+
+class CartaForm(forms.ModelForm):
+    documento = forms.FileField(
+        required=False,
+        label='Documento adjunto',
+        widget=forms.ClearableFileInput(attrs={'class': 'form-control'}),
+    )
+
+    class Meta:
+        model = Carta
+        fields = [
+            'numero_carta',
+            'fecha',
+            'remitente',
+            'destinatario',
+            'telefono',
+            'materia',
+            'fecha_respuesta',
+            'responsable_seguimiento',
+            'area_derivada',
+            'pronunciamiento',
+            'observaciones',
+            'fecha_cierre',
+            'estado',
+        ]
+        widgets = {
+            'numero_carta': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: OF-2026-001'}),
+            'fecha': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'remitente': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombre o institución remitente'}),
+            'destinatario': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Destinatario formal'}),
+            'telefono': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: +56912345678'}),
+            'materia': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Asunto principal de la carta'}),
+            'fecha_respuesta': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'responsable_seguimiento': forms.Select(attrs={'class': 'form-select'}),
+            'area_derivada': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Unidad o departamento derivado'}),
+            'pronunciamiento': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Pronunciamiento institucional...'}),
+            'observaciones': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Observaciones adicionales...'}),
+            'fecha_cierre': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'estado': forms.Select(attrs={'class': 'form-select'}),
+        }
+
+    def __init__(self, *args, delegation=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        UserModel = get_user_model()
+        users_qs = UserModel.objects.filter(is_active=True).order_by('first_name', 'last_name', 'email')
+        if delegation is not None:
+            users_qs = users_qs.filter(
+                usuariodelegacion__delegacion=delegation,
+                usuariodelegacion__fecha_fin__isnull=True,
+            ).distinct()
+        self.fields['responsable_seguimiento'].queryset = users_qs

@@ -80,9 +80,16 @@
               <td>{{ g.fecha|date:'d/m/Y' }}</td>
               <td>{{ g.observaciones|default:'—' }}</td>
               <td class="text-center">
-                <span class="badge bg-secondary rounded-pill px-3 py-2 fs-6">
-                  {{ g.total_atenciones }} atenciones
+                <span class="badge bg-secondary rounded-pill px-3 py-2">
+                  {{ g.total_atenciones }} / 3 etapas
                 </span>
+                {% with t=g.tiempos_etapas %}
+                  <div class="small text-muted mt-1">
+                    {% if t.etapa_1_a_2 is not None %}E1→E2: <strong>{{ t.etapa_1_a_2 }}d</strong> {% endif %}
+                    {% if t.etapa_2_a_3 is not None %}| E2→E3: <strong>{{ t.etapa_2_a_3 }}d</strong> {% endif %}
+                    {% if t.total_dias is not None %}<br>Total caso: <strong>{{ t.total_dias }} días</strong>{% endif %}
+                  </div>
+                {% endwith %}
               </td>
               <td class="text-end">
                 <button type="button" class="btn btn-sm btn-outline-primary btn-editar-gestion" data-id="{{ g.pk }}">

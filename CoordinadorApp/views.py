@@ -216,9 +216,9 @@ def home(request):
     )
     evidencias_pendientes = (
         Evidencia.objects.filter(
-            registro__periodo=period,
+            registros__periodo=period,
             estado=Evidencia.Estado.PENDIENTE,
-        )
+        ).distinct()
         if period else Evidencia.objects.none()
     )
     return render(request, 'CoordinadorApp/dashboard.html', {
@@ -424,7 +424,6 @@ def ponderaciones(request):
         })
         grouped[key]['rows'].append(record)
 
-        # Validación híbrida: lee de Desempeno, luego de Item o asigna Decimal(0)
         ponderacion_val = getattr(record, 'ponderacion', None)
         if ponderacion_val is None and record.item:
             ponderacion_val = getattr(record.item, 'ponderacion', Decimal('0'))
@@ -503,7 +502,7 @@ def consolidated_report_rows(request):
             autor_id__in=user_ids,
             periodo_id=period.pk if period else None,
             estado=Registro.Estado.VALIDADA,
-            evidencias_registros__estado=Evidencia.Estado.APROBADA,
+            evidencia__estado=Evidencia.Estado.APROBADA,
         ).values('autor_id', 'item_id', 'periodo_id').annotate(
             cantidad=Count('pk', distinct=True),
         )

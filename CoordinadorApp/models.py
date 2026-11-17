@@ -3,6 +3,28 @@ import string
 from django.conf import settings
 from django.db import models
 
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+
+
+# Validación auxiliar para no alterar períodos cerrados (HU-04)
+def _validar_fecha_no_en_periodo_cerrado(fecha, field_name='vigente_desde'):
+	if not fecha:
+		return
+	periodo_cerrado = Periodo.objects.filter(
+		estado=Periodo.Estado.CERRADO,
+		fecha_inicio__lte=fecha,
+		fecha_fin__gte=fecha,
+	).first()
+	if periodo_cerrado:
+		raise ValidationError({
+			field_name: (
+				f'La fecha {fecha:%d/%m/%Y} pertenece al período cerrado '
+				f'"{periodo_cerrado.nombre}" y no puede modificarse.'
+			)
+		})
+
+
 #Modelo : Funcion (OK)
 class Funcion(models.Model):
 	class Estado(models.TextChoices):
@@ -58,20 +80,75 @@ class Item(models.Model):
 
 #Modelo : CargoFuncion (OK)
 class CargoFuncion(models.Model):
-	cargo = models.ForeignKey('AdminApp.Cargo',on_delete=models.PROTECT,related_name='asignaciones_funciones',)
+	cargo = models.ForeignKey('AdminApp.Cargo', on_delete=models.PROTECT, related_name='asignaciones_funciones')
 	funcion = models.ForeignKey(Funcion, on_delete=models.PROTECT, related_name='asignaciones_cargos')
+	vigente_desde = models.DateField(default=timezone.localdate, db_column='VIGENTE_DESDE')
+	vigente_hasta = models.DateField(null=True, blank=True, db_column='VIGENTE_HASTA')
 
 	class Meta:
-		ordering = ['cargo']
+		ordering = ['cargo', '-vigente_desde']
 		db_table = "cargo_funcion"
 		verbose_name = 'CargoFuncion'
 		verbose_name_plural = 'Funciones por cargo'
+		# Cambio HU-04: Restricción única solo para asignaciones vigentes, permitiendo conservar historial cerrado
 		constraints = [
-			models.UniqueConstraint(fields=['cargo', 'funcion'], name='cargo_funcion_unicos'),
+			models.UniqueConstraint(
+				fields=['cargo', 'funcion'],
+				condition=models.Q(vigente_hasta__isnull=True),
+				name='cargo_funcion_vigente_unica',
+			),
 		]
+
+	def clean(self):
+		super().clean()
+		if self.vigente_hasta and self.vigente_desde and self.vigente_hasta < self.vigente_desde:
+			raise ValidationError({'vigente_hasta': 'La fecha de término debe ser igual o posterior al inicio de vigencia.'})
+		if self.pk:
+			anterior = type(self).objects.filter(pk=self.pk).first()
+			if anterior and anterior.vigente_desde != self.vigente_desde:
+				_validar_fecha_no_en_periodo_cerrado(anterior.vigente_desde, 'vigente_desde')
+		_validar_fecha_no_en_periodo_cerrado(self.vigente_desde, 'vigente_desde')
+		if self.vigente_hasta:
+			_validar_fecha_no_en_periodo_cerrado(self.vigente_hasta, 'vigente_hasta')
 
 	def __str__(self):
 		return f'{self.cargo} - {self.funcion}'
+
+
+#Modelo : CargoItem (HU-04: Ítems de medición vigentes asociados a cada cargo)
+class CargoItem(models.Model):
+	cargo = models.ForeignKey('AdminApp.Cargo', on_delete=models.PROTECT, related_name='asignaciones_items')
+	item = models.ForeignKey(Item, on_delete=models.PROTECT, related_name='asignaciones_cargos')
+	vigente_desde = models.DateField(default=timezone.localdate, db_column='VIGENTE_DESDE')
+	vigente_hasta = models.DateField(null=True, blank=True, db_column='VIGENTE_HASTA')
+
+	class Meta:
+		ordering = ['cargo', '-vigente_desde']
+		db_table = 'cargo_item'
+		verbose_name = 'Ítem por cargo'
+		verbose_name_plural = 'Ítems por cargo'
+		constraints = [
+			models.UniqueConstraint(
+				fields=['cargo', 'item'],
+				condition=models.Q(vigente_hasta__isnull=True),
+				name='cargo_item_vigente_unico',
+			),
+		]
+
+	def clean(self):
+		super().clean()
+		if self.vigente_hasta and self.vigente_desde and self.vigente_hasta < self.vigente_desde:
+			raise ValidationError({'vigente_hasta': 'La fecha de término debe ser igual o posterior al inicio de vigencia.'})
+		if self.pk:
+			anterior = type(self).objects.filter(pk=self.pk).first()
+			if anterior and anterior.vigente_desde != self.vigente_desde:
+				_validar_fecha_no_en_periodo_cerrado(anterior.vigente_desde, 'vigente_desde')
+		_validar_fecha_no_en_periodo_cerrado(self.vigente_desde, 'vigente_desde')
+		if self.vigente_hasta:
+			_validar_fecha_no_en_periodo_cerrado(self.vigente_hasta, 'vigente_hasta')
+
+	def __str__(self):
+		return f'{self.cargo} - {self.item}'
 
 
 #Modelo : Periodo (OK)
@@ -115,11 +192,15 @@ class SolicitudAutorizacionPeriodo(models.Model):
 		on_delete=models.PROTECT,
 		related_name='solicitudes_autorizacion',
 	)
-	solicitante = models.ForeignKey(
-		settings.AUTH_USER_MODEL,
-		on_delete=models.PROTECT,
-		related_name='solicitudes_autorizacion_periodo',
-	)
+	vecino = models.ForeignKey(
+        'FuncionarioApp.Vecino', 
+        on_delete=models.PROTECT, 
+        related_name='vecino_solicitud_autorizacion_periodo', 
+        null=True, 
+        blank=True, 
+        verbose_name='Vecino', 
+        db_column='VECINO'
+    )
 	aprobador = models.ForeignKey(
 		settings.AUTH_USER_MODEL,
 		on_delete=models.PROTECT,
@@ -150,7 +231,7 @@ class SolicitudAutorizacionPeriodo(models.Model):
 		ordering = ['-creada_en']
 
 	def __str__(self):
-		return f'Autorización de {self.periodo} solicitada por {self.solicitante}'
+		return f'Autorización de {self.periodo} solicitada por {self.vecino}'
 
 
 #Modelo : PeriodoSemana (OK)
@@ -199,10 +280,17 @@ class Desempeno(models.Model):
 	def __str__(self):
 		return f'{self.usuario} - {self.item} - {self.periodo}'
 
+	def save(self, *args, **kwargs):
+		if self.pk and self.periodo_id:
+			estado_periodo = Periodo.objects.filter(pk=self.periodo_id).values_list('estado', flat=True).first()
+			if estado_periodo == Periodo.Estado.CERRADO:
+				raise ValidationError('No se puede modificar ni recalcular el desempeño de un período cerrado.')
+		return super().save(*args, **kwargs)
+
 
 #Modelo : GestionAtencion (OK)
+
 class GestionAtencion(models.Model):
-    # Campo CharField de 20 caracteres únicos en lugar de UUID
     codigo = models.CharField(max_length=20, unique=True, editable=False)
     fecha = models.DateField(db_column='FECHA')
     observaciones = models.TextField(blank=True, db_column='OBSERVACIONES')
@@ -218,7 +306,6 @@ class GestionAtencion(models.Model):
 
     @classmethod
     def generar_codigo_unico(cls):
-        """Genera un código aleatorio alfanumérico de 20 caracteres único en la BD."""
         caracteres = string.ascii_uppercase + string.digits
         while True:
             codigo = ''.join(secrets.choice(caracteres) for _ in range(20))
@@ -236,28 +323,60 @@ class GestionAtencion(models.Model):
 
     @property
     def cantidad_atenciones(self):
-        """Retorna la cantidad de atenciones sociales asociadas a esta gestión."""
         return self.atencionsocial_set.count()
+
+    @property
+    def tiempos_etapas(self):
+        """Calcula los días transcurridos entre Etapa 1->2, Etapa 2->3 y total."""
+        etapas = {a.etapa: a.fecha for a in self.atencionsocial_set.all()}
+        e1, e2, e3 = etapas.get(1), etapas.get(2), etapas.get(3)
+        d_1_2 = (e2.date() - e1.date()).days if (e1 and e2) else None
+        d_2_3 = (e3.date() - e2.date()).days if (e2 and e3) else None
+        fechas = sorted(etapas.values())
+        d_total = (fechas[-1].date() - fechas[0].date()).days if len(fechas) >= 2 else None
+        return {
+            'etapa_1_a_2': d_1_2,
+            'etapa_2_a_3': d_2_3,
+            'total_dias': d_total,
+        }
+
 
 #Modelo : AtencionSocial (OK)
 class AtencionSocial(models.Model):
+	class Etapa(models.IntegerChoices):
+		VISITA_PROGRAMADA = 1, 'Etapa 1: Visita programada'
+		VISITA_INFORME = 2, 'Etapa 2: Visita / Informe'
+		ENTREGA_BENEFICIO = 3, 'Etapa 3: Entrega de beneficio'
 
+	etapa = models.PositiveSmallIntegerField(choices=Etapa.choices,default=Etapa.VISITA_PROGRAMADA,db_column='ETAPA',)
 	fecha = models.DateTimeField(db_column='FECHA')
-	resultado = models.TextField(blank=True,db_column='RESULTADO')
-	observaciones = models.TextField(blank=True,db_column="OBSERVACIONES")
+	resultado = models.TextField(blank=True, db_column='RESULTADO')
+	observaciones = models.TextField(blank=True, db_column="OBSERVACIONES")
 	autor = models.ForeignKey('AdminApp.Usuario', on_delete=models.PROTECT, db_column='AUTOR')
-	beneficiado = models.ForeignKey('FuncionarioApp.Beneficiado', on_delete=models.PROTECT, db_column='BENEFICIADO')
-	tipo = models.ForeignKey('FuncionarioApp.Tipo',on_delete=models.PROTECT,db_column='TIPO',related_name='Atencion_Social')
-	subtipo = models.ForeignKey('FuncionarioApp.Subtipo',on_delete=models.PROTECT,db_column='SUBTIPO',related_name='Atencion_Social')
+	vecino = models.ForeignKey('FuncionarioApp.Vecino', on_delete=models.PROTECT, related_name='atenciones_sociales', null=True, blank=True, verbose_name='Vecino', db_column='VECINO')
+	tipo = models.ForeignKey('FuncionarioApp.Tipo', on_delete=models.PROTECT, db_column='TIPO', related_name='Atencion_Social')
+	subtipo = models.ForeignKey('FuncionarioApp.Subtipo', on_delete=models.PROTECT, db_column='SUBTIPO', related_name='Atencion_Social')
 	gestion_atencion = models.ForeignKey(GestionAtencion, on_delete=models.PROTECT, db_column='GESTION_ATENCION')
-	evidencia = models.ForeignKey('SupervisorApp.Evidencia',on_delete=models.PROTECT,null=True,blank=True,db_column='EVIDENCIA',related_name='atenciones_sociales',)
+	evidencia = models.ForeignKey('SupervisorApp.Evidencia', on_delete=models.PROTECT, null=True, blank=True, db_column='EVIDENCIA', related_name='atenciones_sociales')
 	creado = models.DateTimeField(auto_now_add=True)
 
 	class Meta:
-		ordering = ['-fecha']
+		ordering = ['gestion_atencion', 'etapa', '-fecha']
 		db_table = 'atencion_social'
 		verbose_name = 'atención social'
 		verbose_name_plural = 'atenciones sociales'
 
+	@property
+	def dias_desde_etapa_anterior(self):
+		if self.etapa <= 1 or not self.gestion_atencion_id or not self.fecha:
+			return None
+		anterior = AtencionSocial.objects.filter(
+			gestion_atencion_id=self.gestion_atencion_id,
+			etapa=self.etapa - 1,
+		).first()
+		if anterior and anterior.fecha:
+			return max((self.fecha.date() - anterior.fecha.date()).days, 0)
+		return None
+
 	def __str__(self):
-		return f'Atención {self.pk} - {self.tipo}'
+		return f'Atención {self.pk} ({self.get_etapa_display()}) - {self.tipo}'

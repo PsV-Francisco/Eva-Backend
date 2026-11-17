@@ -125,4 +125,9 @@ urlpatterns = [
         admin_records.junta_eliminar,
         name='junta-eliminar',
     ),
+    path('beneficiados/', views.beneficiados_vista, name='beneficiados'),
+    path('beneficiados/crear-ajax/', views.crear_beneficiado_ajax, name='crear_beneficiado_ajax'),
+    path('beneficiados/<int:beneficiado_id>/detalle-json/', views.detalle_beneficiado_json, name='detalle_beneficiado_json'),
+    path('beneficiados/<int:beneficiado_id>/editar-ajax/', views.editar_beneficiado_ajax, name='editar_beneficiado_ajax'),
+    path('beneficiados/<int:beneficiado_id>/eliminar/', views.eliminar_beneficiado, name='eliminar_beneficiado'),
 ]

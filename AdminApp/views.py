@@ -1,6 +1,5 @@
 import json
 from datetime import timedelta
-
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
@@ -10,26 +9,15 @@ from django.db.models.deletion import ProtectedError
 from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
-from django.views.decorators.http import require_GET
-
+from django.views.decorators.http import require_GET, require_POST
+from FuncionarioApp.models import Vecino
+from django.db.models import CharField
+from django.db.models.functions import Cast
+from django.views.decorators.http import require_POST
+from django.http import JsonResponse
 from AdminApp.audit import registrar_historial
-from AdminApp.forms import (
-    HistorialFilterForm,
-    ParametroSistemaForm,
-    PasswordResetAuditFilterForm,
-    UsuarioCreationForm,
-    UsuarioUpdateForm,
-)
-from AdminApp.models import (
-    Cargo,
-    Delegacion,
-    Historial,
-    ParametroSistema,
-    PasswordResetAuditEvent,
-    Usuario,
-    UsuarioCargo,
-    UsuarioDelegacion,
-)
+from AdminApp.forms import (HistorialFilterForm,ParametroSistemaForm,PasswordResetAuditFilterForm,UsuarioCreationForm,UsuarioUpdateForm,)
+from AdminApp.models import (Cargo,Delegacion,Historial,ParametroSistema,PasswordResetAuditEvent,Usuario)
 from AdminApp.maintainers import excel_response, maintainer
 from config.decorators import cargo_required
 from config.permissions import PERMISSION_BY_VIEW, can_access_permission
@@ -54,6 +42,7 @@ ADMIN_DASHBOARD_LINK_GROUPS = (
         ('Hitos', 'administracion:hitos'),
     )),
     ('Operación', (
+        ('Buscar solicitantes', 'administracion:beneficiados'),
         ('Registros', 'administracion:registros'),
         ('Atenciones Sociales', 'administracion:atenciones-sociales'),
         ('Compromisos', 'administracion:compromisos'),
@@ -102,7 +91,78 @@ def _admin_dashboard_modules(user):
             modules.append({'label': label, 'links': links})
     return modules
 
+@cargo_required('admin', 'administrador', permission='access_admin_beneficiados')
+def beneficiados(request):
+    return beneficiados_vista(request)
 
+@cargo_required('admin', 'administrador', permission='create_admin_beneficiados')
+@require_POST
+def crear_beneficiado_ajax(request):
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': 'Payload JSON inválido.'}, status=400)
+
+    nombre = data.get('nombre', '').strip()
+    telefono = data.get('telefono')
+    email = data.get('email', '').strip() or None
+    rut = data.get('rut', '').strip() or None
+
+    if not nombre or not telefono:
+        return JsonResponse({'success': False, 'message': 'Por favor completa los campos requeridos.'}, status=400)
+
+    # Nota: Si el modelo Vecino exige territorio, delegación o junta en tu BD, 
+    # asegúrate de asignarlos por defecto o requerirlos en el JSON.
+    vecino = Vecino.objects.create(
+        nombre=nombre,
+        telefono=telefono,
+        email=email,
+        rut=rut,
+    )
+    return JsonResponse({'success': True, 'id': vecino.pk})
+
+@cargo_required('admin', 'administrador', permission='view_admin_beneficiados_detail')
+@require_GET
+def detalle_beneficiado_json(request, beneficiado_id):
+    b = get_object_or_404(Vecino, pk=beneficiado_id)
+    return JsonResponse({
+        'id': b.pk,
+        'nombre': b.nombre,
+        'apellido': '',  # Vecino unifica el nombre completo en 'nombre'
+        'telefono': b.telefono or '',
+        'email': b.email or '',
+        'rut': b.rut or '',
+    })
+
+
+@cargo_required('admin', 'administrador', permission='edit_admin_beneficiados')
+@require_POST
+def editar_beneficiado_ajax(request, beneficiado_id):
+    b = get_object_or_404(Vecino, pk=beneficiado_id)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': 'Payload JSON inválido.'}, status=400)
+
+    b.nombre = data.get('nombre', '').strip()
+    b.telefono = data.get('telefono')
+    b.email = data.get('email', '').strip() or None
+    if 'rut' in data:
+        b.rut = data.get('rut', '').strip() or None
+    b.save()
+    return JsonResponse({'success': True})
+
+@cargo_required('admin', 'administrador', permission='delete_admin_beneficiados')
+@require_POST
+def eliminar_beneficiado(request, beneficiado_id):
+    b = get_object_or_404(Vecino, pk=beneficiado_id)
+    try:
+        b.delete()
+        messages.success(request, 'Vecino eliminado correctamente.')
+    except ProtectedError:
+        messages.error(request, 'No se puede eliminar porque está vinculado a registros o atenciones sociales.')
+    return redirect('administracion:beneficiados')
+    
 @cargo_required(
     'admin',
     'administrador',
@@ -162,7 +222,7 @@ def home(request):
         administrator_ids[0] if len(administrator_ids) == 1 else None
     )
     status_filter = request.GET.get('estado', '')
-    if status_filter not in {'', 'activo', 'inactivo'}:
+    if status_filter not in {'', 'activo', 'inactivo', 'pendiente_activacion'}:
         return HttpResponseBadRequest('Filtro de estado no válido.')
     delegation_filter = request.GET.get('delegacion', '')
     if delegation_filter and (
@@ -177,34 +237,22 @@ def home(request):
     editing_user = None
     if edit_id:
         editing_user = get_object_or_404(Usuario, pk=edit_id)
-
     if request.method == 'POST':
         action = request.POST.get('action', 'guardar')
-        if action not in {'guardar', 'eliminar', 'cambiar_estado'}:
+        if action not in {'guardar', 'eliminar', 'cambiar_estado', 'reenviar_activacion'}:
             return HttpResponseBadRequest('Acción no válida.')
         target_id = request.POST.get('usuario_id')
-        if action == 'eliminar':
+        if action == 'reenviar_activacion':
+            from config.password_reset import emitir_y_enviar_activacion
             target = get_object_or_404(Usuario, pk=target_id)
-            if target.pk == request.user.pk or target.is_superuser or target.is_staff:
-                messages.error(request, 'No se pueden eliminar cuentas propias o con privilegios administrativos.')
+            if target.estado != Usuario.EstadoCuenta.PENDIENTE_ACTIVACION:
+                messages.warning(request, 'Esta cuenta ya se encuentra activada.')
             else:
-                try:
-                    before = _user_snapshot(target)
-                    entity = f'Usuario:{target.pk}'
-                    with transaction.atomic():
-                        target.delete()
-                        registrar_historial(
-                            actor=request.user,
-                            action='Eliminar usuario',
-                            entity=entity,
-                            before=before,
-                        )
-                    messages.success(request, 'La cuenta se eliminó correctamente.')
-                except ProtectedError as error:
-                    if 'último Administrador' in str(error):
-                        messages.error(request, 'No se puede eliminar al último Administrador activo.')
-                    else:
-                        messages.error(request, 'No se puede eliminar esta cuenta porque tiene información asociada.')
+                sent = emitir_y_enviar_activacion(target)
+                if sent:
+                    messages.success(request, f'Se reenvió el enlace de activación a {target.email}.')
+                else:
+                    messages.warning(request, 'No se pudo enviar el correo de activación. Revisa la configuración SMTP.')
             return redirect('administracion:home')
 
         if action == 'cambiar_estado':
@@ -262,11 +310,22 @@ def home(request):
                             before={'roles': previous_roles},
                             after={'roles': after['roles']},
                         )
-                messages.success(
-                    request,
-                    'La cuenta se actualizó correctamente.' if target_id
-                    else 'El usuario quedó creado correctamente.',
-                )
+                if target_id:
+                    messages.success(request, 'La cuenta se actualizó correctamente.')
+                else:
+                    from config.password_reset import emitir_y_enviar_activacion
+                    temp_pwd = getattr(user, '_generated_temp_password', None)
+                    enviado = emitir_y_enviar_activacion(user, temp_password=temp_pwd)
+                    if enviado:
+                        messages.success(
+                            request,
+                            f'Usuario creado en estado Pendiente de activación. Se envió el enlace y credencial temporal a {user.email}.',
+                        )
+                    else:
+                        messages.warning(
+                            request,
+                            'Usuario creado en estado Pendiente de activación, pero falló el envío de correo. Usa "Reenviar activación".',
+                        )
                 return redirect('administracion:home')
             except ValidationError as error:
                 form.add_error(None, error)
@@ -303,7 +362,9 @@ def home(request):
         users = users.filter(search)
     status = status_filter
     if status == 'activo':
-        users = users.filter(is_active=True)
+        users = users.filter(is_active=True).exclude(estado=Usuario.EstadoCuenta.PENDIENTE_ACTIVACION)
+    elif status == 'pendiente_activacion':
+        users = users.filter(estado=Usuario.EstadoCuenta.PENDIENTE_ACTIVACION)
     elif status == 'inactivo':
         users = users.filter(is_active=False)
     delegation_id = delegation_filter
@@ -628,3 +689,32 @@ def _audit_pagination_query(request):
     parameters = request.GET.copy()
     parameters.pop('page', None)
     return parameters.urlencode()
+
+
+
+@cargo_required('admin', 'administrador', permission='access_admin_beneficiados')
+def beneficiados_vista(request):
+    """Vista principal para consultar y listar vecinos en el panel de administración."""
+    query = request.GET.get('q', '').strip()
+    queryset = Vecino.objects.all().order_by('nombre')
+    
+    if query:
+        queryset = queryset.filter(
+            Q(nombre__icontains=query)
+            | Q(rut__icontains=query)
+            | Q(email__icontains=query)
+            | Q(telefono__icontains=query)
+        )
+
+    return render(request, 'AdminApp/beneficiados.html', {
+        'sgr_role': 'Administración',
+        'dashboard_modules': _admin_dashboard_modules(request.user),
+        'beneficiados': queryset[:50],  # Mantén la variable 'beneficiados' si tu template HTML la espera con ese nombre
+        'query': query,
+    })
+
+
+
+
+
+

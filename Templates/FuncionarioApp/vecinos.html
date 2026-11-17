@@ -19,6 +19,11 @@
         {% csrf_token %}
         <div class="row g-3">
           <div class="col-md-4">
+            <label class="form-label">RUT *</label>
+            {{ form.rut }}
+            <div class="form-text">Ej: 12345678-9 (Sin puntos, con guión y DV)</div>
+          </div>
+          <div class="col-md-4">
             <label class="form-label">Nombre *</label>
             {{ form.nombre }}
           </div>
@@ -27,7 +32,7 @@
             {{ form.telefono }}
           </div>
           <div class="col-md-4">
-            <label class="form-label">Dirección</label>
+            <label class="form-label">Dirección (opcional)</label>
             {{ form.direccion }}
           </div>
           <div class="col-md-4">
@@ -35,26 +40,28 @@
             {{ form.delegacion }}
           </div>
           <div class="col-md-4">
-            <label class="form-label">Junta de Vecinos *</label>
-            {{ form.junta_vecino }}
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Cargo en Junta *</label>
-            {{ form.cargo_jv }}
-          </div>
-          <div class="col-md-4">
             <label class="form-label">Territorio *</label>
             {{ form.territorio }}
           </div>
           <div class="col-md-4">
-            <label class="form-label">Estado *</label>
-            {{ form.estado }}
+            <label class="form-label">Junta de Vecinos *</label>
+            {{ form.junta_vecino }}
           </div>
           <div class="col-md-4 d-flex align-items-center mt-4">
             <div class="form-check">
-              {{ form.activo }}
-              <label class="form-check-label ms-1" for="id_activo">Vecino Activo</label>
+              {{ form.es_dirigente }}
+              <label class="form-check-label ms-1 fw-semibold" for="id_es_dirigente">
+                ¿Es dirigente en la Junta de Vecinos?
+              </label>
             </div>
+          </div>
+          <div class="col-md-4" id="wrapper-cargo-jv" style="display: none;">
+            <label class="form-label">Cargo en Junta (Catálogo) *</label>
+            {{ form.cargo_jv }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Estado *</label>
+            {{ form.estado }}
           </div>
         </div>
         <div class="mt-4">
@@ -72,11 +79,10 @@
         </div>
       </div>
 
-      <!-- Barra de búsqueda keyup -->
       <div class="search-panel mb-3">
         <div class="w-100">
           <label class="form-label" for="search-vecino">Buscar Vecino</label>
-          <input type="text" class="form-control" id="search-vecino" placeholder="Buscar por NOMBRE, CARGO o JUNTA DE VECINOS...">
+          <input type="text" class="form-control" id="search-vecino" placeholder="Buscar por RUT, NOMBRE, CARGO o JUNTA DE VECINOS...">
         </div>
       </div>
 
@@ -84,37 +90,43 @@
         <table class="table align-middle" id="tabla-vecinos">
           <thead>
             <tr>
+              <th>RUT</th>
               <th>Nombre</th>
               <th>Teléfono</th>
               <th>Dirección</th>
-              <th>Cargo JV</th>
+              <th>Participación JV</th>
               <th>Junta de Vecinos</th>
               <th>Territorio</th>
               <th>Delegación</th>
               <th>Estado</th>
-              <th>Activo</th>
               <th class="text-end">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {% for vecino in vecinos %}
-            <tr data-nombre="{{ vecino.nombre|lower }}" 
-                data-cargo="{{ vecino.cargo_jv.nombre|lower }}" 
+            {% with cargo=vecino.cargos_ejercidos.first %}
+            <tr data-rut="{{ vecino.rut|default:''|lower }}" 
+                data-nombre="{{ vecino.nombre|lower }}"
+                data-cargo="{{ cargo.nombre|default:'socio'|lower }}" 
                 data-junta="{{ vecino.junta_vecino.nombre|lower }}">
+              <td><code>{{ vecino.rut }}</code></td>
               <td><strong>{{ vecino.nombre }}</strong></td>
               <td>{{ vecino.telefono|default:"-" }}</td>
               <td>{{ vecino.direccion|default:"-" }}</td>
-              <td>{{ vecino.cargo_jv.nombre }} ({{ vecino.cargo_jv.permisos }})</td>
+              <td>
+                {% if cargo %}
+                  <span class="badge bg-info text-dark">Dirigente: {{ cargo.nombre }}</span>
+                {% else %}
+                  <span class="text-muted small">Socio / Vecino</span>
+                {% endif %}
+              </td>
               <td>RPJ {{ vecino.junta_vecino.numero_rpj }} - {{ vecino.junta_vecino.nombre }}</td>
-              <td>ID: {{ vecino.territorio.pk }} - {{ vecino.territorio.nombre }}</td>
+              <td>{{ vecino.territorio.nombre }}</td>
               <td>{{ vecino.delegacion.nombre }}</td>
               <td>
                 <span class="badge {% if vecino.estado == 'ACTIVADO' %}bg-success{% else %}bg-secondary{% endif %}">
                   {{ vecino.estado }}
                 </span>
-              </td>
-              <td>
-                <span class="tag">{% if vecino.activo %}Sí{% else %}No{% endif %}</span>
               </td>
               <td class="text-end">
                 <button class="btn btn-sm btn-outline-primary btn-editar-vecino" data-id="{{ vecino.pk }}">
@@ -122,6 +134,7 @@
                 </button>
               </td>
             </tr>
+            {% endwith %}
             {% empty %}
             <tr>
               <td colspan="10" class="empty-state">No hay vecinos registrados.</td>
@@ -131,7 +144,6 @@
         </table>
       </div>
     </section>
-
   </div>
 </div>
 
@@ -148,6 +160,10 @@
           <input type="hidden" id="edit-vecino-id">
           <div class="row g-3">
             <div class="col-md-6">
+              <label class="form-label">RUT *</label>
+              <input type="text" class="form-control" id="edit-rut" placeholder="12345678-9" required>
+            </div>
+            <div class="col-md-6">
               <label class="form-label">Nombre *</label>
               <input type="text" class="form-control" id="edit-nombre" required>
             </div>
@@ -156,7 +172,7 @@
               <input type="text" class="form-control" id="edit-telefono">
             </div>
             <div class="col-md-6">
-              <label class="form-label">Dirección</label>
+              <label class="form-label">Dirección (opcional)</label>
               <input type="text" class="form-control" id="edit-direccion">
             </div>
             <div class="col-md-6">
@@ -168,16 +184,24 @@
               </select>
             </div>
             <div class="col-md-6">
+              <label class="form-label">Territorio *</label>
+              <select class="form-select" id="edit-territorio" required></select>
+            </div>
+            <div class="col-md-6">
               <label class="form-label">Junta de Vecinos *</label>
               <select class="form-select" id="edit-junta" required></select>
             </div>
-            <div class="col-md-6">
-              <label class="form-label">Cargo en Junta *</label>
-              <select class="form-select" id="edit-cargo" required></select>
+            <div class="col-md-6 d-flex align-items-center mt-4">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="edit-es-dirigente">
+                <label class="form-check-label ms-1 fw-semibold" for="edit-es-dirigente">
+                  ¿Es dirigente en la Junta de Vecinos?
+                </label>
+              </div>
             </div>
-            <div class="col-md-6">
-              <label class="form-label">Territorio *</label>
-              <select class="form-select" id="edit-territorio" required></select>
+            <div class="col-md-6" id="edit-wrapper-cargo" style="display: none;">
+              <label class="form-label">Cargo en Junta (Catálogo) *</label>
+              <select class="form-select" id="edit-cargo"></select>
             </div>
             <div class="col-md-6">
               <label class="form-label">Estado *</label>
@@ -185,12 +209,6 @@
                 <option value="ACTIVADO">ACTIVADO</option>
                 <option value="DESACTIVADO">DESACTIVADO</option>
               </select>
-            </div>
-            <div class="col-md-12">
-              <div class="form-check mt-2">
-                <input class="form-check-input" type="checkbox" id="edit-activo">
-                <label class="form-check-label ms-1" for="edit-activo">Vecino Activo</label>
-              </div>
             </div>
           </div>
         </form>
@@ -222,116 +240,307 @@ document.addEventListener('DOMContentLoaded', function() {
   };
   const csrftoken = getCookie('csrftoken');
 
-  // Validar envío del formulario nuevo con SweetAlert
+  {% if form.errors %}
+    let erroresDjango = [];
+    {% for field in form %}
+      {% for error in field.errors %}
+        erroresDjango.push("<b>{{ field.label|escapejs }}</b>: {{ error|escapejs }}");
+      {% endfor %}
+    {% endfor %}
+    {% for error in form.non_field_errors %}
+      erroresDjango.push("{{ error|escapejs }}");
+    {% endfor %}
+    if (erroresDjango.length > 0) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Error en el registro del vecino',
+        html: '<ul style="text-align:left; margin-bottom:0;">' + erroresDjango.map(e => `<li>${e}</li>`).join('') + '</ul>'
+      });
+    }
+  {% endif %}
+
+  function validarRutChileno(rutCompleto) {
+    rutCompleto = rutCompleto.replace(/\./g, '').replace(/\s+/g, '').toUpperCase();
+    if (!/^[0-9]+-[0-9K]$/.test(rutCompleto)) return false;
+    const tmp = rutCompleto.split('-');
+    const digitov = tmp[1];
+    const cuerpo = tmp[0];
+    if (cuerpo.length < 7 || cuerpo.length > 8) return false;
+
+    let suma = 0;
+    let multiplo = 2;
+    for (let i = cuerpo.length - 1; i >= 0; i--) {
+      suma += parseInt(cuerpo.charAt(i)) * multiplo;
+      multiplo = multiplo === 7 ? 2 : multiplo + 1;
+    }
+    const esperado = 11 - (suma % 11);
+    let dv = esperado === 10 ? 'K' : (esperado === 11 ? '0' : esperado.toString());
+    return dv === digitov;
+  }
+
+  // Toggle cargo dirigente en formulario nuevo
+  const checkDirigente = document.getElementById('id_es_dirigente');
+  const wrapperCargo = document.getElementById('wrapper-cargo-jv');
+  const cargoSelect = document.getElementById('id_cargo_jv');
+  function toggleCargoNuevo() {
+    if (!checkDirigente || !wrapperCargo) return;
+    wrapperCargo.style.display = checkDirigente.checked ? 'block' : 'none';
+    if (!checkDirigente.checked && cargoSelect) {
+      cargoSelect.value = '';
+    }
+  }
+  if (checkDirigente) {
+    checkDirigente.addEventListener('change', toggleCargoNuevo);
+    toggleCargoNuevo();
+  }
+
+  // Validar envío del formulario nuevo
   document.getElementById('form-nuevo-vecino').addEventListener('submit', function(e) {
-    const nombre = document.getElementById('id_nombre').value.trim();
-    if (!nombre) {
+    const rutVal = (document.getElementById('id_rut')?.value || '').trim();
+    const nombre = (document.getElementById('id_nombre')?.value || '').trim();
+    const delegacion = document.getElementById('id_delegacion')?.value;
+    const territorio = document.getElementById('id_territorio')?.value;
+    const junta = document.getElementById('id_junta_vecino')?.value;
+
+    let errores = [];
+    if (!rutVal) {
+      errores.push('El RUT es obligatorio.');
+    } else if (!validarRutChileno(rutVal)) {
+      errores.push('El RUT ingresado no es válido (dígito verificador o formato incorrecto).');
+    }
+    if (!nombre) errores.push('El NOMBRE del vecino es obligatorio.');
+    if (!delegacion) errores.push('Debes seleccionar una DELEGACIÓN.');
+    if (!territorio) errores.push('Debes seleccionar un TERRITORIO.');
+    if (!junta) errores.push('Debes seleccionar una JUNTA DE VECINOS.');
+    if (checkDirigente && checkDirigente.checked && (!cargoSelect || !cargoSelect.value)) {
+      errores.push('Si el vecino es dirigente, debes seleccionar su cargo en la Junta de Vecinos.');
+    }
+
+    if (errores.length > 0) {
       e.preventDefault();
       Swal.fire({
         icon: 'error',
-        title: 'Campo Obligatorio',
-        text: 'Por favor ingresa el NOMBRE del vecino.'
+        title: 'Datos Incompletos o Inválidos',
+        html: `<ul style="text-align: left; margin-bottom: 0;">${errores.map(err => `<li>${err}</li>`).join('')}</ul>`
       });
     }
   });
 
-  // Búsqueda Keyup por NOMBRE, CARGO o JUNTA DE VECINOS
+  // Búsqueda Keyup
   const searchInput = document.getElementById('search-vecino');
-  searchInput.addEventListener('keyup', function() {
-    const term = this.value.toLowerCase().trim();
-    const rows = document.querySelectorAll('#tabla-vecinos tbody tr');
-
-    rows.forEach(row => {
-      const nombre = row.getAttribute('data-nombre') || '';
-      const cargo = row.getAttribute('data-cargo') || '';
-      const junta = row.getAttribute('data-junta') || '';
-
-      if (nombre.includes(term) || cargo.includes(term) || junta.includes(term)) {
-        row.style.display = '';
-      } else {
-        row.style.display = 'none';
-      }
+  if (searchInput) {
+    searchInput.addEventListener('keyup', function() {
+      const term = this.value.toLowerCase().trim();
+      document.querySelectorAll('#tabla-vecinos tbody tr').forEach(row => {
+        const rut = row.getAttribute('data-rut') || '';
+        const nombre = row.getAttribute('data-nombre') || '';
+        const cargo = row.getAttribute('data-cargo') || '';
+        const junta = row.getAttribute('data-junta') || '';
+        row.style.display = (rut.includes(term) || nombre.includes(term) || cargo.includes(term) || junta.includes(term)) ? '' : 'none';
+      });
     });
-  });
+  }
 
   // Modal de edición
-  const modalElem = document.getElementById('modalEditarVecino');
-  const modalEdit = new bootstrap.Modal(modalElem);
+  const modalEdit = new bootstrap.Modal(document.getElementById('modalEditarVecino'));
+  const editCheckDirigente = document.getElementById('edit-es-dirigente');
+  const editWrapperCargo = document.getElementById('edit-wrapper-cargo');
+  const editCargoSelect = document.getElementById('edit-cargo');
+
+  function toggleCargoEdit() {
+    editWrapperCargo.style.display = editCheckDirigente.checked ? 'block' : 'none';
+    if (!editCheckDirigente.checked) editCargoSelect.value = '';
+  }
+  editCheckDirigente.addEventListener('change', toggleCargoEdit);
+
+  async function cargarCatalogosEdicion(delegacionId, juntaId, selectedTerritorio, selectedJunta, selectedCargo) {
+    const editJunta = document.getElementById('edit-junta');
+    const editTerr = document.getElementById('edit-territorio');
+    editJunta.innerHTML = '<option value="">---------</option>';
+    editTerr.innerHTML = '<option value="">---------</option>';
+    editCargoSelect.innerHTML = '<option value="">---------</option>';
+
+    if (delegacionId) {
+      const [resJuntas, resTerr] = await Promise.all([
+        fetch(`/funcionario/vecinos/juntas-por-delegacion/${delegacionId}/`).then(r => r.json()),
+        fetch(`/funcionario/vecinos/territorios-por-delegacion/${delegacionId}/`).then(r => r.json()),
+      ]);
+      (resJuntas.juntas || []).forEach(j => {
+        const opt = document.createElement('option');
+        opt.value = j.pk;
+        opt.textContent = `RPJ ${j.numero_rpj} - ${j.nombre}`;
+        editJunta.appendChild(opt);
+      });
+      (resTerr.territorios || []).forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.pk;
+        opt.textContent = `ID: ${t.pk} - ${t.nombre}`;
+        editTerr.appendChild(opt);
+      });
+      if (selectedJunta) editJunta.value = selectedJunta;
+      if (selectedTerritorio) editTerr.value = selectedTerritorio;
+    }
+
+    const activeJunta = selectedJunta || editJunta.value;
+    if (activeJunta) {
+      const resCargos = await fetch(`/funcionario/vecinos/cargos-por-junta/${activeJunta}/`).then(r => r.json());
+      (resCargos.cargos || []).forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.pk;
+        opt.textContent = `${c.nombre} - ${c.permisos}`;
+        editCargoSelect.appendChild(opt);
+      });
+      if (selectedCargo) editCargoSelect.value = selectedCargo;
+    }
+  }
+
+  document.getElementById('edit-delegacion').addEventListener('change', function() {
+    cargarCatalogosEdicion(this.value, null, null, null, null);
+  });
+  document.getElementById('edit-junta').addEventListener('change', function() {
+    cargarCatalogosEdicion(document.getElementById('edit-delegacion').value, this.value, document.getElementById('edit-territorio').value, this.value, null);
+  });
 
   document.querySelectorAll('.btn-editar-vecino').forEach(btn => {
     btn.addEventListener('click', function() {
       const id = this.getAttribute('data-id');
       fetch(`/funcionario/vecinos/${id}/detalle-json/`)
         .then(res => res.json())
-        .then(data => {
+        .then(async data => {
           document.getElementById('edit-vecino-id').value = data.id;
+          document.getElementById('edit-rut').value = data.rut || '';
           document.getElementById('edit-nombre').value = data.nombre;
           document.getElementById('edit-telefono').value = data.telefono;
           document.getElementById('edit-direccion').value = data.direccion;
-          document.getElementById('edit-activo').checked = data.activo;
           document.getElementById('edit-estado').value = data.estado;
           document.getElementById('edit-delegacion').value = data.delegacion_id;
+          editCheckDirigente.checked = Boolean(data.es_dirigente);
+          toggleCargoEdit();
 
-          // Clonar opciones del formulario principal para los selectores
-          document.getElementById('edit-junta').innerHTML = document.getElementById('id_junta_vecino').innerHTML;
-          document.getElementById('edit-cargo').innerHTML = document.getElementById('id_cargo_jv').innerHTML;
-          document.getElementById('edit-territorio').innerHTML = document.getElementById('id_territorio').innerHTML;
-
-          document.getElementById('edit-junta').value = data.junta_vecino_id;
-          document.getElementById('edit-cargo').value = data.cargo_jv_id;
-          document.getElementById('edit-territorio').value = data.territorio_id;
-
+          await cargarCatalogosEdicion(
+            data.delegacion_id,
+            data.junta_vecino_id,
+            data.territorio_id,
+            data.junta_vecino_id,
+            data.cargo_jv_id
+          );
           modalEdit.show();
         })
-        .catch(() => {
-          Swal.fire('Error', 'No se pudieron cargar los datos del vecino.', 'error');
-        });
+        .catch(() => Swal.fire('Error', 'No se pudieron cargar los datos del vecino.', 'error'));
     });
   });
 
-  // Guardar Cambios AJAX
   document.getElementById('btn-guardar-edit-vecino').addEventListener('click', function() {
     const id = document.getElementById('edit-vecino-id').value;
     const payload = {
+      rut: document.getElementById('edit-rut').value.trim(),
       nombre: document.getElementById('edit-nombre').value.trim(),
       telefono: document.getElementById('edit-telefono').value.trim(),
       direccion: document.getElementById('edit-direccion').value.trim(),
-      activo: document.getElementById('edit-activo').checked,
       estado: document.getElementById('edit-estado').value,
       delegacion_id: document.getElementById('edit-delegacion').value,
       junta_vecino_id: document.getElementById('edit-junta').value,
-      cargo_jv_id: document.getElementById('edit-cargo').value,
+      es_dirigente: editCheckDirigente.checked,
+      cargo_jv_id: editCheckDirigente.checked ? editCargoSelect.value : '',
       territorio_id: document.getElementById('edit-territorio').value
     };
 
-    if (!payload.nombre || !payload.delegacion_id || !payload.junta_vecino_id || !payload.cargo_jv_id || !payload.territorio_id) {
-      Swal.fire('Campos Incompletos', 'Por favor completa todos los campos requeridos (*).', 'warning');
+    if (!payload.rut || !payload.nombre || !payload.delegacion_id || !payload.junta_vecino_id || !payload.territorio_id) {
+      Swal.fire('Campos Incompletos', 'Completa todos los campos requeridos (*).', 'warning');
+      return;
+    }
+    if (payload.es_dirigente && !payload.cargo_jv_id) {
+      Swal.fire('Cargo Requerido', 'Selecciona el cargo del dirigente desde el catálogo de la Junta.', 'warning');
+      return;
+    }
+    if (!validarRutChileno(payload.rut)) {
+      Swal.fire('RUT Inválido', 'El formato o dígito verificador del RUT ingresado no es correcto.', 'error');
       return;
     }
 
     fetch(`/funcionario/vecinos/${id}/editar-ajax/`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': csrftoken
-      },
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
       body: JSON.stringify(payload)
     })
     .then(res => res.json())
     .then(data => {
       if (data.success) {
         modalEdit.hide();
-        Swal.fire('¡Éxito!', data.message, 'success').then(() => {
-          window.location.reload();
-        });
+        Swal.fire('¡Éxito!', data.message, 'success').then(() => window.location.reload());
       } else {
         Swal.fire('Error', data.message, 'error');
       }
     })
-    .catch(() => {
-      Swal.fire('Error', 'Ocurrió un fallo en el servidor.', 'error');
-    });
+    .catch(() => Swal.fire('Error', 'Ocurrió un fallo en el servidor.', 'error'));
   });
+
+  // Selectores Dependientes en Cascada (Formulario Nuevo)
+  const delegacionSelect = document.getElementById('id_delegacion');
+  const juntaSelect = document.getElementById('id_junta_vecino');
+  const territorioSelect = document.getElementById('id_territorio');
+
+  if (delegacionSelect) {
+    delegacionSelect.addEventListener('change', function() {
+      const delegacionId = this.value;
+      juntaSelect.innerHTML = '<option value="">---------</option>';
+      cargoSelect.innerHTML = '<option value="">---------</option>';
+      if (territorioSelect) territorioSelect.innerHTML = '<option value="">---------</option>';
+      if (!delegacionId) return;
+
+      fetch(`/funcionario/vecinos/juntas-por-delegacion/${delegacionId}/`)
+        .then(res => res.json())
+        .then(data => {
+          (data.juntas || []).forEach(junta => {
+            const opt = document.createElement('option');
+            opt.value = junta.pk;
+            opt.textContent = `RPJ ${junta.numero_rpj} - ${junta.nombre}`;
+            juntaSelect.appendChild(opt);
+          });
+        });
+
+      if (territorioSelect) {
+        fetch(`/funcionario/vecinos/territorios-por-delegacion/${delegacionId}/`)
+          .then(res => res.json())
+          .then(data => {
+            (data.territorios || []).forEach(terr => {
+              const opt = document.createElement('option');
+              opt.value = terr.pk;
+              opt.textContent = `ID: ${terr.pk} - ${terr.nombre}`;
+              territorioSelect.appendChild(opt);
+            });
+          });
+      }
+    });
+  }
+
+  if (juntaSelect) {
+    juntaSelect.addEventListener('change', function() {
+      const juntaId = this.value;
+      cargoSelect.innerHTML = '<option value="">---------</option>';
+      if (!juntaId) return;
+
+      fetch(`/funcionario/vecinos/cargos-por-junta/${juntaId}/`)
+        .then(res => res.json())
+        .then(data => {
+          (data.cargos || []).forEach(cargo => {
+            const opt = document.createElement('option');
+            opt.value = cargo.pk;
+            opt.textContent = `${cargo.nombre} - ${cargo.permisos}`;
+            cargoSelect.appendChild(opt);
+          });
+        });
+    });
+  }
+
+  if (delegacionSelect) {
+    if (!delegacionSelect.value && delegacionSelect.options.length === 2) {
+      delegacionSelect.selectedIndex = 1;
+    }
+    if (delegacionSelect.value) {
+      delegacionSelect.dispatchEvent(new Event('change'));
+    }
+  }
 });
 </script>
 {% endblock %}

@@ -2,7 +2,7 @@ from django import forms
 from AdminApp.models import Usuario
 from CoordinadorApp.models import Periodo
 from DelegadoApp.models import Compromiso
-from FuncionarioApp.models import Subtipo, Tipo, Beneficiado, Territorio
+from FuncionarioApp.models import Subtipo, Tipo, Vecino, Territorio
 from FuncionarioApp.forms import (TipoSubtipoFields,_assign_tipo_subtipo,_set_tipo_subtipo_choices,)
 from config.forms import BootstrapFormMixin
 from SupervisorApp.models import Evidencia
@@ -50,7 +50,7 @@ class CompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         _set_tipo_subtipo_choices(self, self.instance)
 
-        self.fields['solicitante'].queryset = Beneficiado.objects.all().order_by('nombre', 'apellido')
+        self.fields['solicitante'].queryset = Vecino.objects.filter(activo=True).order_by('nombre', 'apellido')
         self.fields['territorio'].queryset = Territorio.objects.all().order_by('nombre')
         
         delegation_id = delegation.pk if delegation else getattr(user, 'delegacion_id', None)

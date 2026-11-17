@@ -336,6 +336,7 @@ def home(request):
         'sidebar_modules': (
             {'label': 'Agenda colectiva', 'url_name': 'delegado:home'},
             {'label': 'Resumen de la delegación', 'url_name': 'delegado:resumen'},
+            {'label': 'Tubo de Cartas', 'url_name': 'funcionario:tubo_cartas'},
         ),
     })
 
@@ -361,12 +362,9 @@ def resumen(request):
         'sidebar_modules': (
             {'label': 'Agenda colectiva', 'url_name': 'delegado:home'},
             {'label': 'Resumen de la delegación', 'url_name': 'delegado:resumen'},
+            {'label': 'Tubo de Cartas', 'url_name': 'funcionario:tubo_cartas'},
         ),
         'periodos': periods,
         'periodo_seleccionado': selected_period,
         **summary,
-<<<<<<< HEAD
     })
-=======
-    })
->>>>>>> 465b4bb67aab4934b4687aaf713ce7c0c8b1d762

@@ -1,7 +1,7 @@
 import secrets
 from django.conf import settings
 from django.db import models
-from FuncionarioApp.models import Tipo,Subtipo,Beneficiado,Territorio
+from FuncionarioApp.models import Tipo, Subtipo, Vecino, Territorio 
 from django.utils import timezone
 
 from django.urls import reverse
@@ -49,7 +49,7 @@ class Compromiso(models.Model):
 	fecha_compromiso = models.DateTimeField(default=timezone.now, db_column='FECHA_COMPROMISO')
 	descripcion = models.CharField(max_length=240,db_column='DESCRIPCION')
 	ambito = models.CharField(max_length=10,choices=Ambito.choices,default=Ambito.EXTERNO,db_column='AMBITO')
-	solicitante = models.ForeignKey(Beneficiado,on_delete=models.PROTECT,related_name='compromisos',null=True,blank=True,verbose_name='Solicitante/Beneficiario',db_column='SOLICITANTE')
+	solicitante = models.ForeignKey(Vecino,on_delete=models.PROTECT,related_name='compromisos',null=True,blank=True,verbose_name='Solicitante/Vecino',db_column='VECINO')
 	territorio = models.ForeignKey(Territorio,on_delete=models.PROTECT,db_column='TERRITORIO',related_name='compromisos',null=True,blank=True,verbose_name='Territorio')
 	responsable = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='compromisos',db_column="RESPONSABLE")
 	mes = models.IntegerField(default=1, db_column='MES')

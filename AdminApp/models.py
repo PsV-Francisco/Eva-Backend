@@ -1,3 +1,4 @@
+import re
 from django.conf import settings
 from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser, Group
@@ -333,13 +334,54 @@ class UsuarioRol(models.Model):
         verbose_name = "Rol del Usuario"
         verbose_name_plural = "Roles del Usuario"
 
+def validar_y_normalizar_rut_usuario(rut_raw):
+    if not rut_raw:
+        return None
+    limpio = re.sub(r'[\.\s]', '', str(rut_raw)).upper()
+    if '-' not in limpio and len(limpio) >= 2:
+        limpio = f'{limpio[:-1]}-{limpio[-1]}'
+    if not re.match(r'^\d{7,8}-[\dK]$', limpio):
+        raise ValidationError('El RUT debe tener formato válido (ej: 12345678-9).')
+    cuerpo, dv = limpio.split('-')
+    suma = 0
+    multiplo = 2
+    for digito in reversed(cuerpo):
+        suma += int(digito) * multiplo
+        multiplo = 2 if multiplo == 7 else multiplo + 1
+    resto = 11 - (suma % 11)
+    dv_esperado = '0' if resto == 11 else ('K' if resto == 10 else str(resto))
+    if dv != dv_esperado:
+        raise ValidationError('El dígito verificador del RUT es incorrecto.')
+    return limpio
+
+
 #Modelo del Usuario (OK)
 class Usuario(AbstractUser):
+    class EstadoCuenta(models.TextChoices):
+        PENDIENTE_ACTIVACION = 'pendiente_activacion', 'Pendiente de activación'
+        ACTIVO = 'activo', 'Activo'
+        INACTIVO = 'inactivo', 'Inactivo'
+
     username = None
     uuid = models.AutoField(primary_key=True, db_column='UUID')
+    rut = models.CharField(
+        max_length=12,
+        unique=True,
+        null=True,
+        blank=True,
+        validators=[validar_y_normalizar_rut_usuario],
+        db_column='RUT',
+    )
     email = models.EmailField(max_length=50, unique=True, db_column='EMAIL')
     nombre = models.CharField(max_length=50, default='', db_column='NOMBRE')
-    estado = models.CharField(max_length=30, default='activo', db_column='ESTADO')
+    estado = models.CharField(
+        max_length=30,
+        choices=EstadoCuenta.choices,
+        default=EstadoCuenta.ACTIVO,
+        db_column='ESTADO',
+    )
+    requiere_cambio_password = models.BooleanField(default=False)
+    fecha_activacion = models.DateTimeField(null=True, blank=True)
     limite_actividad = models.IntegerField(default=0, db_column='LIMITE_ACTIVIDAD')
     dias_libres = models.IntegerField(null=True, blank=True, db_column='DIAS_LIBRES')
     vacaciones = models.IntegerField(null=True, blank=True, db_column='VACACIONES')
@@ -357,6 +399,10 @@ class Usuario(AbstractUser):
         verbose_name_plural = "Usuarios"
 
     def save(self, *args, **kwargs):
+        if self.rut:
+            self.rut = validar_y_normalizar_rut_usuario(self.rut)
+        else:
+            self.rut = None
         if self.password:
             self.contraseña = self.password
         if self.pk:
@@ -383,7 +429,6 @@ class Usuario(AbstractUser):
                     )
                 return super().save(*args, **kwargs)
         return super().save(*args, **kwargs)
-
     @property
     def delegacion_actual(self):
         return UsuarioDelegacion.objects.filter(
@@ -681,6 +726,41 @@ class PasswordResetRateLimitKey(models.Model):
         verbose_name = 'clave de límite de solicitudes'
         verbose_name_plural = 'claves de límite de solicitudes'
 
+class PasswordResetLinkToken(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='password_reset_link_token',
+    )
+    token_hash = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'password_reset_link_token'
+        ordering = ['-created_at']
+        verbose_name = 'enlace de recuperación'
+        verbose_name_plural = 'enlaces de recuperación'
+
+
+class AccountActivationToken(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='account_activation_token',
+    )
+    token_hash = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    last_sent_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'account_activation_token'
+        ordering = ['-created_at']
+        verbose_name = 'token de activación de cuenta'
+        verbose_name_plural = 'tokens de activación de cuenta'
 #
 class ParametroSistema(models.Model):
     class Clave(models.TextChoices):

@@ -58,6 +58,8 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'config.password_reset.ForcePasswordChangeMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -192,3 +194,7 @@ if not PASSWORD_RESET_DOMAIN or '://' in PASSWORD_RESET_DOMAIN:
     raise ImproperlyConfigured(
         'PASSWORD_RESET_DOMAIN debe contener solo el dominio público, sin protocolo.'
     )
+
+ACCOUNT_ACTIVATION_TOKEN_TTL_SECONDS = int(
+    os.environ.get('ACCOUNT_ACTIVATION_TOKEN_TTL_SECONDS', '86400')
+)
