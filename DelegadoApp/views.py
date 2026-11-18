@@ -149,7 +149,7 @@ def home(request):
         ).select_related(
             'agenda', 'agenda__periodo', 'solicitante', 'territorio'
         ).prefetch_related(
-            'responsable', 'evidencias_compromiso', 'historial_estados'
+            'responsable', 'historial_estados'
         )
 
     if request.method == 'POST' and request.POST.get('action') == 'estado':
@@ -231,7 +231,7 @@ def home(request):
         if action == 'eliminar':
             if commitment is None:
                 messages.error(request, 'No se encontró el compromiso que intentas eliminar.')
-            elif commitment.evidencias_compromiso.exists():
+            elif bool(commitment.evidencia_id):
                 messages.error(request, 'No se puede eliminar un compromiso con evidencias asociadas.')
             elif commitment.agenda.periodo.estado != Periodo.Estado.ABIERTO:
                 messages.error(request, 'Los compromisos de un período cerrado son de solo lectura.')
@@ -259,7 +259,7 @@ def home(request):
                     messages.error(request, 'No se puede eliminar un compromiso que tiene información asociada.')
             return redirect('delegado:home')
 
-        if commitment and commitment.evidencias_compromiso.exists():
+        if commitment and bool(commitment.evidencia_id):
             messages.error(request, 'No se puede modificar un compromiso con evidencias asociadas.')
             return redirect('delegado:home')
         if commitment and commitment.agenda.periodo.estado != Periodo.Estado.ABIERTO:
@@ -340,9 +340,11 @@ def home(request):
         ),
     })
 
-
+from AdminApp.csv_utils import csv_response
 @cargo_required('delegado', permission='view_delegation_summary')
 def resumen(request):
+    from AdminApp.csv_utils import csv_response
+
     delegation = active_delegation(request)
     period_id = request.GET.get('periodo', '')
     selected_period = (
@@ -357,6 +359,41 @@ def resumen(request):
         delegation=delegation,
         period=selected_period,
     )
+    if request.GET.get('export') == 'csv':
+        if not delegation:
+            messages.error(request, 'Tu cuenta no tiene delegación asignada.')
+            return redirect('delegado:resumen')
+        rows = [[
+            'Funcionario',
+            'Correo',
+            'Cumplimiento (%)',
+            'Esperado (%)',
+            'Semáforo',
+            'Último registro',
+            'Fecha último registro',
+        ]]
+        rows.extend([
+            row['usuario'].get_full_name() or row['usuario'].email,
+            row['usuario'].email,
+            row['cumplimiento'],
+            row['esperado'],
+            row['semaforo'],
+            row['ultimo_registro'] or '',
+            row['fecha_ultimo_registro'] or '',
+        ] for row in summary['funcionarios'])
+        return csv_response(
+            request,
+            filename='resumen_delegacion.csv',
+            rows=rows,
+            entity='ResumenDelegacion',
+            action='Exportar resumen de delegación CSV',
+            title='Resumen de desempeño por delegación',
+            delegation=delegation,
+            filters={'periodo': str(selected_period.pk) if selected_period else ''},
+            row_count=len(summary['funcionarios']),
+            period=selected_period,
+        )
+
     return render(request, 'DelegadoApp/resumen.html', {
         'sgr_role': 'Delegación',
         'sidebar_modules': (

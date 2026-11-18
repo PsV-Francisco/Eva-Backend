@@ -119,7 +119,7 @@
                                     </form>
                                     <div class="mt-2">
                                         <a href="{% url 'funcionario:compromiso_evidencia' compromiso.pk %}" class="text-decoration-none">Cargar evidencia</a>
-                                        {% if compromiso.evidencias_compromiso.all %}
+                                        {% if compromiso.evidencia %}
                                             <br><span class="text-muted small">Edición general bloqueada porque ya tiene evidencias.</span>
                                         {% else %}
                                             | <a href="{% url 'funcionario:compromiso_editar' compromiso.pk %}" class="text-decoration-none">Editar datos</a>

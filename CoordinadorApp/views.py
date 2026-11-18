@@ -556,13 +556,25 @@ def informes(request):
         return HttpResponseNotAllowed(['GET'])
     data = consolidated_report_rows(request)
     periods, period, period_id, delegation_id, cargo_id, user_id, rows, summaries = data
-    if request.GET.get('export') == 'csv':
-        return csv_response(
+    export_fmt = request.GET.get('export')
+    if export_fmt in {'csv', 'excel'}:
+        from AdminApp.csv_utils import excel_rows_response
+
+        selected_delegation_obj = (
+            Delegacion.objects.filter(pk=delegation_id).first()
+            if delegation_id.isdecimal()
+            else 'Todas las delegaciones'
+        )
+        exporter = excel_rows_response if export_fmt == 'excel' else csv_response
+        ext = 'xlsx' if export_fmt == 'excel' else 'csv'
+        return exporter(
             request,
-            filename='informe_consolidado.csv',
+            filename=f'informe_consolidado.{ext}',
             rows=consolidated_report_csv_rows(period, rows, summaries),
             entity='InformeConsolidado',
-            action='Exportar informe consolidado CSV',
+            action=f'Exportar informe consolidado {ext.upper()}',
+            title='Informe consolidado de cumplimiento',
+            delegation=selected_delegation_obj,
             filters={
                 'periodo': period_id,
                 'delegacion': delegation_id,
@@ -740,32 +752,41 @@ def tendencias(request):
     else:
         empty_message = ''
 
-    if request.GET.get('export') == 'csv':
-        csv_rows = [[
-            'Período',
-            'Funcionarios considerados',
-            'Promedio de avance real (%)',
-            'Funcionarios sobre el umbral (%)',
-            'Funcionarios sin ítems',
-        ]]
-        csv_rows.extend([
-            row['periodo'].nombre,
-            row['funcionarios_considerados'],
-            row['promedio_avance_real'],
-            row['porcentaje_sobre_umbral'],
-            row['funcionarios_sin_items'],
-        ] for row in series)
-        return csv_response(
+    export_fmt = request.GET.get('export')
+    if export_fmt in {'csv', 'excel'}:
+        from AdminApp.csv_utils import excel_rows_response
+
+        selected_delegation_obj = (
+            Delegacion.objects.filter(pk=parsed_filters['delegacion']).first()
+            if parsed_filters.get('delegacion')
+            else 'Todas las delegaciones'
+        )
+        exporter = excel_rows_response if export_fmt == 'excel' else csv_response
+        ext = 'xlsx' if export_fmt == 'excel' else 'csv'
+        return exporter(
             request,
-            filename='tendencias_historicas.csv',
-            rows=csv_rows,
+            filename=f'tendencias_historicas.{ext}',
+            rows=[[
+                'Período',
+                'Funcionarios considerados',
+                'Promedio de avance real (%)',
+                'Funcionarios sobre el umbral (%)',
+                'Funcionarios sin ítems',
+            ]] + [[
+                item['periodo'].nombre,
+                item['funcionarios_considerados'],
+                item['promedio_avance_real'],
+                item['porcentaje_sobre_umbral'],
+                item['funcionarios_sin_items'],
+            ] for item in series],
             entity='TendenciasHistoricas',
-            action='Exportar tendencias históricas CSV',
-            filters={**raw_filters, 'periodos': period_limit},
+            action=f'Exportar tendencias históricas {ext.upper()}',
+            title='Reporte de tendencias históricas',
+            delegation=selected_delegation_obj,
+            filters=raw_filters,
             row_count=len(series),
             period=selected_periods[-1] if selected_periods else None,
         )
-
     return render(request, 'CoordinadorApp/tendencias.html', {
         'sgr_role': 'Coordinación',
         'sidebar_modules': _coordinator_management_modules(),

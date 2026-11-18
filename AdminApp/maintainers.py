@@ -389,15 +389,42 @@ SPECS = {
 }
 
 
-def excel_response(queryset, columns, filename):
+def excel_response(
+    queryset,
+    columns,
+    filename,
+    *,
+    request=None,
+    title=None,
+    delegation=None,
+    filters=None,
+):
     from openpyxl import Workbook
     from openpyxl.styles import Font
+    from AdminApp.csv_utils import build_report_metadata_rows
 
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = 'Resultados'
+
+    start_row = 1
+    if request is not None:
+        meta_rows = build_report_metadata_rows(
+            request,
+            title=title or filename,
+            delegation=delegation,
+            filters=filters,
+        )
+        for idx, m_row in enumerate(meta_rows, start=1):
+            worksheet.append([_safe_spreadsheet_value(v) for v in m_row])
+            if idx == 1:
+                worksheet[f'A{idx}'].font = Font(bold=True, size=13)
+            elif m_row:
+                worksheet[f'A{idx}'].font = Font(bold=True)
+        start_row = len(meta_rows) + 1
+
     worksheet.append([label for label, _ in columns])
-    for cell in worksheet[1]:
+    for cell in worksheet[start_row]:
         cell.font = Font(bold=True)
 
     for record in queryset.iterator(chunk_size=200):
@@ -407,8 +434,8 @@ def excel_response(queryset, columns, filename):
             for value in values
         ])
 
-    worksheet.freeze_panes = 'A2'
-    worksheet.auto_filter.ref = worksheet.dimensions
+    worksheet.freeze_panes = f'A{start_row + 1}'
+    worksheet.auto_filter.ref = f'A{start_row}:{worksheet.cell(row=worksheet.max_row, column=len(columns)).coordinate}'
     for column_cells in worksheet.columns:
         column_letter = column_cells[0].column_letter
         width = max(
@@ -540,17 +567,19 @@ def _authorized_queryset(spec, request, *, global_scope=False):
         return Item.objects.annotate(
             metas_asignadas=Count('desempenos'),
         )
+    if spec.key == 'vecinos':
+        return Vecino.objects.select_related('territorio', 'delegacion', 'junta_vecino')
     if spec.key == 'metas':
         queryset = Desempeno.objects.select_related(
             'usuario', 'item', 'periodo',
-            
         )
-        if spec.key == 'vecinos':
-            return Vecino.objects.select_related('territorio', 'delegacion', 'junta_vecino')
-        if (not global_scope and request.user.cargo
-                and request.user.cargo.nombre.strip().casefold() not in {
-            'admin', 'administrador',
-        }):
+        if (
+            not global_scope
+            and request.user.cargo
+            and request.user.cargo.nombre.strip().casefold() not in {
+                'admin', 'administrador',
+            }
+        ):
             delegation = active_delegation(request)
             if delegation is None:
                 return queryset.none()
@@ -953,5 +982,12 @@ def maintainer(
             queryset,
             spec.export_fields,
             spec.key.replace('-', '_'),
+            request=request,
+            title=f'Reporte de {spec.title}',
+            delegation=active_delegation(request),
+            filters={
+                k: v for k, v in request.GET.items()
+                if k not in {'page', 'export'} and v
+            },
         )
     return render(request, 'AdminApp/maintainer.html', context)

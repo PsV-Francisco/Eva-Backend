@@ -92,14 +92,17 @@
           <p class="eyebrow">CONTROL DE PLAZOS Y PRONUNCIAMIENTO</p>
           <h2>Bandeja de Cartas Registradas</h2>
         </div>
-        <form method="get" class="d-flex gap-2">
-          <select name="estado" class="form-select form-select-sm" onchange="this.form.submit()">
-            <option value="">Todos los estados</option>
-            {% for val, label in estados_choices %}
-              <option value="{{ val }}" {% if estado_filtro == val %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </form>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <form method="get" class="d-flex gap-2">
+            <select name="estado" class="form-select form-select-sm" onchange="this.form.submit()">
+              <option value="">Todos los estados</option>
+              {% for val, label in estados_choices %}
+                <option value="{{ val }}" {% if estado_filtro == val %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          <a class="btn btn-sm btn-outline-primary" href="?estado={{ estado_filtro }}&export=csv">Exportar CSV</a>
+        </div>
       </div>
 
       <div class="search-panel mb-3">

@@ -6,8 +6,39 @@ from django.db import models
 from django.utils import timezone
 
 
+MAX_ACTIVIDADES_DIARIAS = 7
+
+
 def normalizar_telefono(value):
 	return re.sub(r'\D', '', value or '')
+
+
+def limite_diario_actividades(user):
+	"""Retorna el tope diario de actividades para el funcionario (por defecto 7)."""
+	custom_limit = getattr(user, 'limite_actividad', 0) or 0
+	return custom_limit if custom_limit > 0 else MAX_ACTIVIDADES_DIARIAS
+
+
+def validar_y_normalizar_rut(rut_input):
+	"""Valida formato y dígito verificador Módulo 11. Retorna RUT limpio '12345678-9'."""
+	rut_limpio = (rut_input or '').strip().replace('.', '').replace(' ', '').upper()
+	if not rut_limpio:
+		raise ValidationError('El RUT es obligatorio.')
+	if not re.match(r'^\d{7,8}-[\dK]$', rut_limpio):
+		raise ValidationError('Formato de RUT inválido. Usa el formato 12345678-9.')
+
+	cuerpo, dv = rut_limpio.split('-')
+	suma = 0
+	multiplo = 2
+	for r in reversed(cuerpo):
+		suma += int(r) * multiplo
+		multiplo = 2 if multiplo == 7 else multiplo + 1
+	esperado = 11 - (suma % 11)
+	dv_calculado = 'K' if esperado == 10 else ('0' if esperado == 11 else str(esperado))
+	if dv_calculado != dv:
+		raise ValidationError('El dígito verificador del RUT no es válido.')
+	return rut_limpio
+
 
 #Modelo : Tipo (OK)
 class Tipo(models.Model):
@@ -77,12 +108,29 @@ class Registro(models.Model):
 
 	@property
 	def evidencias_registros(self):
-		"""Retorna un QuerySet vacío de Evidencia dado que el modelo Evidencia no posee relación con Registro."""
 		from SupervisorApp.models import Evidencia
+		if self.evidencia_id:
+			return Evidencia.objects.filter(pk=self.evidencia_id)
 		return Evidencia.objects.none()
 
 	def __str__(self):
 		return f'{self.codigo} - {self.descripcion}'
+
+	def clean(self):
+		super().clean()
+		if self.autor_id and self.fecha and self.estado != self.Estado.ANULADA:
+			limite = limite_diario_actividades(self.autor)
+			existentes = (
+				type(self)
+				.objects.filter(autor_id=self.autor_id, fecha=self.fecha)
+				.exclude(estado=self.Estado.ANULADA)
+				.exclude(pk=self.pk)
+				.count()
+			)
+			if existentes >= limite:
+				raise ValidationError({
+					'fecha': f'Has alcanzado el tope máximo de {limite} actividades registradas para el {self.fecha:%d/%m/%Y}.',
+				})
 
 	def save(self, *args, **kwargs):
 		if self.pk:
@@ -91,6 +139,8 @@ class Registro(models.Model):
 			).first()
 			if original_code and original_code != self.codigo:
 				raise ValueError('El código de registro es inmutable.')
+		if not self.genera_puntaje:
+			self.genera_puntaje = 'SI'
 		return super().save(*args, **kwargs)
 
 
@@ -102,9 +152,9 @@ class Vecino(models.Model):
 
 	rut = models.CharField(max_length=12, null=True, blank=True, db_column='RUT')
 	nombre = models.CharField(max_length=100, db_column='NOMBRE')
-	apellido = models.CharField(max_length=50, null=True, blank=True, db_column='APELLIDO') # Opcional si lo separas del nombre
+	apellido = models.CharField(max_length=50, null=True, blank=True, db_column='APELLIDO')
 	telefono = models.CharField(max_length=15, null=True, blank=True, db_column='TELEFONO')
-	email = models.CharField(max_length=90, null=True, blank=True, db_column='EMAIL') # Heredado de beneficiado
+	email = models.CharField(max_length=90, null=True, blank=True, db_column='EMAIL')
 	direccion = models.CharField(max_length=250, null=True, blank=True, db_column='DIRECCION')
 	territorio = models.ForeignKey('Territorio', on_delete=models.PROTECT, db_column='TERRITORIO', related_name='vecinos')
 	delegacion = models.ForeignKey('AdminApp.Delegacion', on_delete=models.PROTECT, db_column='DELEGACION', related_name='vecinos')
@@ -120,11 +170,27 @@ class Vecino(models.Model):
 		verbose_name = 'vecino'
 		verbose_name_plural = 'vecinos'
 
+	@property
+	def cargo_actual(self):
+		return self.cargos_ejercidos.select_related('junta_vecino').first()
+
+	@property
+	def es_dirigente(self):
+		return self.cargos_ejercidos.exists()
+
 	def clean(self):
 		errors = {}
-		self.nombre = self.nombre.strip()
+		self.nombre = (self.nombre or '').strip()
 		if len(self.nombre) < 2:
 			errors['nombre'] = 'Ingresa un nombre válido.'
+		if self.rut:
+			try:
+				self.rut = validar_y_normalizar_rut(self.rut)
+				duplicado = Vecino.objects.filter(rut__iexact=self.rut).exclude(pk=self.pk).exists()
+				if duplicado:
+					errors['rut'] = f'Ya existe un vecino registrado con el RUT {self.rut}.'
+			except ValidationError as exc:
+				errors['rut'] = exc.messages[0]
 		if self.telefono:
 			self.telefono = self.telefono.strip()
 			phone_digits = normalizar_telefono(self.telefono)
@@ -134,17 +200,25 @@ class Vecino(models.Model):
 			errors['territorio'] = 'Ingresa un territorio.'
 		if self.territorio_id and self.territorio.delegacion_id != self.delegacion_id:
 			errors['territorio'] = 'El territorio debe pertenecer a la misma delegación.'
+		if self.junta_vecino_id and self.junta_vecino.delegacion_id != self.delegacion_id:
+			errors['junta_vecino'] = 'La junta de vecinos debe pertenecer a la misma delegación.'
 		if errors:
 			raise ValidationError(errors)
 
 	def save(self, *args, **kwargs):
-		self.nombre = self.nombre.strip()
+		self.nombre = (self.nombre or '').strip()
+		if self.rut:
+			self.rut = validar_y_normalizar_rut(self.rut)
+			if Vecino.objects.filter(rut__iexact=self.rut).exclude(pk=self.pk).exists():
+				raise ValidationError({'rut': f'Ya existe un vecino registrado con el RUT {self.rut}.'})
 		if self.telefono:
 			self.telefono = self.telefono.strip()
+		self.activo = (self.estado == self.Estado.ACTIVADO)
 		return super().save(*args, **kwargs)
 
 	def __str__(self):
-		return self.nombre
+		rut_str = f' ({self.rut})' if self.rut else ''
+		return f'{self.nombre}{rut_str}'
 
 #Modelo : Territorio (OK)
 class Territorio(models.Model):

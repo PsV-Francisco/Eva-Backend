@@ -1,8 +1,5 @@
 def consolidated_report_csv_rows(period, rows, summaries):
     csv_rows = [
-        ['Informe consolidado'],
-        ['Período', period.nombre if period else ''],
-        [],
         [
             'Detalle',
             'Delegación',

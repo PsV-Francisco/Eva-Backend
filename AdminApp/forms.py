@@ -837,6 +837,15 @@ class TipoForm(BootstrapFormMixin, forms.ModelForm):
         fields = ('nombre', 'estado')
         labels = {'nombre': 'Tipo', 'estado': 'Estado'}
 
+    def clean_nombre(self):
+        nombre = (self.cleaned_data.get('nombre') or '').strip()
+        qs = Tipo.objects.filter(nombre__iexact=nombre)
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise forms.ValidationError('Ya existe un tipo con este nombre.')
+        return nombre
+
 
 class SubtipoForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
@@ -851,9 +860,24 @@ class SubtipoForm(BootstrapFormMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         tipos = Tipo.objects.filter(estado=Tipo.Estado.ACTIVADO)
-        if self.instance.pk:
+        if self.instance.pk and self.instance.tipo_id:
             tipos = tipos | Tipo.objects.filter(pk=self.instance.tipo_id)
         self.fields['tipo'].queryset = tipos.distinct().order_by('nombre')
+
+    def clean_nombre(self):
+        return (self.cleaned_data.get('nombre') or '').strip()
+
+    def clean(self):
+        cleaned_data = super().clean()
+        nombre = cleaned_data.get('nombre')
+        tipo = cleaned_data.get('tipo') or (self.instance.tipo if self.instance.tipo_id else None)
+        if nombre and tipo:
+            qs = Subtipo.objects.filter(nombre__iexact=nombre, tipo=tipo)
+            if self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                self.add_error('nombre', 'Ya existe un subtipo con este nombre para el tipo seleccionado.')
+        return cleaned_data
 
 
 class DesempenoForm(BootstrapFormMixin, forms.ModelForm):
