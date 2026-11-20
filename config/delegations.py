@@ -19,7 +19,7 @@ def authorized_delegations(user):
         usuariodelegacion__usuario=user,
         usuariodelegacion__fecha_fin__isnull=True,
     ).filter(
-        Q(estado=Delegacion.Estado.ACTIVA)
+        Q(estado=Delegacion.Estado.ACTIVADO)
         | Q(estado__iexact='activo')
     ).distinct().order_by('nombre')
 

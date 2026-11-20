@@ -16,17 +16,7 @@ from AdminApp.delegation_scope import (available_delegations, filter_by_delegati
 from AdminApp.models import Delegacion
 
 # Importaciones de la aplicación FuncionarioApp
-from FuncionarioApp.models import (
-    Carta,
-    CargoJv,
-    JuntaVecino,
-    Registro,
-    Subtipo,
-    Territorio,
-    Tipo,
-    Vecino,
-    normalizar_telefono,
-)
+from FuncionarioApp.models import (Carta,CargoJv,JuntaVecino,Registro,Subtipo,Territorio,Tipo,Vecino,normalizar_telefono)
 
 # Importaciones de la aplicación CoordinadorApp
 from CoordinadorApp.models import AtencionSocial, Desempeno, GestionAtencion, Item, Periodo
@@ -41,16 +31,7 @@ from SupervisorApp.models import Evidencia
 # Importaciones de Decoradores y Formularios de FuncionarioApp
 from config.decorators import cargo_required
 from config.delegations import active_delegation
-from FuncionarioApp.forms import (
-    AtencionSocialForm,
-    CartaForm,
-    CompromisoEvidenciaForm,
-    FuncionarioCompromisoForm,
-    GestionAtencionForm,
-    JuntaVecinoForm,
-    RegistroForm,
-    VecinoForm,
-)
+from FuncionarioApp.forms import (AtencionSocialForm,CartaForm,CompromisoEvidenciaForm,FuncionarioCompromisoForm,GestionAtencionForm,JuntaVecinoForm,RegistroForm,VecinoForm)
 
 
 @cargo_required('funcionario', permission='access_employee_dashboard')
@@ -837,15 +818,16 @@ def editar_vecino(request, vecino_id):
 @cargo_required('funcionario', permission='view_vecino_detail')
 @require_GET
 def detalle_vecino_json(request, vecino_id):
-    vecino = get_object_or_404(
-        Vecino.objects.prefetch_related('cargos_ejercidos'),
-        pk=vecino_id,
-    )
+    vecino = get_object_or_404(Vecino.objects.prefetch_related('cargos_ejercidos'),pk=vecino_id,)
+    
+    nombre_completo = f"{vecino.nombre} {vecino.apellido or ''}".strip()
     cargo_actual = vecino.cargos_ejercidos.first()
     return JsonResponse({
         'id': vecino.pk,
         'rut': vecino.rut or '',
         'nombre': vecino.nombre,
+        'apellido' : vecino.apellido,
+        'nombre_completo' : nombre_completo,
         'telefono': vecino.telefono or '',
         'direccion': vecino.direccion or '',
         'activo': vecino.activo,

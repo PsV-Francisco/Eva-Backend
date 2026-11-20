@@ -62,7 +62,7 @@ class MaintainerSpec:
 
 
 def _delegation_delete_block(delegation):
-    if delegation.estado != Delegacion.Estado.INACTIVA:
+    if delegation.estado != Delegacion.Estado.DESACTIVADO:
         return 'Desactiva la delegación antes de eliminarla.'
     if UsuarioDelegacion.objects.filter(delegacion=delegation).exists():
         return 'La delegación tiene usuarios asociados. Desactívala para conservar esas relaciones.'
@@ -249,26 +249,14 @@ SPECS = {
         status_field=None,
         status_filter_field=None,
     ),
-    'delegaciones': MaintainerSpec(
-        key='delegaciones',
-        title='Delegaciones',
-        model=Delegacion,
-        form_class=DelegacionForm,
-        search_fields=('nombre', 'direccion'),
-        display_fields=(
-            ('Nombre', 'nombre'),
-            ('Dirección', 'direccion'),
-            ('Estado', 'estado'),
-        ),
-        export_fields=(
-            ('Nombre', 'nombre'),
-            ('Dirección', 'direccion'),
-            ('Estado', 'estado'),
-        ),
+
+    'delegaciones': MaintainerSpec(key='delegaciones',title='Creación y Administración de Delegaciones',model=Delegacion,form_class=DelegacionForm,search_fields=('nombre', 'direccion'),
+        display_fields=(('Nombre', 'nombre'),('Dirección', 'direccion'),('Estado', 'estado'),),
+        export_fields=(('Nombre', 'nombre'),('Dirección', 'direccion'),('Estado', 'estado'),),
         ordering=('nombre',),
-        active_value=Delegacion.Estado.ACTIVA,
-        inactive_value=Delegacion.Estado.INACTIVA,
-    ),
+        active_value='ACTIVADO',
+        inactive_value='DESACTIVADO',),
+    
     'roles': MaintainerSpec(
         key='roles',
         title='Roles y permisos',

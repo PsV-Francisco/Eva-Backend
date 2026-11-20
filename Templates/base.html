@@ -51,9 +51,12 @@
         </form>
       </div>
       {% else %}
-      <!-- Se reemplazó el botón ingresar por el recuadro de fecha -->
+      <!-- Reloj en vivo ampliado para el login -->
       <div class="account-area">
-        <span class="date-chip">{% now 'd/m/Y' %}</span>
+        <div id="live-clock-container" class="live-clock-chip text-center px-3 py-1">
+          <span id="live-clock-date" class="d-block text-uppercase small fw-bold opacity-75" style="letter-spacing: 0.5px;">Cargando fecha...</span>
+          <span id="live-clock-time" class="d-block fs-5 fw-bold font-monospace">00:00:00</span>
+        </div>
       </div>
       {% endif %}
     </div>
@@ -145,6 +148,27 @@
         });
       });
     });
+    
+    // Reloj en vivo para el navbar del login
+    function updateLiveClock() {
+      const dateEl = document.getElementById('live-clock-date');
+      const timeEl = document.getElementById('live-clock-time');
+      if (!dateEl || !timeEl) return;
+
+      const now = new Date();
+      
+      // Formato de fecha legible (ej: Miércoles, 18 de Noviembre de 2026)
+      const optionsDate = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+      dateEl.textContent = now.toLocaleDateString('es-CL', optionsDate);
+      
+      // Formato de hora en vivo (HH:MM:SS)
+      timeEl.textContent = now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    if (document.getElementById('live-clock-time')) {
+      updateLiveClock();
+      setInterval(updateLiveClock, 1000);
+    }
   </script>
   {% block extra_js %}{% endblock %}
 </body>

@@ -157,14 +157,14 @@ class UsuarioManager(BaseUserManager):
 # Modelo Delegación (OK)
 class Delegacion(models.Model):
     class Estado(models.TextChoices):
-        ACTIVA = 'activa', 'Activa'
-        INACTIVA = 'inactiva', 'Inactiva'
+        ACTIVADO = 'ACTIVADO'
+        DESACTIVADO = 'DESACTIVADO'
     nombre = models.CharField(max_length=120, unique=True)
     direccion = models.CharField(max_length=255, blank=True)
     estado = models.CharField(
         max_length=20,
         choices=Estado.choices,
-        default=Estado.ACTIVA,
+        default=Estado.ACTIVADO,
     )
 
     class Meta:

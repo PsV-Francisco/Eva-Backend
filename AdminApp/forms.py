@@ -6,29 +6,10 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from FuncionarioApp.models import Subtipo, Tipo
-from AdminApp.models import (
-    Cargo,
-    Delegacion,
-    ParametroSistema,
-    PasswordResetAuditEvent,
-    Rol,
-    TipoAtencion,
-    Usuario,
-    UsuarioCargo,
-    UsuarioDelegacion,
-    UsuarioRol,
-    PROTECTED_ROLE_NAMES,
-)
-from AdminApp.roles import (
-    assignable_role_ids,
-    ensure_role_group,
-    is_system_administrator,
-    permission_codenames_for,
-    role_group_name,
-)
+from AdminApp.models import (Cargo,Delegacion,ParametroSistema,PasswordResetAuditEvent,Rol,TipoAtencion,Usuario,UsuarioCargo,UsuarioDelegacion,UsuarioRol,PROTECTED_ROLE_NAMES)
+from AdminApp.roles import (assignable_role_ids,ensure_role_group,is_system_administrator,permission_codenames_for,role_group_name)
 from config.forms import BootstrapFormMixin
 from config.permissions import PERMISSION_CATALOG, PERMISSION_DESCRIPTIONS
-
 from datetime import timedelta
 from CoordinadorApp.models import CargoFuncion, CargoItem, Desempeno, Funcion, Item, Periodo
 
@@ -37,25 +18,8 @@ class PermissionCheckboxSelectMultiple(forms.CheckboxSelectMultiple):
         self.permission_metadata = permission_metadata or {}
         super().__init__(*args, **kwargs)
 
-    def create_option(
-        self,
-        name,
-        value,
-        label,
-        selected,
-        index,
-        subindex=None,
-        attrs=None,
-    ):
-        option = super().create_option(
-            name,
-            value,
-            label,
-            selected,
-            index,
-            subindex=subindex,
-            attrs=attrs,
-        )
+    def create_option(self,name,value,label,selected,index,subindex=None,attrs=None,):
+        option = super().create_option(name,value,label,selected,index,subindex=subindex,attrs=attrs)
         metadata = self.permission_metadata.get(str(value), {})
         option['permission_module'] = metadata.get('module', '')
         option['permission_description'] = metadata.get('description', '')

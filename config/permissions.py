@@ -13,6 +13,11 @@ class PermissionDefinition:
 
 
 PERMISSION_CATALOG = (
+    #AdminApp Gestión de Delegaciones
+    PermissionDefinition('Administración', 'view_admin_delegations_detail', 'Consultar detalle JSON de delegación', 'administracion:detalle_delegacion_json', ('admin', 'administrador'), (('delegacion_id', 1),), False),
+    PermissionDefinition('Administración', 'edit_admin_delegations_ajax', 'Editar delegación por AJAX', 'administracion:editar_delegacion_ajax', ('admin', 'administrador'), (('delegacion_id', 1),), False),
+    PermissionDefinition('Administración', 'delete_admin_delegations', 'Eliminar delegación', 'administracion:eliminar_delegacion', ('admin', 'administrador'), (('delegacion_id', 1),), False),
+    
     PermissionDefinition('Coordinador', 'view_coordinator_reports', 'Consultar informes consolidados', 'coordinador:informes', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'view_coordinator_trends', 'Consultar tendencias históricas de cumplimiento', 'coordinador:tendencias', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'request_closed_period_authorization', 'Solicitar autorización para modificar períodos cerrados', 'coordinador:solicitudes_autorizacion', ('coordinador', 'admin', 'administrador')),
@@ -84,7 +89,7 @@ PERMISSION_CATALOG = (
     PermissionDefinition('Administración', 'delete_admin_juntas', 'Eliminar juntas de vecinos', 'administracion:junta-eliminar', ('admin', 'administrador'), (('junta_id', 1),), False),
     
     # Permisos de FuncionarioApp
-PermissionDefinition('Funcionario', 'access_employee_dashboard', 'Consultar registro de actividades', 'funcionario:home', ('funcionario',)),
+    PermissionDefinition('Funcionario', 'access_employee_dashboard', 'Consultar registro de actividades', 'funcionario:home', ('funcionario',)),
     PermissionDefinition('Funcionario', 'manage_employee_activities', 'Gestionar actividades', 'funcionario:gestion_actividades', ('funcionario',)),
     PermissionDefinition('Funcionario', 'view_employee_record_detail', 'Consultar detalle JSON de actividad', 'funcionario:detalle_registro_json', ('funcionario',), (('registro_id', 1),), False),
     PermissionDefinition('Funcionario', 'edit_employee_record_ajax', 'Editar actividad por AJAX', 'funcionario:editar_registro_ajax', ('funcionario',), (('registro_id', 1),), False),
@@ -138,6 +143,9 @@ PermissionDefinition('Funcionario', 'access_employee_dashboard', 'Consultar regi
 )
 
 PERMISSION_DESCRIPTIONS = {
+    'view_admin_delegations_detail': 'Consultar el detalle JSON de una delegación para edición.',
+    'edit_admin_delegations_ajax': 'Modificar datos de una delegación mediante AJAX.',
+    'delete_admin_delegations': 'Eliminar o desactivar delegaciones desde la administración.',
     'access_admin_dashboard': 'Consultar métricas generales y accesos rápidos de Administración.',
     'access_admin_users': 'Crear, editar y consultar cuentas de usuario.',
     'access_admin_parameters': 'Consultar y modificar parámetros generales del sistema.',

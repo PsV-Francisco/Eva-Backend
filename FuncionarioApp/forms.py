@@ -134,31 +134,15 @@ class FuncionarioCompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.Mod
 
 
 class RegistroForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
-    tipo = forms.ModelChoiceField(
-        queryset=Tipo.objects.none(),
-        required=False,
-        label='Tipo',
-        empty_label='Sin tipo (predeterminado)',
-    )
-    subtipo = forms.ModelChoiceField(
-        queryset=Subtipo.objects.none(),
-        required=False,
-        label='Subtipo',
-        empty_label='Sin subtipo (predeterminado)',
-    )
-    evidencia = forms.FileField(
-        label='Archivo de evidencia',
-        required=False,
-        widget=forms.ClearableFileInput(attrs={
-            'accept': 'image/jpeg,image/png,application/pdf',
-            'class': 'form-control',
-        }),
-    )
+    vecino = forms.ModelChoiceField(queryset=Vecino.objects.filter(activo=True).order_by('nombre', 'apellido'),required=False,label='Vecino Registrado (Autocompletar)',empty_label='Seleccione un vecino (opcional)',widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_vecino_actividad'}),)
+    tipo = forms.ModelChoiceField(queryset=Tipo.objects.none(),required=False,label='Tipo',empty_label='Sin tipo (predeterminado)',)
+    subtipo = forms.ModelChoiceField(queryset=Subtipo.objects.none(),required=False,label='Subtipo',empty_label='Sin subtipo (predeterminado)',)
+    evidencia = forms.FileField(label='Archivo de evidencia',required=False,widget=forms.ClearableFileInput(attrs={'accept': 'image/jpeg,image/png,application/pdf','class': 'form-control',}),)
 
     class Meta:
         model = Registro
         fields = (
-            'fecha', 'periodo', 'item', 'descripcion', 'accion', 'contacto',
+            'fecha', 'periodo', 'item', 'vecino','descripcion', 'accion', 'contacto',
             'telefono', 'incluir_en_agenda',
         )
         labels = {
@@ -170,24 +154,33 @@ class RegistroForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
             'contacto': 'Contacto',
             'telefono': 'Teléfono',
             'incluir_en_agenda': 'Relacionar con la agenda colectiva',
+            'vecino' : 'Vecino',
         }
         widgets = {
             'fecha': forms.DateInput(attrs={'type': 'date'}),
             'accion': forms.Textarea(attrs={'rows': 3}),
-            'contacto': forms.TextInput(attrs={'autocomplete': 'name'}),
+            'contacto': forms.TextInput(attrs={'autocomplete': 'name', 'readonly': 'readonly', 'class': 'form-control bg-light'}),
+            'telefono': forms.TextInput(attrs={'readonly': 'readonly', 'class': 'form-control bg-light'}),
         }
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        # Tipos y Subtipos
         _set_tipo_subtipo_choices(self, self.instance)
         periods = Periodo.objects.filter(estado=Periodo.Estado.ABIERTO)
+        #Periodos
         if self.instance.pk and self.instance.periodo_id:
             periods = (periods | Periodo.objects.filter(pk=self.instance.periodo_id)).distinct()
         self.fields['periodo'].queryset = periods
+        #Items
         items = Item.objects.filter(estado=Item.Estado.ACTIVO)
         if self.instance.pk and self.instance.item_id:
             items = (items | Item.objects.filter(pk=self.instance.item_id)).distinct()
         self.fields['item'].queryset = items.order_by('nombre')
+        #Vecinos
+        self.fields['vecino'].label_from_instance = (
+            lambda obj: f"{obj.nombre} {obj.apellido}".strip()
+        )
 
     def clean_evidencia(self):
         uploaded_file = self.cleaned_data.get('evidencia')

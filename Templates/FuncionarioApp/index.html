@@ -115,6 +115,7 @@
         <table class="table align-middle" id="tabla-registros">
           <thead>
             <tr>
+              <th>Fecha de Creación</th>
               <th>Fecha</th>
               <th>Actividad</th>
               <th>Acción</th>
@@ -128,10 +129,8 @@
           </thead>
           <tbody>
             {% for reg in registros %}
-            <tr data-accion="{{ reg.accion|lower }}"
-                data-estado="{{ reg.get_estado_display|lower }}"
-                data-item="{{ reg.item.nombre|lower }}"
-                data-periodo="{{ reg.periodo.nombre|lower }}">
+            <tr data-accion="{{ reg.accion|lower }}" data-estado="{{ reg.get_estado_display|lower }}" data-item="{{ reg.item.nombre|lower }}" data-periodo="{{ reg.periodo.nombre|lower }}">
+              <td>{{ reg.creado|date:'d/m/Y H:i' }}</td>
               <td>{{ reg.fecha|date:'d/m/Y' }}</td>
               <td><strong>{{ reg.descripcion }}</strong></td>
               <td><small class="text-muted">{{ reg.accion|default:"-"|truncatechars:60 }}</small></td>
@@ -160,7 +159,7 @@
             </tr>
             {% empty %}
             <tr>
-              <td colspan="9" class="empty-state">Todavía no tienes actividades registradas.</td>
+              <td colspan="10" class="empty-state">Todavía no tienes actividades registradas.</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -325,17 +324,36 @@ document.addEventListener('DOMContentLoaded', function() {
   if (selectVecinoActividad) {
     selectVecinoActividad.addEventListener('change', function() {
       const vecinoId = this.value;
-      if (!vecinoId) return;
+      const contactoInput = document.getElementById('id_contacto');
+      const telefonoInput = document.getElementById('id_telefono');
+
+      if (!vecinoId) {
+        // Si se deselecciona, limpia y permite edición manual si es necesario
+        if (contactoInput) {
+          contactoInput.value = '';
+          contactoInput.removeAttribute('readonly');
+          contactoInput.classList.remove('bg-light');
+        }
+        if (telefonoInput) {
+          telefonoInput.value = '';
+          telefonoInput.removeAttribute('readonly');
+          telefonoInput.classList.remove('bg-light');
+        }
+        return;
+      }
+
       fetch(`/funcionario/vecinos/${vecinoId}/detalle-json/`)
         .then(res => res.json())
         .then(data => {
-          const contactoInput = document.getElementById('id_contacto');
-          const telefonoInput = document.getElementById('id_telefono');
           if (contactoInput) {
-            contactoInput.value = data.rut ? `${data.nombre_completo} (${data.rut})` : data.nombre_completo;
+            contactoInput.value = data.nombre_completo || data.nombre || '';
+            contactoInput.setAttribute('readonly', 'readonly');
+            contactoInput.classList.add('bg-light');
           }
-          if (telefonoInput && data.telefono) {
-            telefonoInput.value = data.telefono.replace(/\D/g, '');
+          if (telefonoInput) {
+            telefonoInput.value = data.telefono ? data.telefono.replace(/\D/g, '') : '';
+            telefonoInput.setAttribute('readonly', 'readonly');
+            telefonoInput.classList.add('bg-light');
           }
         })
         .catch(err => console.error('Error autocompletando vecino:', err));

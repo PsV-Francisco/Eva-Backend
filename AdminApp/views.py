@@ -11,8 +11,6 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 from FuncionarioApp.models import Vecino
-from django.db.models import CharField
-from django.db.models.functions import Cast
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse
 from AdminApp.audit import registrar_historial
@@ -25,6 +23,11 @@ from CoordinadorApp.authorization_forms import AuthorizationDecisionForm, Author
 from CoordinadorApp.models import Periodo, SolicitudAutorizacionPeriodo
 from CoordinadorApp.services import _authorization_snapshot, expire_authorizations
 from FuncionarioApp.models import Registro
+from AdminApp.forms import DelegacionForm
+from AdminApp.models import Delegacion
+from django.contrib import messages
+from django.shortcuts import get_object_or_404, redirect, render
+from config.decorators import cargo_required
 
 
 ADMIN_DASHBOARD_LINK_GROUPS = (
@@ -458,10 +461,138 @@ def parametros(request):
         ),
     })
 
+##
+## FUNCIONES DE LAS DELEGACIONES
+##
+
+def _delegacion_snapshot(delegacion):
+    return {
+        'nombre': delegacion.nombre,
+        'direccion': delegacion.direccion,
+        'estado': delegacion.estado,
+    }
+
 
 @cargo_required('admin', 'administrador', permission='access_admin_delegations')
 def delegaciones(request):
-    return maintainer(request, 'delegaciones')
+    """Vista principal para listar, buscar y crear delegaciones en el panel de administración."""
+    query = request.GET.get('q', '').strip()
+    estado_filtro = request.GET.get('estado', '').upper()
+
+    queryset = Delegacion.objects.all().order_by('nombre')
+
+    if query:
+        queryset = queryset.filter(
+            Q(nombre__icontains=query) | Q(direccion__icontains=query)
+        )
+
+    if estado_filtro:
+        if estado_filtro not in {'ACTIVADO', 'DESACTIVADO'}:
+            return HttpResponseBadRequest('Filtro de estado no válido.')
+        queryset = queryset.filter(estado=estado_filtro)
+
+    form = DelegacionForm(request.POST or None)
+
+    if request.method == 'POST':
+        if form.is_valid():
+            with transaction.atomic():
+                delegacion = form.save()
+                registrar_historial(
+                    actor=request.user,
+                    action='Crear delegación',
+                    entity=f'Delegacion:{delegacion.pk}',
+                    after=_delegacion_snapshot(delegacion),
+                )
+            messages.success(request, 'Delegación creada correctamente.')
+            return redirect('administracion:delegaciones')
+        else:
+            messages.error(request, 'Revisa los campos obligatorios del formulario.')
+
+    page_obj = Paginator(queryset, 20).get_page(request.GET.get('page'))
+
+    return render(request, 'AdminApp/delegaciones.html', {
+        'sgr_role': 'Administración',
+        'sidebar_modules': _admin_dashboard_modules(request.user),
+        'form': form,
+        'page_obj': page_obj,
+        'search_query': query,
+        'estado_filtro': estado_filtro,
+    })
+
+@cargo_required('admin', 'administrador', permission='view_admin_delegations_detail')
+@require_GET
+def detalle_delegacion_json(request, delegacion_id):
+    """Devuelve los datos reales de la delegación en formato JSON para precargar el modal de edición."""
+    delegacion = get_object_or_404(Delegacion, pk=delegacion_id)
+    return JsonResponse({
+        'id': delegacion.pk,
+        'nombre': delegacion.nombre,
+        'direccion': delegacion.direccion or '',
+        'estado': delegacion.estado,
+    })
+
+@cargo_required('admin', 'administrador', permission='edit_admin_delegations_ajax')
+@require_POST
+def editar_delegacion_ajax(request, delegacion_id):
+    """Procesa la actualización de la delegación mediante una petición AJAX asíncrona."""
+    delegacion = get_object_or_404(Delegacion, pk=delegacion_id)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': 'Payload JSON inválido.'}, status=400)
+
+    nombre = data.get('nombre', '').strip()
+    direccion = data.get('direccion', '').strip() or None
+    estado = data.get('estado', 'ACTIVADO').upper()
+
+    if not nombre or not estado:
+        return JsonResponse({'success': False, 'message': 'El nombre y el estado son obligatorios.'}, status=400)
+
+    if estado not in {'ACTIVADO', 'DESACTIVADO'}:
+        return JsonResponse({'success': False, 'message': 'Estado no válido. Debe ser ACTIVADO o DESACTIVADO.'}, status=400)
+
+    before = _delegacion_snapshot(delegacion)
+    try:
+        with transaction.atomic():
+            delegacion.nombre = nombre
+            delegacion.direccion = direccion
+            delegacion.estado = estado
+            delegacion.save()
+
+            registrar_historial(
+                actor=request.user,
+                action='Editar delegación AJAX',
+                entity=f'Delegacion:{delegacion.pk}',
+                before=before,
+                after=_delegacion_snapshot(delegacion),
+            )
+        return JsonResponse({'success': True, 'message': 'La delegación fue actualizada correctamente.'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Error al actualizar la delegación: {str(e)}'}, status=500)
+
+
+@cargo_required('admin', 'administrador', permission='delete_admin_delegations')
+@require_POST
+def eliminar_delegacion(request, delegacion_id):
+    """Elimina lógicamente o físicamente una delegación validando restricciones de integridad."""
+    delegacion = get_object_or_404(Delegacion, pk=delegacion_id)
+    before = _delegacion_snapshot(delegacion)
+    entity = f'Delegacion:{delegacion.pk}'
+    try:
+        with transaction.atomic():
+            delegacion.delete()
+            registrar_historial(
+                actor=request.user,
+                action='Eliminar delegación',
+                entity=entity,
+                before=before,
+            )
+        messages.success(request, 'Delegación eliminada correctamente.')
+    except ProtectedError:
+        messages.error(request, 'No se puede eliminar la delegación porque tiene usuarios, territorios o registros asociados. Desactívala en su lugar.')
+    return redirect('administracion:delegaciones')
+
+
 
 
 @cargo_required('admin', 'administrador', permission='access_admin_positions')
