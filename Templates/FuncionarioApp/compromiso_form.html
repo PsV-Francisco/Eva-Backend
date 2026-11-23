@@ -62,9 +62,9 @@
                             </div>
 
                             <div class="col-md-6">
-                                <label for="{{ form.fecha.id_for_label }}" class="form-label fw-bold">Fecha del Compromiso</label>
-                                {{ form.fecha }}
-                                {% if form.fecha.errors %}<div class="text-danger small">{{ form.fecha.errors.0 }}</div>{% endif %}
+                                <label for="{{ form.fecha_compromiso.id_for_label }}" class="form-label fw-bold">Fecha del Compromiso</label>
+                                {{ form.fecha_compromiso }}
+                                {% if form.fecha_compromiso.errors %}<div class="text-danger small">{{ form.fecha_compromiso.errors.0 }}</div>{% endif %}
                             </div>
 
                             <div class="col-12">
@@ -132,23 +132,25 @@ const solicitanteSelect = document.getElementById('id_solicitante');
                 if (infoSolicitante) infoSolicitante.style.display = 'none';
                 return;
             }
-            fetch(`/funcionario/vecinos/${vecinoId}/detalle-json/`)
-                .then(res => res.json())
-                .then(data => {
-                    if (territorioSelect && data.territorio_id) {
-                        territorioSelect.value = String(data.territorio_id);
-                    }
-                    if (infoSolicitante) {
-                        const partes = [];
-                        if (data.rut) partes.push(`RUT: ${data.rut}`);
-                        if (data.telefono) partes.push(`Tel: ${data.telefono}`);
-                        if (data.territorio_nombre) partes.push(`Territorio: ${data.territorio_nombre}`);
-                        if (data.junta_vecino_nombre) partes.push(`JV: ${data.junta_vecino_nombre}`);
-                        infoSolicitante.textContent = partes.join(' · ');
-                        infoSolicitante.style.display = partes.length ? 'block' : 'none';
-                    }
+            fetch(`/funcionario/actividades/subtipos-por-tipo/${tipoId}/`)
+                .then(response => {
+                    if (!response.ok) throw new Error('Error HTTP ' + response.status);
+                    return response.json();
                 })
-                .catch(err => console.error('Error cargando datos del solicitante:', err));
+                .then(data => {
+                    subtipoSelect.innerHTML = '<option value="">Seleccione un subtipo</option>';
+                    const items = data.results || data.subtipos || (Array.isArray(data) ? data : []);
+                    items.forEach(item => {
+                        const option = document.createElement('option');
+                        option.value = item.pk ?? item.id;
+                        option.textContent = item.nombre;
+                        subtipoSelect.appendChild(option);
+                    });
+                })
+                .catch(err => {
+                    console.error('Error cargando subtipos:', err);
+                    subtipoSelect.innerHTML = '<option value="">Error al cargar subtipos</option>';
+         });
         });
     }
 </script>

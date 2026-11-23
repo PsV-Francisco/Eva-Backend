@@ -303,6 +303,8 @@ class GestionAtencion(models.Model):
         verbose_name_plural = 'gestiones de atenciones'
 
     def __str__(self):
+        if self.nombre:
+            return f'{self.nombre} ({self.codigo}) - {self.fecha:%Y-%m-%d}'
         return f'Gestión {self.codigo} - {self.fecha:%Y-%m-%d}'
 
     @classmethod

@@ -599,12 +599,14 @@ class CompromisoEvidenciaForm(BootstrapFormMixin, forms.Form):
 class GestionAtencionForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = GestionAtencion
-        fields = ('fecha', 'observaciones')
+        fields = ('nombre', 'fecha', 'observaciones')
         labels = {
+            'nombre': 'Nombre de la gestión',
             'fecha': 'Fecha de la gestión',
             'observaciones': 'Observaciones',
         }
         widgets = {
+            'nombre': forms.TextInput(attrs={'class': 'form-control', 'id': 'id_gestion_nombre'}),
             'fecha': forms.DateInput(attrs={'type': 'date', 'class': 'form-control', 'id': 'id_gestion_fecha'}),
             'observaciones': forms.Textarea(attrs={'rows': 3, 'class': 'form-control', 'id': 'id_gestion_observaciones'}),
         }
