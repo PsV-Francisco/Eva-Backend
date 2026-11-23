@@ -291,11 +291,12 @@ class Desempeno(models.Model):
 #Modelo : GestionAtencion (OK)
 
 class GestionAtencion(models.Model):
-    codigo = models.CharField(max_length=20, unique=True, editable=False)
-    fecha = models.DateField(db_column='FECHA')
-    observaciones = models.TextField(blank=True, db_column='OBSERVACIONES')
+	codigo = models.CharField(max_length=20, unique=True, editable=False)
+	fecha = models.DateField(db_column='FECHA')
+	observaciones = models.TextField(blank=True, db_column='OBSERVACIONES')
+	nombre = models.CharField(max_length=60,blank=True,null=True)
 
-    class Meta:
+	class Meta:
         ordering = ['-fecha']
         db_table = 'gestion_atencion'
         verbose_name = 'gestión de atención'
