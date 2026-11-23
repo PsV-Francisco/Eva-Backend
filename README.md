@@ -6,7 +6,7 @@ Francisco Andres Alonzo Diaz Moralez
 
 ## Descripción
 
-Prototipo académico en Django para registrar actividades, metas, atenciones y evidencias, con acceso por cargo y contexto de delegación. Los datos de demostración son ficticios. Los requisitos formales y el diagrama de clases se conservan en `project_info/`.
+Prototipo académico en Django para registrar actividades, metas, atenciones y evidencias, con acceso por cargo, permisos de rol y contexto de delegación. Los datos de demostración son ficticios.
 
 ## Requisitos e instalación local
 
@@ -64,7 +64,7 @@ La aplicación carga variables del entorno y del archivo `.env` en el directorio
 
 En desarrollo, los correos se muestran en la consola. En producción, la aplicación usa SMTP. La recuperación principal envía un enlace con `uidb64` y token firmado, válido durante una hora y de uso único. El código de recuperación de seis dígitos sigue disponible como alternativa; se guarda como hash, vence según `PASSWORD_RESET_CODE_TTL_SECONDS` y se invalida después de un uso. Ambos flujos mantienen respuesta genérica, límite de solicitudes y auditoría.
 
-Los accesos se validan en el servidor según el cargo existente. El campo descriptivo `Rol.permisos` no concede permisos efectivos. La delegación activa se limita a las delegaciones autorizadas del usuario.
+Los accesos se validan en el servidor combinando los permisos base del cargo con los permisos Django de los roles activos. La delegación activa se limita a las delegaciones autorizadas del usuario.
 
 ## Aplicaciones y estado de módulos
 
@@ -73,15 +73,18 @@ Los estados describen el código de esta rama; «operativo» no significa que ya
 | Módulo | Estado | Alcance |
 | --- | --- | --- |
 | Cabecera, navegación y contexto de delegación | Operativo | Plantilla común, logo institucional, selector restringido a delegaciones autorizadas y navegación por cargo. |
-| Acceso y recuperación | Operativo | Inicio de sesión por correo; recuperación por código y auditoría. Requiere SMTP configurado para enviar correo real. |
-| Delegaciones, roles y usuarios | Operativo | CRUD, filtros, paginación y exportación XLSX; los permisos continúan basados en cargo. |
+| Acceso y recuperación | Operativo | Inicio de sesión por correo; recuperación mediante enlace firmado de uso único o código alternativo, con límites y auditoría. Requiere SMTP configurado para enviar correo real. |
+| Delegaciones, roles y usuarios | Operativo | CRUD, filtros, paginación y exportación XLSX; roles basados en grupos Django conceden permisos adicionales al cargo. |
 | Cargos, funciones, asignaciones y catálogo | Operativo | Mantenedores propios con CRUD, búsqueda y desactivación segura; cargos de control de acceso no se pueden renombrar ni eliminar. |
-| Ítems y metas | Operativo | Mantenedor de ítems y asignaciones existentes de metas por usuario, ítem y período. |
+| Ítems, metas y ponderaciones | Operativo | Mantenedores y consulta de ponderaciones por funcionario/período; cambios en períodos cerrados requieren autorización acotada. |
 | Tipos y Sub Atenciones | Operativo | Catálogos normalizados alimentados con valores históricos; las atenciones históricas conservan sus textos originales. |
-| Historial y auditoría de recuperación | Operativo | Vistas de consulta con filtros y paginación; son solo lectura. |
+| Panel y registros administrativos | Operativo | Panel de administración, consultas y mantenimiento de registros territoriales y operativos, con filtros y alcance por delegación. |
+| Informes de coordinación | Operativo | Informe consolidado con filtros y exportación CSV, ponderaciones y tendencias históricas de cumplimiento. |
+| Autorizaciones de períodos cerrados | Operativo | Coordinación puede solicitar cambios acotados de metas; Administración revisa, aprueba o rechaza y el sistema registra las decisiones. |
+| Historial y auditoría | Operativo | Consultas de historial y recuperación con filtros y paginación; las vistas de auditoría son de solo lectura. |
 | Registro de actividades y cumplimiento | Operativo | Registro de actividades, evidencias y seguimiento de metas. |
-| Ingreso y seguimiento de atenciones | Operativo | Solicitantes locales por delegación, tipo/Sub Atención activa, responsable y fecha automáticos, código de caso y hasta tres seguimientos con evidencia. No consulta padrones externos. |
-| Agenda y compromisos | Operativo | Agenda por delegación y actualización de compromisos asignados. |
+| Ingreso de atenciones sociales | Operativo | Registro asociado a beneficiados, tipo/subtipo, gestión y evidencia; búsqueda local de beneficiados. No consulta padrones externos. |
+| Agenda y compromisos | Operativo | Gestión por delegación, responsables, historial de cambios de estado y enlace de seguimiento público revocable o con vencimiento. |
 | Supervisión de evidencias | Operativo | Bandeja de revisión y actualización de estado. |
 | Consulta (`VistaFApp`) | Operativo | Vista de consulta disponible dentro de la aplicación; no es una API pública. |
 | Datos de demostración | Simulado | Los datos del prototipo son ficticios; no los uses como información municipal real. |
@@ -89,11 +92,11 @@ Los estados describen el código de esta rama; «operativo» no significa que ya
 
 ## Rutas principales
 
-- `FuncionarioApp`: `/funcionario/`, `/funcionario/cumplimiento/`, `/funcionario/atencion-social/` y `/funcionario/agenda-colectiva/`.
+- `FuncionarioApp`: `/funcionario/`, `/funcionario/actividades/`, `/funcionario/cumplimiento/`, `/funcionario/vecinos/`, `/funcionario/juntas/`, `/funcionario/atencion-social/` y `/funcionario/agenda-colectiva/`.
 - `SupervisorApp`: `/supervisor/` para revisar evidencias.
-- `DelegadoApp`: `/delegado/` y `/delegado/resumen/`.
-- `CoordinadorApp`: `/coordinador/`.
-- `AdminApp`: `/admin-app/`, `/admin-app/parametros/` y mantenedores de `/admin-app/cargos/`, `/admin-app/funciones/`, `/admin-app/cargos-funciones/`, `/admin-app/catalogo/`, `/admin-app/delegaciones/`, `/admin-app/roles/`, `/admin-app/items/`, `/admin-app/tipos-atencion/` y `/admin-app/subatenciones/`. Las consultas de historial y recuperación están en `/admin-app/historial/` y `/admin-app/auditoria-recuperacion/`.
+- `DelegadoApp`: `/delegado/` y `/delegado/resumen/`; seguimiento externo de compromisos mediante `/seguimiento/<token>/`.
+- `CoordinadorApp`: `/coordinador/`, `/coordinador/periodos/`, `/coordinador/metas/`, `/coordinador/cargos-funciones/`, `/coordinador/ponderaciones/`, `/coordinador/informes/`, `/coordinador/tendencias/` y `/coordinador/solicitudes-autorizacion/`.
+- `AdminApp`: `/admin-app/` (panel) y `/admin-app/usuarios/`; configuración y catálogos en `/admin-app/parametros/`, `/admin-app/cargos/`, `/admin-app/funciones/`, `/admin-app/cargos-funciones/`, `/admin-app/catalogo/`, `/admin-app/delegaciones/`, `/admin-app/roles/`, `/admin-app/items/`, `/admin-app/tipos-atencion/` y `/admin-app/subatenciones/`. Incluye además consultas/mantenedores de ausencias, felicitaciones, reclamos, hitos, vecinos, juntas, registros, atenciones sociales y compromisos; informes en `/admin-app/informes-generados/` y `/admin-app/resumen-delegacion/`, ajustes de metas en `/admin-app/ajustes-metas/`, autorizaciones en `/admin-app/solicitudes-autorizacion/` e historial/auditoría en `/admin-app/historial/` y `/admin-app/auditoria-recuperacion/`.
 - `VistaFApp`: `/consulta/`.
 
 Los cargos `Supervisor` y `Verificador` son distintos; ambos pueden ingresar al portal de supervisión sin que el sistema convierta o asigne automáticamente un cargo al otro. `Templates/base.html` es la plantilla compartida; los recursos estáticos se publican desde `static/`.
@@ -109,7 +112,7 @@ python manage.py makemigrations --check --dry-run
 python manage.py collectstatic --noinput
 ```
 
-La suite de esta rama cubre los flujos de acceso, mantenedores, permisos y atención. No ejecutes migraciones contra una base de producción como parte de estas comprobaciones.
+La suite de esta rama cubre acceso, mantenedores y registros administrativos, permisos por rol, informes, autorizaciones, atención y contratos de migraciones. No ejecutes migraciones contra una base de producción como parte de estas comprobaciones.
 
 ### Vista previa del correo de recuperación
 
@@ -142,7 +145,7 @@ Abre la ruta impresa en un navegador. El correo real conserva la imagen CID. Est
    python manage.py migrate --plan
    ```
 
-   Revisa el plan y el respaldo. Luego aplica las migraciones aprobadas con `python manage.py migrate` y publica los estáticos con `python manage.py collectstatic --noinput`. Las migraciones de esta rama agregan campos y catálogos; no las ejecutes sobre datos reales sin respaldo y revisión del plan.
+   Revisa el plan y el respaldo. Luego aplica las migraciones aprobadas con `python manage.py migrate` y publica los estáticos con `python manage.py collectstatic --noinput`. Esta rama incorpora migraciones iniciales y cambios posteriores de esquema. Si actualizas una base existente, contrasta su historial (`showmigrations`) y las tablas con el plan antes de continuar; no ejecutes migraciones sobre datos reales sin respaldo y revisión.
 6. Ejecuta `config.wsgi:application` con Gunicorn bajo un servicio `systemd`, enlazado solo a `127.0.0.1` o a un socket Unix. Como guía, el servicio puede iniciar con:
 
    ```ini
@@ -163,18 +166,16 @@ Abre la ruta impresa en un navegador. El correo real conserva la imagen CID. Est
 
 Los roles se administran desde **Administración → Roles**. Cada rol mantiene un
 grupo de Django asociado y sus permisos son permisos Django (`Group` y
-`Permission`); las asignaciones del usuario se sincronizan con sus grupos. La
-migración `AdminApp.0013_alter_rol_options_rol_grupo_rol_protegido` crea el
-catálogo y los grupos existentes de forma idempotente. No hay un comando
-manual de inicialización.
+`Permission`); las asignaciones del usuario se sincronizan con sus grupos. No
+se requiere un comando manual separado para inicializar los grupos.
 
 La autorización conserva los accesos del cargo actual y concede acceso
 adicional si uno de los roles activos del usuario contiene el permiso de la
 vista. Un rol no revoca accesos heredados del cargo. El cargo `admin` o
-`administrador` mantiene acceso total. Una cuenta superusuario sin ese cargo no
-obtiene un bypass automático de las restricciones de la aplicación. Los
-permisos adicionales respetan además los filtros de delegación y las reglas de
-negocio existentes.
+`administrador` mantiene acceso total; las cuentas superusuario también pueden
+acceder a las vistas protegidas aunque no tengan ese cargo. Los permisos
+adicionales respetan además los filtros de delegación y las reglas de negocio
+existentes.
 
 Las cuentas no administradoras que gestionen usuarios o roles solo pueden
 asignar permisos que su propia cuenta ya posee. La aplicación registra en el
@@ -188,10 +189,13 @@ eliminar; estas restricciones se aplican también en el servidor.
 
 El catálogo está definido en `config/permissions.py`. El chequeo de Django
 verifica que cada vista protegida por `cargo_required` tenga una asociación
-exacta con el catálogo.
+exacta con el catálogo. La tabla resume permisos de acceso a pantallas; las
+acciones de alta, edición y eliminación pueden tener permisos específicos
+adicionales en el catálogo.
 
 | Módulo | Permiso | Vista protegida |
 |---|---|---|
+| Administración | `access_admin_dashboard` | `administracion:dashboard` |
 | Administración | `access_admin_users` | `administracion:home` |
 | Administración | `access_admin_parameters` | `administracion:parametros` |
 | Administración | `access_admin_delegations` | `administracion:delegaciones` |
@@ -204,6 +208,19 @@ exacta con el catálogo.
 | Administración | `access_admin_attention_types` | `administracion:tipos-atencion` |
 | Administración | `access_admin_subattentions` | `administracion:subatenciones` |
 | Administración | `access_admin_goals` | `administracion:metas` |
+| Administración | `review_closed_period_authorizations` | `administracion:solicitudes-autorizacion` |
+| Administración | `access_admin_absences` | `administracion:ausencias` |
+| Administración | `access_admin_congratulations` | `administracion:felicitaciones` |
+| Administración | `access_admin_complaints` | `administracion:reclamos` |
+| Administración | `access_admin_milestones` | `administracion:hitos` |
+| Administración | `access_admin_neighbors` | `administracion:vecinos` |
+| Administración | `access_admin_neighborhood_associations` | `administracion:juntas` |
+| Administración | `access_admin_generated_reports` | `administracion:informes-generados` |
+| Administración | `access_admin_delegation_summary` | `administracion:resumen-delegacion` |
+| Administración | `access_admin_records` | `administracion:registros` |
+| Administración | `access_admin_social_attentions` | `administracion:atenciones-sociales` |
+| Administración | `access_admin_commitments` | `administracion:compromisos` |
+| Administración | `manage_admin_goal_adjustments` | `administracion:ajustes-metas` |
 | Administración | `access_admin_history` | `administracion:historial` |
 | Administración | `access_admin_password_audit` | `administracion:auditoria-recuperacion` |
 | Funcionario | `access_employee_dashboard` | `funcionario:home` |
@@ -216,4 +233,11 @@ exacta con el catálogo.
 | Delegado | `manage_commitments` | `delegado:home` |
 | Delegado | `view_delegation_summary` | `delegado:resumen` |
 | Coordinador | `manage_periods` | `coordinador:home` |
+| Coordinador | `manage_coordinator_periods` | `coordinador:periodos` |
+| Coordinador | `manage_coordinator_goals` | `coordinador:metas` |
+| Coordinador | `manage_coordinator_position_functions` | `coordinador:cargos_funciones` |
+| Coordinador | `view_coordinator_weights` | `coordinador:ponderaciones` |
+| Coordinador | `view_coordinator_reports` | `coordinador:informes` |
+| Coordinador | `view_coordinator_trends` | `coordinador:tendencias` |
+| Coordinador | `request_closed_period_authorization` | `coordinador:solicitudes_autorizacion` |
 | Consulta | `view_public_reports` | `vistaf:home` |

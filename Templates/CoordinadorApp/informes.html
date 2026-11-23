@@ -4,7 +4,17 @@
 {% block content %}
 <div class="dashboard-layout">{% include 'includes/role_sidebar.html' %}<div class="dashboard-main">
 <section class="content-section">
-<div class="section-head"><div><p class="eyebrow">INFORME DE CUMPLIMIENTO</p><h2>Resultados consolidados</h2><p class="section-note">Período: {{ periodo_seleccionado|default:'Sin períodos' }}</p></div><a class="btn btn-outline-primary" href="?periodo={{ selected_period }}&delegacion={{ selected_delegation }}&cargo={{ selected_cargo }}&funcionario={{ selected_user }}&export=csv">Exportar CSV</a></div>
+<div class="section-head">
+    <div>
+        <p class="eyebrow">INFORME DE CUMPLIMIENTO</p>
+        <h2>Resultados consolidados</h2>
+        <p class="section-note">Período: {{ periodo_seleccionado|default:'Sin períodos' }}</p>
+    </div>
+    <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
+        <a class="btn btn-outline-primary" href="?periodo={{ selected_period }}&delegacion={{ selected_delegation }}&cargo={{ selected_cargo }}&funcionario={{ selected_user }}&export=csv">Exportar CSV</a>
+        <a class="btn btn-outline-success" href="?periodo={{ selected_period }}&delegacion={{ selected_delegation }}&cargo={{ selected_cargo }}&funcionario={{ selected_user }}&export=excel">Exportar Excel</a>
+    </div>
+</div>
 <form method="get" class="maintainer-filters" data-loading>
 <select class="form-select" name="periodo"><option value="">Período más reciente</option>{% for periodo in periodos %}<option value="{{ periodo.pk }}"{% if selected_period == periodo.pk|stringformat:'s' %} selected{% endif %}>{{ periodo.nombre }}</option>{% endfor %}</select>
 <select class="form-select" name="delegacion"><option value="">Todas las delegaciones</option>{% for delegacion in delegaciones %}<option value="{{ delegacion.pk }}"{% if selected_delegation == delegacion.pk|stringformat:'s' %} selected{% endif %}>{{ delegacion.nombre }}</option>{% endfor %}</select>

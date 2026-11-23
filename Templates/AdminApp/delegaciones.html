@@ -9,10 +9,13 @@
   <div class="dashboard-main">
     <section class="content-section">
       <div class="section-head">
-        <div><p class="eyebrow">ADMINISTRACIÓN</p><h2>{{ title }}</h2></div>
+        <div>
+          <p class="eyebrow">ADMINISTRACIÓN DE DELEGACIONES</p>
+          <h2>Gestión y Control de Delegaciones</h2>
+        </div>
         <div class="maintainer-actions">
           {% if is_administrator and spec.create_route %}
-          <a class="btn btn-primary" href="{% url spec.create_route %}?delegacion={{ selected_delegation }}">Crear</a>
+          <a class="btn btn-primary" href="{% url spec.create_route %}?delegacion={{ selected_delegation }}">Crear Delegación</a>
           {% endif %}
           <a class="btn btn-outline-primary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}export=csv">Exportar CSV</a>
         </div>
@@ -20,30 +23,29 @@
 
       <form method="get" class="maintainer-filters" data-loading data-loading-title="Buscando">
         <label class="visually-hidden" for="record-search">Buscar</label>
-        <input id="record-search" class="form-control" type="search" name="q" value="{{ query }}" placeholder="Buscar registros">
-        <label class="visually-hidden" for="record-delegation">Delegación</label>
-        <select id="record-delegation" class="form-select" name="delegacion">
-          {% if is_administrator %}<option value="todas"{% if selected_delegation == 'todas' %} selected{% endif %}>Todas las delegaciones</option>{% endif %}
-          {% for delegation in delegaciones %}
-          <option value="{{ delegation.pk }}"{% if selected_delegation == delegation.pk|stringformat:'s' %} selected{% endif %}>{{ delegation.nombre }}</option>
-          {% endfor %}
+        <input id="record-search" class="form-control" type="search" name="q" value="{{ query }}" placeholder="Buscar delegaciones...">
+        
+        <label class="visually-hidden" for="record-status">Estado</label>
+        <select id="record-status" class="form-select" name="estado">
+          <option value="">Todos los estados</option>
+          <option value="ACTIVADO"{% if request.GET.estado == 'ACTIVADO' %} selected{% endif %}>ACTIVADO</option>
+          <option value="DESACTIVADO"{% if request.GET.estado == 'DESACTIVADO' %} selected{% endif %}>DESACTIVADO</option>
         </select>
-        {% if spec.status_field %}
-        <label class="form-check">
-          <input class="form-check-input" type="checkbox" name="inactivos" value="1"{% if show_inactive %} checked{% endif %}>
-          <span class="form-check-label">Incluir inactivos</span>
-        </label>
-        {% endif %}
-        <button class="btn btn-primary" type="submit">Buscar</button>
+
+        <button class="btn btn-primary" type="submit">Filtrar</button>
       </form>
 
       <p class="results-count">
         {% if page_obj.paginator.count %}Mostrando {{ page_obj.start_index }} a {{ page_obj.end_index }} de {{ page_obj.paginator.count }}{% else %}Mostrando 0 a 0 de 0{% endif %}
       </p>
+      
       <div class="table-responsive">
         <table class="table align-middle">
           <thead>
-            <tr>{% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}{% if is_administrator and spec.edit_route %}<th scope="col">Acciones</th>{% endif %}</tr>
+            <tr>
+              {% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}
+              {% if is_administrator and spec.edit_route %}<th scope="col">Acciones</th>{% endif %}
+            </tr>
           </thead>
           <tbody>
             {% for row in rows %}
@@ -54,7 +56,7 @@
                 <div class="d-flex flex-wrap gap-1">
                   <a class="btn btn-sm btn-outline-primary" href="{% url spec.edit_route row.object.pk %}?delegacion={{ selected_delegation }}">Editar</a>
                   {% if spec.delete_route %}
-                  <form method="post" action="{% url spec.delete_route row.object.pk %}?delegacion={{ selected_delegation }}" data-confirm="¿Eliminar este registro?">
+                  <form method="post" action="{% url spec.delete_route row.object.pk %}?delegacion={{ selected_delegation }}" data-confirm="¿Eliminar esta delegación?">
                     {% csrf_token %}
                     <button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button>
                   </form>
@@ -64,7 +66,7 @@
               {% endif %}
             </tr>
             {% empty %}
-            <tr><td colspan="{{ columns|length }}" class="empty-state">No hay registros para los filtros seleccionados.</td></tr>
+            <tr><td colspan="{{ columns|length }}" class="empty-state">No hay registros de delegaciones para los filtros seleccionados.</td></tr>
             {% endfor %}
           </tbody>
         </table>

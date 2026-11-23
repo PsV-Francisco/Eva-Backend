@@ -42,6 +42,8 @@ from config.delegations import active_delegation
 from DelegadoApp.models import Compromiso
 from FuncionarioApp.models import Registro, Subtipo, Tipo
 
+from FuncionarioApp.forms import VecinoForm
+from FuncionarioApp.models import Registro, Subtipo, Tipo, Vecino
 
 @dataclass(frozen=True)
 class MaintainerSpec:
@@ -60,7 +62,7 @@ class MaintainerSpec:
 
 
 def _delegation_delete_block(delegation):
-    if delegation.estado != Delegacion.Estado.INACTIVA:
+    if delegation.estado != Delegacion.Estado.DESACTIVADO:
         return 'Desactiva la delegación antes de eliminarla.'
     if UsuarioDelegacion.objects.filter(delegacion=delegation).exists():
         return 'La delegación tiene usuarios asociados. Desactívala para conservar esas relaciones.'
@@ -137,8 +139,9 @@ def _cargo_delete_block(cargo):
     if (
         UsuarioCargo.objects.filter(cargo=cargo).exists()
         or cargo.asignaciones_funciones.exists()
+        or cargo.asignaciones_items.exists()
     ):
-        return 'El cargo tiene usuarios o asignaciones asociadas. Desactívalo para conservarlas.'
+        return 'El cargo tiene usuarios, funciones o ítems asociados. Desactívalo para conservarlas.'
     return ''
 
 
@@ -149,20 +152,55 @@ def _function_delete_block(function):
 
 
 SPECS = {
+    'vecinos': MaintainerSpec(
+        key='vecinos',
+        title='Vecinos',
+        model=Vecino,
+        form_class=VecinoForm,
+        search_fields=('rut', 'nombre', 'telefono', 'territorio__nombre', 'delegacion__nombre', 'junta_vecino__nombre'),
+        display_fields=(
+            ('RUT', 'rut'),
+            ('Nombre', 'nombre'),
+            ('Teléfono', 'telefono'),
+            ('Territorio', 'territorio__nombre'),
+            ('Delegación', 'delegacion__nombre'),
+            ('Junta de Vecinos', 'junta_vecino__nombre'),
+            ('Estado', 'estado'),
+        ),
+        export_fields=(
+            ('RUT', 'rut'),
+            ('Nombre', 'nombre'),
+            ('Teléfono', 'telefono'),
+            ('Dirección', 'direccion'),
+            ('Territorio', 'territorio__nombre'),
+            ('Delegación', 'delegacion__nombre'),
+            ('Junta de Vecinos', 'junta_vecino__nombre'),
+            ('Estado', 'estado'),
+        ),
+        ordering=('nombre',),
+        active_value=Vecino.Estado.ACTIVADO,
+        inactive_value=Vecino.Estado.DESACTIVADO,
+    ),
     'cargos': MaintainerSpec(
         key='cargos',
         title='Cargos',
         model=Cargo,
         form_class=CargoForm,
-        search_fields=('nombre', 'asignaciones_funciones__funcion__nombre'),
+        search_fields=(
+            'nombre',
+            'asignaciones_funciones__funcion__nombre',
+            'asignaciones_items__item__nombre',
+        ),
         display_fields=(
             ('Cargo', 'nombre'),
-            ('Funciones asociadas', 'funciones_asignadas'),
+            ('Funciones vigentes', 'funciones_asignadas'),
+            ('Ítems vigentes', 'items_asignados'),
             ('Estado', 'estado'),
         ),
         export_fields=(
             ('Cargo', 'nombre'),
-            ('Funciones asociadas', 'funciones_asignadas'),
+            ('Funciones vigentes', 'funciones_asignadas'),
+            ('Ítems vigentes', 'items_asignados'),
             ('Estado', 'estado'),
         ),
         ordering=('nombre',),
@@ -198,35 +236,27 @@ SPECS = {
         display_fields=(
             ('Cargo', 'cargo__nombre'),
             ('Función', 'funcion__nombre'),
+            ('Vigente desde', 'vigente_desde'),
+            ('Vigente hasta', 'vigente_hasta'),
         ),
         export_fields=(
             ('Cargo', 'cargo__nombre'),
             ('Función', 'funcion__nombre'),
+            ('Vigente desde', 'vigente_desde'),
+            ('Vigente hasta', 'vigente_hasta'),
         ),
-        ordering=('cargo__nombre', 'funcion__nombre'),
+        ordering=('cargo__nombre', '-vigente_desde', 'funcion__nombre'),
         status_field=None,
         status_filter_field=None,
     ),
-    'delegaciones': MaintainerSpec(
-        key='delegaciones',
-        title='Delegaciones',
-        model=Delegacion,
-        form_class=DelegacionForm,
-        search_fields=('nombre', 'direccion'),
-        display_fields=(
-            ('Nombre', 'nombre'),
-            ('Dirección', 'direccion'),
-            ('Estado', 'estado'),
-        ),
-        export_fields=(
-            ('Nombre', 'nombre'),
-            ('Dirección', 'direccion'),
-            ('Estado', 'estado'),
-        ),
+
+    'delegaciones': MaintainerSpec(key='delegaciones',title='Creación y Administración de Delegaciones',model=Delegacion,form_class=DelegacionForm,search_fields=('nombre', 'direccion'),
+        display_fields=(('Nombre', 'nombre'),('Dirección', 'direccion'),('Estado', 'estado'),),
+        export_fields=(('Nombre', 'nombre'),('Dirección', 'direccion'),('Estado', 'estado'),),
         ordering=('nombre',),
-        active_value=Delegacion.Estado.ACTIVA,
-        inactive_value=Delegacion.Estado.INACTIVA,
-    ),
+        active_value='ACTIVADO',
+        inactive_value='DESACTIVADO',),
+    
     'roles': MaintainerSpec(
         key='roles',
         title='Roles y permisos',
@@ -328,7 +358,7 @@ SPECS = {
             ('Período', 'periodo'),
             ('Meta', 'meta'),
             ('Avance', 'avance'),
-            ('Ponderación (%)', 'item__ponderacion'),
+            ('Ponderación (%)', 'ponderacion'),
         ),
         export_fields=(
             ('Correo electrónico', 'usuario__email'),
@@ -338,7 +368,7 @@ SPECS = {
             ('Período', 'periodo__nombre'),
             ('Meta', 'meta'),
             ('Avance', 'avance'),
-            ('Ponderación (%)', 'item__ponderacion'),
+            ('Ponderación (%)', 'ponderacion'),
         ),
         ordering=('periodo__nombre', 'usuario__email', 'item__nombre'),
         status_field=None,
@@ -347,15 +377,42 @@ SPECS = {
 }
 
 
-def excel_response(queryset, columns, filename):
+def excel_response(
+    queryset,
+    columns,
+    filename,
+    *,
+    request=None,
+    title=None,
+    delegation=None,
+    filters=None,
+):
     from openpyxl import Workbook
     from openpyxl.styles import Font
+    from AdminApp.csv_utils import build_report_metadata_rows
 
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = 'Resultados'
+
+    start_row = 1
+    if request is not None:
+        meta_rows = build_report_metadata_rows(
+            request,
+            title=title or filename,
+            delegation=delegation,
+            filters=filters,
+        )
+        for idx, m_row in enumerate(meta_rows, start=1):
+            worksheet.append([_safe_spreadsheet_value(v) for v in m_row])
+            if idx == 1:
+                worksheet[f'A{idx}'].font = Font(bold=True, size=13)
+            elif m_row:
+                worksheet[f'A{idx}'].font = Font(bold=True)
+        start_row = len(meta_rows) + 1
+
     worksheet.append([label for label, _ in columns])
-    for cell in worksheet[1]:
+    for cell in worksheet[start_row]:
         cell.font = Font(bold=True)
 
     for record in queryset.iterator(chunk_size=200):
@@ -365,8 +422,8 @@ def excel_response(queryset, columns, filename):
             for value in values
         ])
 
-    worksheet.freeze_panes = 'A2'
-    worksheet.auto_filter.ref = worksheet.dimensions
+    worksheet.freeze_panes = f'A{start_row + 1}'
+    worksheet.auto_filter.ref = f'A{start_row}:{worksheet.cell(row=worksheet.max_row, column=len(columns)).coordinate}'
     for column_cells in worksheet.columns:
         column_letter = column_cells[0].column_letter
         width = max(
@@ -398,12 +455,19 @@ def _safe_spreadsheet_value(value):
 
 
 def display_value(record, field_name):
-    if field_name == 'roles':
-        return ', '.join(sorted(role.nombre for role in record.roles.all()))
     if field_name == 'funciones_asignadas':
         return ', '.join(
-            assignment.funcion.nombre
-            for assignment in record.asignaciones_funciones.select_related('funcion')
+            f"{a.funcion.nombre} (desde {a.vigente_desde:%d/%m/%Y})"
+            for a in record.asignaciones_funciones.filter(
+                vigente_hasta__isnull=True,
+            ).select_related('funcion')
+        )
+    if field_name == 'items_asignados':
+        return ', '.join(
+            f"{a.item.nombre} (desde {a.vigente_desde:%d/%m/%Y})"
+            for a in record.asignaciones_items.filter(
+                vigente_hasta__isnull=True,
+            ).select_related('item')
         )
     if field_name == 'permisos_resumen':
         group = ensure_role_group(record)
@@ -454,6 +518,7 @@ def display_value(record, field_name):
 def _queryset_for(spec, request, *, global_scope=False):
     queryset = _authorized_queryset(
         spec, request, global_scope=global_scope,
+        
     )
     query = request.GET.get('q', '').strip()
     if query:
@@ -490,14 +555,19 @@ def _authorized_queryset(spec, request, *, global_scope=False):
         return Item.objects.annotate(
             metas_asignadas=Count('desempenos'),
         )
+    if spec.key == 'vecinos':
+        return Vecino.objects.select_related('territorio', 'delegacion', 'junta_vecino')
     if spec.key == 'metas':
         queryset = Desempeno.objects.select_related(
             'usuario', 'item', 'periodo',
         )
-        if (not global_scope and request.user.cargo
-                and request.user.cargo.nombre.strip().casefold() not in {
-            'admin', 'administrador',
-        }):
+        if (
+            not global_scope
+            and request.user.cargo
+            and request.user.cargo.nombre.strip().casefold() not in {
+                'admin', 'administrador',
+            }
+        ):
             delegation = active_delegation(request)
             if delegation is None:
                 return queryset.none()
@@ -851,7 +921,7 @@ def maintainer(
                     total = Desempeno.objects.filter(
                         usuario_id=record.usuario_id,
                         periodo_id=record.periodo_id,
-                    ).aggregate(total=Sum('item__ponderacion'))['total'] or 0
+                    ).aggregate(total=Sum('ponderacion'))['total'] or 0
                     if total != 100:
                         relation = 'menor' if total < 100 else 'mayor'
                         messages.warning(request, f'Advertencia: la suma de ponderaciones de este funcionario en el período es {total:.2f}%, {relation} a 100%.')
@@ -900,5 +970,12 @@ def maintainer(
             queryset,
             spec.export_fields,
             spec.key.replace('-', '_'),
+            request=request,
+            title=f'Reporte de {spec.title}',
+            delegation=active_delegation(request),
+            filters={
+                k: v for k, v in request.GET.items()
+                if k not in {'page', 'export'} and v
+            },
         )
     return render(request, 'AdminApp/maintainer.html', context)

@@ -75,6 +75,33 @@ class CurrentModelFormTests(TestCase):
         self.assertEqual(atencion.subtipo.nombre, 'Sin subtipo')
         self.assertEqual(atencion.subtipo.tipo, atencion.tipo)
 
+    def test_social_attention_form_offers_active_legacy_types_and_subtypes(self):
+        tipo = Tipo.objects.create(
+            nombre='Tipo legado activo',
+            estado='Activo',
+        )
+        subtipo = Subtipo.objects.create(
+            nombre='Subtipo legado activo',
+            tipo=tipo,
+            estado='ACTIVO',
+        )
+        inactive_type = Tipo.objects.create(
+            nombre='Tipo desactivado',
+            estado=Tipo.Estado.DESACTIVADO,
+        )
+        inactive_subtype = Subtipo.objects.create(
+            nombre='Subtipo desactivado',
+            tipo=tipo,
+            estado=Subtipo.Estado.DESACTIVADO,
+        )
+
+        form = AtencionSocialForm()
+
+        self.assertIn(tipo, form.fields['tipo'].queryset)
+        self.assertIn(subtipo, form.fields['subtipo'].queryset)
+        self.assertNotIn(inactive_type, form.fields['tipo'].queryset)
+        self.assertNotIn(inactive_subtype, form.fields['subtipo'].queryset)
+
     def test_social_attention_can_create_a_new_beneficiary(self):
         now = timezone.localtime()
         form = AtencionSocialForm(data={

@@ -1,3 +1,4 @@
+import re
 from django.conf import settings
 from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser, Group
@@ -156,15 +157,11 @@ class UsuarioManager(BaseUserManager):
 # Modelo Delegación (OK)
 class Delegacion(models.Model):
     class Estado(models.TextChoices):
-        ACTIVA = 'activa', 'Activa'
-        INACTIVA = 'inactiva', 'Inactiva'
+        ACTIVADO = 'ACTIVADO'
+        DESACTIVADO = 'DESACTIVADO'
     nombre = models.CharField(max_length=120, unique=True)
     direccion = models.CharField(max_length=255, blank=True)
-    estado = models.CharField(
-        max_length=20,
-        choices=Estado.choices,
-        default=Estado.ACTIVA,
-    )
+    estado = models.CharField(max_length=20,choices=Estado.choices,default=Estado.ACTIVADO)
 
     class Meta:
         db_table = 'delegacion'
@@ -194,11 +191,7 @@ class Cargo(models.Model):
         ACTIVO = 'activo', 'Activo'
         INACTIVO = 'inactivo', 'Inactivo'
     nombre = models.CharField(max_length=120, unique=True)
-    estado = models.CharField(
-        max_length=20,
-        choices=Estado.choices,
-        default=Estado.ACTIVO,
-    )
+    estado = models.CharField(max_length=20,choices=Estado.choices,default=Estado.ACTIVO)
     fecha_inicio = models.DateTimeField(null=True, blank=True, db_column='FECHA_INICIO')
     fecha_fin = models.DateTimeField(null=True, blank=True, db_column='FECHA_FIN')
     objects = CargoManager()
@@ -333,14 +326,46 @@ class UsuarioRol(models.Model):
         verbose_name = "Rol del Usuario"
         verbose_name_plural = "Roles del Usuario"
 
+def validar_y_normalizar_rut_usuario(rut_raw):
+    if not rut_raw:
+        return None
+    limpio = re.sub(r'[\.\s]', '', str(rut_raw)).upper()
+    if '-' not in limpio and len(limpio) >= 2:
+        limpio = f'{limpio[:-1]}-{limpio[-1]}'
+    if not re.match(r'^\d{7,8}-[\dK]$', limpio):
+        raise ValidationError('El RUT debe tener formato válido (ej: 12345678-9).')
+    cuerpo, dv = limpio.split('-')
+    suma = 0
+    multiplo = 2
+    for digito in reversed(cuerpo):
+        suma += int(digito) * multiplo
+        multiplo = 2 if multiplo == 7 else multiplo + 1
+    resto = 11 - (suma % 11)
+    dv_esperado = '0' if resto == 11 else ('K' if resto == 10 else str(resto))
+    if dv != dv_esperado:
+        raise ValidationError('El dígito verificador del RUT es incorrecto.')
+    return limpio
+
+
 #Modelo del Usuario (OK)
 class Usuario(AbstractUser):
+    class EstadoCuenta(models.TextChoices):
+        PENDIENTE_ACTIVACION = 'pendiente_activacion', 'Pendiente de activación'
+        ACTIVO = 'activo', 'Activo'
+        INACTIVO = 'inactivo', 'Inactivo'
+
     username = None
     uuid = models.AutoField(primary_key=True, db_column='UUID')
+    rut = models.CharField(max_length=12,unique=True,null=True,blank=True,validators=[validar_y_normalizar_rut_usuario],db_column='RUT')
     email = models.EmailField(max_length=50, unique=True, db_column='EMAIL')
     nombre = models.CharField(max_length=50, default='', db_column='NOMBRE')
-    estado = models.CharField(max_length=30, default='activo', db_column='ESTADO')
+    estado = models.CharField(max_length=30,choices=EstadoCuenta.choices,default=EstadoCuenta.ACTIVO,db_column='ESTADO')
+    requiere_cambio_password = models.BooleanField(default=False)
+    fecha_activacion = models.DateTimeField(null=True, blank=True)
     limite_actividad = models.IntegerField(default=0, db_column='LIMITE_ACTIVIDAD')
+    dias_libres = models.IntegerField(null=True, blank=True, db_column='DIAS_LIBRES')
+    vacaciones = models.IntegerField(null=True, blank=True, db_column='VACACIONES')
+    dias_adm = models.IntegerField(null=True, blank=True, db_column='DIAS_ADM')
     objects = UsuarioManager()
 
     #Username Email
@@ -354,6 +379,10 @@ class Usuario(AbstractUser):
         verbose_name_plural = "Usuarios"
 
     def save(self, *args, **kwargs):
+        if self.rut:
+            self.rut = validar_y_normalizar_rut_usuario(self.rut)
+        else:
+            self.rut = None
         if self.password:
             self.contraseña = self.password
         if self.pk:
@@ -380,7 +409,7 @@ class Usuario(AbstractUser):
                     )
                 return super().save(*args, **kwargs)
         return super().save(*args, **kwargs)
-
+    
     @property
     def delegacion_actual(self):
         return UsuarioDelegacion.objects.filter(
@@ -558,29 +587,6 @@ class Usuario(AbstractUser):
         return self.get_full_name() or self.email
 
 
-#Modelo TipoAtencion (OK)
-class TipoAtencion(models.Model):
-    class Estado(models.TextChoices):
-        ACTIVO = 'activo', 'Activo'
-        INACTIVO = 'inactivo', 'Inactivo'
-    nombre = models.CharField(max_length=120, unique=True)
-    descripcion = models.TextField(blank=True)
-    subtipo = models.CharField(max_length=100, db_column='SUBTIPO')
-    estado = models.CharField(
-        max_length=20,
-        choices=Estado.choices,
-        default=Estado.ACTIVO,
-    )
-
-    class Meta:
-        db_table = 'tipo_atencion'
-        ordering = ['nombre']
-        verbose_name = 'tipo de atención'
-        verbose_name_plural = 'tipos de atención'
-
-    def __str__(self):
-        return self.nombre
-
 
 #Modelo del Historial (OK)
 class Historial(models.Model):
@@ -590,10 +596,7 @@ class Historial(models.Model):
     accion = models.CharField(max_length=120)
     valor_anterior = models.JSONField(null=True, blank=True)
     valor_nuevo = models.JSONField(null=True, blank=True)
-    periodo = models.ForeignKey(
-        'CoordinadorApp.Periodo', on_delete=models.SET_NULL, related_name='historiales',
-        null=True, blank=True,
-    )
+    periodo = models.ForeignKey('CoordinadorApp.Periodo', on_delete=models.SET_NULL, related_name='historiales',null=True, blank=True)
     entidad_afectada = models.CharField(max_length=120, default='')
 
     class Meta:
@@ -612,13 +615,7 @@ class PasswordResetAuditEvent(models.Model):
         CODE_VALIDATION = 'code_validation', 'Validación de código'
         PASSWORD_CHANGED = 'password_changed', 'Contraseña actualizada'
 
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        related_name='password_reset_events',
-        null=True,
-        blank=True,
-    )
+    user = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,related_name='password_reset_events',null=True,blank=True,)
     action = models.CharField(max_length=20, choices=Action.choices)
     email_fingerprint = models.CharField(max_length=64)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
@@ -646,11 +643,7 @@ class PasswordResetAuditEvent(models.Model):
 
 #
 class PasswordResetCode(models.Model):
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='password_reset_code',
-    )
+    user = models.OneToOneField(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='password_reset_code',)
     email_fingerprint = models.CharField(max_length=64, db_index=True)
     code_hash = models.CharField(max_length=128)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -678,15 +671,39 @@ class PasswordResetRateLimitKey(models.Model):
         verbose_name = 'clave de límite de solicitudes'
         verbose_name_plural = 'claves de límite de solicitudes'
 
+class PasswordResetLinkToken(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='password_reset_link_token')
+    token_hash = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'password_reset_link_token'
+        ordering = ['-created_at']
+        verbose_name = 'enlace de recuperación'
+        verbose_name_plural = 'enlaces de recuperación'
+
+
+class AccountActivationToken(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='account_activation_token')
+    token_hash = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    last_sent_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'account_activation_token'
+        ordering = ['-created_at']
+        verbose_name = 'token de activación de cuenta'
+        verbose_name_plural = 'tokens de activación de cuenta'
 #
 class ParametroSistema(models.Model):
     class Clave(models.TextChoices):
         TOPE_CUMPLIMIENTO = 'tope_cumplimiento', 'Tope de cumplimiento (%)'
         UMBRAL_DELEGACION = 'umbral_delegacion', 'Umbral de delegación (%)'
-        MAX_DIAS_AUTORIZACION = (
-            'max_dias_autorizacion',
-            'Días máximos de autorización de período',
-        )
+        MAX_DIAS_AUTORIZACION = ('max_dias_autorizacion','Días máximos de autorización de período')
 
     clave = models.CharField(max_length=40, choices=Clave.choices, unique=True)
     valor = models.DecimalField(max_digits=6, decimal_places=2)
@@ -722,8 +739,8 @@ class ParametroSistema(models.Model):
 #Modelo Alerta (OK)
 class Alerta(models.Model):
     class Estado(models.TextChoices):
-            ACTIVO = 'activa', 'Activa'
-            INACTIVO = 'inactiva', 'Inactiva'
+        ACTIVO = 'activa', 'Activa'
+        INACTIVO = 'inactiva', 'Inactiva'
     motivo = models.CharField(max_length=100, db_column='MOTIVO')
     fecha = models.DateTimeField(db_column='FECHA')
     estado = models.CharField(max_length=20,choices=Estado.choices,default=Estado.ACTIVO,)
@@ -736,24 +753,3 @@ class Alerta(models.Model):
         verbose_name = 'alerta'
         verbose_name_plural = 'alertas'
 
-
-#Modelo Comentarios (OK)
-class Comentarios(models.Model):
-    texto = models.CharField(max_length=200, db_column='TEXTO')
-    fecha = models.DateTimeField(db_column='FECHA')
-    autor = models.ForeignKey('Usuario', on_delete=models.PROTECT, db_column='AUTOR')
-    registro = models.ForeignKey('FuncionarioApp.Registro', on_delete=models.PROTECT, db_column='REGISTRO', related_name='comentarios',)
-    autor_registro = models.IntegerField(db_column='AUTOR_REGISTRO')
-    item_registro = models.IntegerField(db_column='ITEM_REGISTRO')
-    periodo_registro = models.IntegerField(db_column='PERIODO_REGISTRO')
-    compromiso = models.ForeignKey('DelegadoApp.Compromiso',on_delete=models.PROTECT,db_column='COMPROMISO',related_name='comentarios',)
-    responsable_compromiso = models.IntegerField(db_column='RESPONSABLE_COMPROMISO')
-    agenda_compromiso = models.IntegerField(db_column='AGENDA_COMPROMISO')
-    periodo_agenda_compromiso = models.IntegerField(db_column='PERIODO_AGENDA_COMPROMISO')
-    agenda_delegacion_compromiso = models.IntegerField(db_column='AGENDA_DELEGACION_COMPROMISO')
-
-    class Meta:
-        db_table = 'comentarios'
-        ordering = ['fecha']
-        verbose_name = 'Comentario'
-        verbose_name_plural = 'Comentarios'

@@ -205,6 +205,133 @@ class SocialCaseTests(TestCase):
         self.assertEqual(invalid.status_code, 200)
         self.assertEqual(Vecino.objects.filter(nombre='A').count(), 0)
 
+    def test_new_neighbor_form_shows_scoped_location_options_and_selects_active_delegation(self):
+        neighbor = self.create_neighbor('Vecino con referencias', '912340000')
+
+        response = self.client.get(reverse('funcionario:vecino_nuevo'))
+
+        self.assertEqual(response.status_code, 200)
+        form = response.context['form']
+        self.assertEqual(form['delegacion'].value(), self.delegation.pk)
+        self.assertIn(neighbor.territorio, form.fields['territorio'].queryset)
+        self.assertIn(neighbor.junta_vecino, form.fields['junta_vecino'].queryset)
+        self.assertIn(neighbor.cargo_jv, form.fields['cargo_jv'].queryset)
+        self.assertContains(response, neighbor.territorio.nombre)
+        self.assertContains(response, neighbor.junta_vecino.nombre)
+        self.assertContains(response, neighbor.cargo_jv.nombre)
+
+    def test_new_neighbor_form_accepts_legacy_active_delegation_and_related_options(self):
+        legacy_delegation = Delegacion.objects.create(
+            nombre='Delegación legado',
+            estado='Activo',
+        )
+        territory = Territorio.objects.create(
+            nombre='Territorio legado',
+            delegacion=legacy_delegation,
+        )
+        junta = self.create_junta(
+            'Junta legado',
+            delegation=legacy_delegation,
+            territory=territory,
+        )
+        cargo = CargoJv.objects.create(
+            nombre='Cargo legado',
+            permisos='',
+            junta_vecino=junta,
+        )
+        funcionario_cargo, _ = Cargo.objects.get_or_create(
+            nombre='funcionario',
+        )
+        user = create_user(
+            email='funcionario-delegacion-legada@sgr.test',
+            password='Sgr-Test-Password-418!',
+            cargo=funcionario_cargo,
+            delegacion=legacy_delegation,
+        )
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('funcionario:vecino_nuevo'))
+
+        self.assertEqual(response.status_code, 200)
+        form = response.context['form']
+        self.assertEqual(form['delegacion'].value(), legacy_delegation.pk)
+        self.assertIn(territory, form.fields['territorio'].queryset)
+        self.assertIn(junta, form.fields['junta_vecino'].queryset)
+        self.assertIn(cargo, form.fields['cargo_jv'].queryset)
+
+    def test_new_neighbor_form_creates_missing_references_and_audits_them(self):
+        response = self.client.post(reverse('funcionario:vecino_nuevo'), {
+            'nombre': 'Vecino nuevo con referencias',
+            'telefono': '912345678',
+            'direccion': 'Calle Nueva 123',
+            'delegacion': self.delegation.pk,
+            'territorio': '',
+            'nuevo_territorio': 'Territorio creado en línea',
+            'junta_vecino': '',
+            'nuevo_nombre_junta': 'Junta creada en línea',
+            'nuevo_domicilio_junta': 'Av. Principal 100',
+            'nuevo_numero_rpj': '9876',
+            'cargo_jv': '',
+            'nuevo_cargo_junta': 'Secretaría',
+            'nuevo_cargo_permisos': 'Registrar actas',
+            'solicitante': '',
+            'activo': 'on',
+        })
+
+        self.assertRedirects(response, reverse('funcionario:vecinos'))
+        territory = Territorio.objects.get(
+            nombre='Territorio creado en línea',
+        )
+        junta = JuntaVecinos.objects.get(nombre='Junta creada en línea')
+        cargo = CargoJv.objects.get(nombre='Secretaría')
+        neighbor = Vecino.objects.get(nombre='Vecino nuevo con referencias')
+        self.assertEqual(territory.delegacion, self.delegation)
+        self.assertEqual(junta.territorio, territory)
+        self.assertEqual(junta.delegacion, self.delegation)
+        self.assertEqual(cargo.junta_vecino, junta)
+        self.assertEqual(neighbor.territorio, territory)
+        self.assertEqual(neighbor.junta_vecino, junta)
+        self.assertEqual(neighbor.cargo_jv, cargo)
+        for record in (territory, junta, cargo):
+            self.assertTrue(
+                Historial.objects.filter(
+                    entidad_afectada=(
+                        f'{record.__class__.__name__}:{record.pk}'
+                    ),
+                ).exists(),
+            )
+
+    def test_new_neighbor_cannot_create_references_outside_authorized_delegations(self):
+        unauthorized = Delegacion.objects.create(
+            nombre='Delegación no autorizada para vecino',
+        )
+
+        response = self.client.post(reverse('funcionario:vecino_nuevo'), {
+            'nombre': 'Vecino fuera de alcance',
+            'telefono': '912345679',
+            'direccion': '',
+            'delegacion': unauthorized.pk,
+            'territorio': '',
+            'nuevo_territorio': 'Territorio fuera de alcance',
+            'junta_vecino': '',
+            'nuevo_nombre_junta': 'Junta fuera de alcance',
+            'nuevo_domicilio_junta': 'Domicilio',
+            'nuevo_numero_rpj': '9877',
+            'cargo_jv': '',
+            'nuevo_cargo_junta': 'Cargo fuera de alcance',
+            'nuevo_cargo_permisos': '',
+            'solicitante': '',
+            'activo': 'on',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            Territorio.objects.filter(
+                nombre='Territorio fuera de alcance',
+            ).exists(),
+        )
+
     def test_neighbor_scope_is_limited_to_delegation_and_admin_sees_all(self):
         other_delegation = Delegacion.objects.create(nombre='Otra delegación vecinal')
         foreign_neighbor = self.create_neighbor(

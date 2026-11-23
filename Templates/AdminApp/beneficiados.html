@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+{% block title %}SGR | Gestión de Beneficiados{% endblock %}
+{% block page_title %}Gestión de Beneficiados{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+    {% include 'includes/role_sidebar.html' %}
+    <div class="dashboard-main">
+        <section class="content-section">
+            <div class="section-header-inline">
+                <div>
+                    <h2>Administración de Beneficiados / Solicitantes</h2>
+                    <p class="section-note">Consulta, crea y edita la información de los beneficiados del sistema.</p>
+                </div>
+                <button class="btn btn-primary" onclick="abrirModalCrear()">+ Nuevo Beneficiado</button>
+            </div>
+
+            <!-- Formulario de Búsqueda -->
+            <form method="get" class="search-form mb-4">
+                <div class="input-group">
+                    <input type="text" name="q" value="{{ query }}" class="form-control" placeholder="Buscar por nombre, apellido, teléfono o email...">
+                    <button type="submit" class="btn btn-secondary">Buscar</button>
+                    {% if query %}
+                        <a href="{% url 'administracion:beneficiados' %}" class="btn btn-outline-secondary">Limpiar</a>
+                    {% endif %}
+                </div>
+            </form>
+
+            <!-- Tabla de Resultados -->
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nombre Completo</th>
+                            <th>Teléfono</th>
+                            <th>Email</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for b in beneficiados %}
+                        <tr>
+                            <td><strong>{{ b.nombre }} {{ b.apellido }}</strong></td>
+                            <td>{{ b.telefono }}</td>
+                            <td>{{ b.email|default:"-" }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" data-id="{{ b.id }}" onclick="abrirModalEditar(this)">Editar</button>
+                                <form method="post" action="{% url 'administracion:eliminar_beneficiado' b.id %}" style="display:inline;" onsubmit="return confirm('¿Seguro que deseas eliminar este beneficiado?');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center">No se encontraron beneficiados registrados.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</div>
+
+<!-- Modal Formulario -->
+<div class="modal fade" id="modalBeneficiado" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalBeneficiadoTitle">Beneficiado</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formBeneficiado">
+                    <input type="hidden" id="beneficiado_id">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre *</label>
+                        <input type="text" id="ben_nombre" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Apellido *</label>
+                        <input type="text" id="ben_apellido" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Teléfono *</label>
+                        <input type="number" id="ben_telefono" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" id="ben_email" class="form-control">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="guardarBeneficiado()">Guardar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let modalBs;
+document.addEventListener('DOMContentLoaded', function() {
+    const el = document.getElementById('modalBeneficiado');
+    if (el) {
+        modalBs = new bootstrap.Modal(el);
+    }
+});
+
+function abrirModalCrear() {
+    document.getElementById('beneficiado_id').value = '';
+    document.getElementById('formBeneficiado').reset();
+    document.getElementById('modalBeneficiadoTitle').innerText = 'Nuevo Beneficiado';
+    if (modalBs) modalBs.show();
+}
+
+function abrirModalEditar(btn) {
+    const id = typeof btn === 'object' ? btn.getAttribute('data-id') : btn;
+    fetch(`/administracion/beneficiados/${id}/detalle-json/`)
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('beneficiado_id').value = data.id;
+            document.getElementById('ben_nombre').value = data.nombre;
+            document.getElementById('ben_apellido').value = data.apellido;
+            document.getElementById('ben_telefono').value = data.telefono;
+            document.getElementById('ben_email').value = data.email || '';
+            document.getElementById('modalBeneficiadoTitle').innerText = 'Editar Beneficiado';
+            if (modalBs) modalBs.show();
+        })
+        .catch(err => alert('No se pudieron obtener los detalles del beneficiado.'));
+}
+
+function guardarBeneficiado() {
+    const id = document.getElementById('beneficiado_id').value;
+    const url = id 
+        ? `/administracion/beneficiados/${id}/editar-ajax/` 
+        : '/administracion/beneficiados/crear-ajax/';
+        
+    const payload = {
+        nombre: document.getElementById('ben_nombre').value,
+        apellido: document.getElementById('ben_apellido').value,
+        telefono: document.getElementById('ben_telefono').value,
+        email: document.getElementById('ben_email').value
+    };
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.message || 'Error al procesar la solicitud.');
+        }
+    })
+    .catch(err => alert('Error al conectar con el servidor.'));
+}
+</script>
+{% endblock %}

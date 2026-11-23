@@ -1,6 +1,7 @@
+from decimal import Decimal
 from django.contrib import messages
-from django.db.models import Q
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 
 from AdminApp.audit import registrar_historial
@@ -15,8 +16,13 @@ from SupervisorApp.models import Evidencia, RevisionEvidencia
 def _evidencias_visibles(request):
     user = request.user
     delegation = active_delegation(request)
-    evidences = Evidencia.objects.select_related(
-        'registro', 'compromiso', 'supervisor', 'autor', 'gestion_atencion',
+    evidences = Evidencia.objects.prefetch_related(
+        'registros__autor',
+        'registros__item',
+        'registros__periodo',
+        'compromisos__agenda__periodo',
+        'atenciones_sociales__autor',
+        'atenciones_sociales__gestion_atencion',
     )
     if delegation:
         delegation_id = delegation.pk
@@ -24,24 +30,33 @@ def _evidencias_visibles(request):
         return evidences
     else:
         return evidences.none()
+
     return evidences.filter(
         Q(
-            registro__autor__usuariodelegacion__delegacion_id=delegation_id,
-            registro__autor__usuariodelegacion__fecha_fin__isnull=True,
+            registros__autor__usuariodelegacion__delegacion_id=delegation_id,
+            registros__autor__usuariodelegacion__fecha_fin__isnull=True,
         )
-        | Q(compromiso__agenda__delegacion_id=delegation_id)
+        | Q(compromisos__agenda__delegacion_id=delegation_id)
         | Q(
-            gestion_atencion__atencionsocial__autor__usuariodelegacion__delegacion_id=delegation_id,
-            gestion_atencion__atencionsocial__autor__usuariodelegacion__fecha_fin__isnull=True,
+            atenciones_sociales__autor__usuariodelegacion__delegacion_id=delegation_id,
+            atenciones_sociales__autor__usuariodelegacion__fecha_fin__isnull=True,
         )
     ).distinct()
 
 
+def _evidence_origin(evidencia):
+    registro = evidencia.registros.first()
+    compromiso = evidencia.compromisos.first()
+    atencion = evidencia.atenciones_sociales.first()
+    return registro, compromiso, atencion
+
+
 def _evidence_period(evidencia):
-    if evidencia.registro_id:
-        return evidencia.registro.periodo
-    if evidencia.compromiso_id:
-        return evidencia.compromiso.agenda.periodo
+    registro, compromiso, _ = _evidence_origin(evidencia)
+    if registro:
+        return registro.periodo
+    if compromiso:
+        return compromiso.agenda.periodo
     return None
 
 
@@ -54,9 +69,11 @@ def home(request):
         )
         form = RevisionEvidenciaForm(request.POST)
         period = _evidence_period(evidencia)
-        if period and period.estado != Periodo.Estado.ABIERTO:
+        registro, compromiso, _ = _evidence_origin(evidencia)
+
+        if period and (period.estado or '').strip().casefold() != Periodo.Estado.ABIERTO:
             messages.error(request, 'Las evidencias de un período cerrado son de solo lectura.')
-        elif evidencia.estado != Evidencia.Estado.PENDIENTE:
+        elif (evidencia.estado or '').strip().casefold() != Evidencia.Estado.PENDIENTE:
             messages.error(request, 'Esta evidencia ya fue revisada.')
         elif form.is_valid():
             with transaction.atomic():
@@ -64,17 +81,43 @@ def home(request):
                 revision.evidencia = evidencia
                 revision.verificador = request.user
                 revision.save()
-                previous = {'estado': evidencia.estado}
-                if revision.decision in (RevisionEvidencia.Decision.APROBADA, RevisionEvidencia.Decision.RECHAZADA):
-                    evidencia.estado = revision.decision
+
+                previous = {
+                    'estado': evidencia.estado,
+                    'genera_puntaje': registro.genera_puntaje if registro else None,
+                }
+                decision = revision.decision
+
+                if decision in (
+                    RevisionEvidencia.Decision.APROBADA,
+                    RevisionEvidencia.Decision.APROBADA_NO_PONDERA,
+                ):
+                    pondera = decision == RevisionEvidencia.Decision.APROBADA
+                    evidencia.estado = Evidencia.Estado.APROBADA
                     evidencia.save(update_fields=['estado'])
-                    if evidencia.registro_id:
-                        evidencia.registro.estado = (
-                            Registro.Estado.VALIDADA
-                            if revision.decision == RevisionEvidencia.Decision.APROBADA
-                            else Registro.Estado.OBSERVADA
-                        )
-                        evidencia.registro.save(update_fields=['estado'])
+
+                    if registro:
+                        registro.estado = Registro.Estado.VALIDADA
+                        registro.genera_puntaje = 'SI' if pondera else 'NO'
+                        registro.save(update_fields=['estado', 'genera_puntaje'])
+                    if compromiso:
+                        compromiso.genera_puntaje = Decimal('1.0') if pondera else Decimal('0.0')
+                        compromiso.save(update_fields=['genera_puntaje'])
+
+                elif decision == RevisionEvidencia.Decision.RECHAZADA:
+                    evidencia.estado = Evidencia.Estado.RECHAZADA
+                    evidencia.save(update_fields=['estado'])
+                    if registro:
+                        registro.estado = Registro.Estado.OBSERVADA
+                        registro.genera_puntaje = 'NO'
+                        registro.save(update_fields=['estado', 'genera_puntaje'])
+
+                elif decision == RevisionEvidencia.Decision.CORRECCION:
+                    # Mantiene la evidencia pendiente para que el funcionario complemente
+                    if registro:
+                        registro.estado = Registro.Estado.OBSERVADA
+                        registro.save(update_fields=['estado'])
+
                 registrar_historial(
                     actor=request.user,
                     action='Validar evidencia',
@@ -84,11 +127,12 @@ def home(request):
                         'estado': evidencia.estado,
                         'decision': revision.decision,
                         'observaciones': revision.observaciones,
+                        'genera_puntaje': registro.genera_puntaje if registro else None,
                         'codigo': str(evidencia.codigo),
                     },
                     period=period,
                 )
-            messages.success(request, 'La revisión quedó registrada.')
+            messages.success(request, 'La revisión y decisión de ponderación quedaron registradas.')
         else:
             messages.error(request, 'Selecciona una decisión válida y revisa la observación.')
         return redirect('supervisor:home')
@@ -96,20 +140,27 @@ def home(request):
     evidencias = _evidencias_visibles(request).filter(
         estado=Evidencia.Estado.PENDIENTE,
     ).filter(
-        Q(registro__isnull=True)
-        | Q(registro__periodo__estado=Periodo.Estado.ABIERTO)
+        Q(registros__isnull=True)
+        | Q(registros__periodo__estado__iexact=Periodo.Estado.ABIERTO)
     ).filter(
-        Q(compromiso__isnull=True)
-        | Q(compromiso__agenda__periodo__estado=Periodo.Estado.ABIERTO)
-    )
+        Q(compromisos__isnull=True)
+        | Q(compromisos__agenda__periodo__estado__iexact=Periodo.Estado.ABIERTO)
+    ).distinct()
+
+    revisiones = RevisionEvidencia.objects.filter(
+        verificador=request.user,
+    ).select_related('evidencia').prefetch_related(
+        'evidencia__registros',
+        'evidencia__compromisos',
+        'evidencia__atenciones_sociales',
+    )[:20]
+
     return render(request, 'SupervisorApp/index.html', {
-        'sgr_role': 'Verificación', 'evidencias': evidencias,
-        'pending_count': evidencias.count(), 'review_form': RevisionEvidenciaForm(),
-        'revisiones': RevisionEvidencia.objects.filter(
-            verificador=request.user,
-        ).select_related(
-            'evidencia', 'evidencia__registro', 'evidencia__compromiso',
-        )[:20],
+        'sgr_role': 'Verificación',
+        'evidencias': evidencias,
+        'pending_count': evidencias.count(),
+        'review_form': RevisionEvidenciaForm(),
+        'revisiones': revisiones,
         'sidebar_modules': (
             {'label': 'Validar evidencias', 'url_name': 'supervisor:home'},
         ),

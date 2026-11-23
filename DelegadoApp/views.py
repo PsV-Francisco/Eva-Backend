@@ -60,7 +60,7 @@ def seguimiento_publico(request, token):
 
     cache.set(rate_key, attempts + 1, timeout=300)
     compromiso = Compromiso.objects.filter(seguimiento_token=token).select_related(
-        'agenda', 'agenda__periodo', 'agenda__delegacion',
+        'agenda', 'agenda__periodo', 'agenda__delegacion', 'solicitante', 'territorio'
     ).prefetch_related('historial_estados').first()
 
     if not compromiso or not compromiso.seguimiento_activo:
@@ -115,7 +115,11 @@ def seguimiento_publico(request, token):
         {'key': Compromiso.Estado.EN_PROCESO, 'label': 'En proceso'},
         {'key': Compromiso.Estado.REALIZADO, 'label': 'Realizado'},
     ]
-    current_index = estados.index(next(item for item in estados if item['key'] == compromiso.estado))
+    
+    # Manejo seguro por si el estado actual no se encuentra en la lista
+    match_item = next((item for item in estados if item['key'] == compromiso.estado), None)
+    current_index = estados.index(match_item) if match_item else 0
+
     timeline = []
     for index, estado in enumerate(estados):
         timeline.append({
@@ -142,8 +146,10 @@ def home(request):
     if delegation_id:
         commitments = Compromiso.objects.filter(
             agenda__delegacion_id=delegation_id,
-        ).select_related('agenda', 'agenda__periodo').prefetch_related(
-            'responsable', 'evidencias_compromiso',
+        ).select_related(
+            'agenda', 'agenda__periodo', 'solicitante', 'territorio'
+        ).prefetch_related(
+            'responsable', 'historial_estados'
         )
 
     if request.method == 'POST' and request.POST.get('action') == 'estado':
@@ -208,7 +214,9 @@ def home(request):
             else:
                 fecha_input = request.POST.get('seguimiento_expira')
                 if fecha_input:
-                    commitment.seguimiento_expira = datetime.strptime(fecha_input, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                    # Convertir a datetime final del día en la zona horaria del sistema
+                    dt = datetime.strptime(fecha_input, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+                    commitment.seguimiento_expira = timezone.make_aware(dt) if timezone.is_naive(dt) else dt
                     if not commitment.seguimiento_token:
                         commitment.seguimiento_token = secrets.token_urlsafe(32)
                     commitment.seguimiento_activo = True
@@ -223,7 +231,7 @@ def home(request):
         if action == 'eliminar':
             if commitment is None:
                 messages.error(request, 'No se encontró el compromiso que intentas eliminar.')
-            elif commitment.evidencias_compromiso.exists():
+            elif bool(commitment.evidencia_id):
                 messages.error(request, 'No se puede eliminar un compromiso con evidencias asociadas.')
             elif commitment.agenda.periodo.estado != Periodo.Estado.ABIERTO:
                 messages.error(request, 'Los compromisos de un período cerrado son de solo lectura.')
@@ -251,7 +259,7 @@ def home(request):
                     messages.error(request, 'No se puede eliminar un compromiso que tiene información asociada.')
             return redirect('delegado:home')
 
-        if commitment and commitment.evidencias_compromiso.exists():
+        if commitment and bool(commitment.evidencia_id):
             messages.error(request, 'No se puede modificar un compromiso con evidencias asociadas.')
             return redirect('delegado:home')
         if commitment and commitment.agenda.periodo.estado != Periodo.Estado.ABIERTO:
@@ -328,12 +336,15 @@ def home(request):
         'sidebar_modules': (
             {'label': 'Agenda colectiva', 'url_name': 'delegado:home'},
             {'label': 'Resumen de la delegación', 'url_name': 'delegado:resumen'},
+            {'label': 'Tubo de Cartas', 'url_name': 'funcionario:tubo_cartas'},
         ),
     })
 
-
+from AdminApp.csv_utils import csv_response
 @cargo_required('delegado', permission='view_delegation_summary')
 def resumen(request):
+    from AdminApp.csv_utils import csv_response
+
     delegation = active_delegation(request)
     period_id = request.GET.get('periodo', '')
     selected_period = (
@@ -348,11 +359,47 @@ def resumen(request):
         delegation=delegation,
         period=selected_period,
     )
+    if request.GET.get('export') == 'csv':
+        if not delegation:
+            messages.error(request, 'Tu cuenta no tiene delegación asignada.')
+            return redirect('delegado:resumen')
+        rows = [[
+            'Funcionario',
+            'Correo',
+            'Cumplimiento (%)',
+            'Esperado (%)',
+            'Semáforo',
+            'Último registro',
+            'Fecha último registro',
+        ]]
+        rows.extend([
+            row['usuario'].get_full_name() or row['usuario'].email,
+            row['usuario'].email,
+            row['cumplimiento'],
+            row['esperado'],
+            row['semaforo'],
+            row['ultimo_registro'] or '',
+            row['fecha_ultimo_registro'] or '',
+        ] for row in summary['funcionarios'])
+        return csv_response(
+            request,
+            filename='resumen_delegacion.csv',
+            rows=rows,
+            entity='ResumenDelegacion',
+            action='Exportar resumen de delegación CSV',
+            title='Resumen de desempeño por delegación',
+            delegation=delegation,
+            filters={'periodo': str(selected_period.pk) if selected_period else ''},
+            row_count=len(summary['funcionarios']),
+            period=selected_period,
+        )
+
     return render(request, 'DelegadoApp/resumen.html', {
         'sgr_role': 'Delegación',
         'sidebar_modules': (
             {'label': 'Agenda colectiva', 'url_name': 'delegado:home'},
             {'label': 'Resumen de la delegación', 'url_name': 'delegado:resumen'},
+            {'label': 'Tubo de Cartas', 'url_name': 'funcionario:tubo_cartas'},
         ),
         'periodos': periods,
         'periodo_seleccionado': selected_period,

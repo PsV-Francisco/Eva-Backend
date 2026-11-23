@@ -1,0 +1,353 @@
+{% extends 'base.html' %}
+{% block title %}Tubo de Cartas y Correspondencia | SGR{% endblock %}
+{% block page_title %}Tubo de Cartas y Correspondencia Formal{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+
+    <!-- 1. Registro de Nueva Carta -->
+    <section class="content-section mb-4">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">CORRESPONDENCIA INSTITUCIONAL</p>
+          <h2>Ingresar Nueva Carta</h2>
+        </div>
+      </div>
+      <form method="post" enctype="multipart/form-data" novalidate>
+        {% csrf_token %}
+        <div class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label">Número de Carta *</label>
+            {{ form.numero_carta }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Fecha *</label>
+            {{ form.fecha }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Fecha de Respuesta</label>
+            {{ form.fecha_respuesta }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Estado *</label>
+            {{ form.estado }}
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Remitente *</label>
+            {{ form.remitente }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Destinatario *</label>
+            {{ form.destinatario }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Teléfono</label>
+            {{ form.telefono }}
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Materia *</label>
+            {{ form.materia }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Responsable Seguimiento *</label>
+            {{ form.responsable_seguimiento }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Área Derivada</label>
+            {{ form.area_derivada }}
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Pronunciamiento</label>
+            {{ form.pronunciamiento }}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Observaciones</label>
+            {{ form.observaciones }}
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Documento Adjunto (PDF/JPG/PNG)</label>
+            {{ form.documento }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Fecha de Cierre</label>
+            {{ form.fecha_cierre }}
+          </div>
+        </div>
+        <div class="mt-4">
+          <button type="submit" class="btn btn-primary">Registrar Carta</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 2. Bandeja y Seguimiento de Cartas -->
+    <section class="content-section">
+      <div class="section-head d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+          <p class="eyebrow">CONTROL DE PLAZOS Y PRONUNCIAMIENTO</p>
+          <h2>Bandeja de Cartas Registradas</h2>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <form method="get" class="d-flex gap-2">
+            <select name="estado" class="form-select form-select-sm" onchange="this.form.submit()">
+              <option value="">Todos los estados</option>
+              {% for val, label in estados_choices %}
+                <option value="{{ val }}" {% if estado_filtro == val %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          <a class="btn btn-sm btn-outline-primary" href="?estado={{ estado_filtro }}&export=csv">Exportar CSV</a>
+        </div>
+      </div>
+
+      <div class="search-panel mb-3">
+        <div class="w-100">
+          <label class="form-label" for="search-carta">Buscar Carta</label>
+          <input type="text" class="form-control" id="search-carta" placeholder="Buscar por N° CARTA, REMITENTE, MATERIA o ÁREA...">
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table align-middle" id="tabla-cartas">
+          <thead>
+            <tr>
+              <th>N° Carta</th>
+              <th>Fecha</th>
+              <th>Remitente / Destinatario</th>
+              <th>Materia</th>
+              <th>Responsable / Área</th>
+              <th>Plazo Respuesta</th>
+              <th>Estado</th>
+              <th>Adjunto</th>
+              <th class="text-end">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for carta in cartas %}
+            <tr data-search="{{ carta.numero_carta|lower }} {{ carta.remitente|lower }} {{ carta.materia|lower }} {{ carta.area_derivada|lower }}">
+              <td><strong>{{ carta.numero_carta }}</strong></td>
+              <td>{{ carta.fecha|date:"d/m/Y" }}</td>
+              <td>
+                <div><strong>De:</strong> {{ carta.remitente }}</div>
+                <div class="small text-muted"><strong>Para:</strong> {{ carta.destinatario }}</div>
+              </td>
+              <td>{{ carta.materia }}</td>
+              <td>
+                <div>{{ carta.responsable_seguimiento.get_full_name|default:carta.responsable_seguimiento.email }}</div>
+                <div class="small text-muted">{{ carta.area_derivada|default:"Sin derivación" }}</div>
+              </td>
+              <td>{{ carta.fecha_respuesta|date:"d/m/Y"|default:"—" }}</td>
+              <td>
+                <span class="badge {% if carta.estado == 'FINALIZADA' or carta.estado == 'APROBADA' %}bg-success{% elif carta.estado == 'NO_APLICA' %}bg-secondary{% elif carta.estado == 'DERIVADA' or carta.estado == 'EN_PROCESO' %}bg-warning text-dark{% else %}bg-primary{% endif %}">
+                  {{ carta.get_estado_display }}
+                </span>
+              </td>
+              <td>
+                {% if carta.documento_adjunto and carta.documento_adjunto.archivo %}
+                  <a href="{{ carta.documento_adjunto.archivo.url }}" target="_blank" class="btn btn-sm btn-outline-secondary">Ver</a>
+                {% else %}
+                  <span class="text-muted small">—</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-outline-primary btn-editar-carta" data-id="{{ carta.pk }}">
+                  Gestionar
+                </button>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="9" class="empty-state">No hay cartas registradas en esta delegación.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- Modal Gestionar / Derivar / Pronunciamiento -->
+<div class="modal fade" id="modalEditarCarta" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Gestionar Carta y Pronunciamiento</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <form id="form-editar-carta">
+          <input type="hidden" id="edit-carta-id">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Número de Carta *</label>
+              <input type="text" class="form-control" id="edit-numero" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Fecha *</label>
+              <input type="date" class="form-control" id="edit-fecha" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Estado *</label>
+              <select class="form-select" id="edit-estado" required>
+                {% for val, label in estados_choices %}
+                  <option value="{{ val }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Remitente *</label>
+              <input type="text" class="form-control" id="edit-remitente" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Destinatario *</label>
+              <input type="text" class="form-control" id="edit-destinatario" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Teléfono</label>
+              <input type="text" class="form-control" id="edit-telefono">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Materia *</label>
+              <input type="text" class="form-control" id="edit-materia" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Responsable *</label>
+              <select class="form-select" id="edit-responsable" required>
+                {% for resp in responsables %}
+                  <option value="{{ resp.pk }}">{{ resp.get_full_name|default:resp.email }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Área Derivada</label>
+              <input type="text" class="form-control" id="edit-area">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Fecha de Respuesta</label>
+              <input type="date" class="form-control" id="edit-fecha-respuesta">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Fecha de Cierre</label>
+              <input type="date" class="form-control" id="edit-fecha-cierre">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Pronunciamiento</label>
+              <textarea class="form-control" id="edit-pronunciamiento" rows="3"></textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Observaciones</label>
+              <textarea class="form-control" id="edit-observaciones" rows="3"></textarea>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btn-guardar-edit-carta">Guardar Cambios</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const getCookie = (name) => {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  };
+  const csrftoken = getCookie('csrftoken');
+
+  document.getElementById('search-carta').addEventListener('keyup', function() {
+    const term = this.value.toLowerCase().trim();
+    document.querySelectorAll('#tabla-cartas tbody tr').forEach(row => {
+      const text = row.getAttribute('data-search') || '';
+      row.style.display = text.includes(term) ? '' : 'none';
+    });
+  });
+
+  const modalEdit = new bootstrap.Modal(document.getElementById('modalEditarCarta'));
+
+  document.querySelectorAll('.btn-editar-carta').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const id = this.getAttribute('data-id');
+      fetch(`/funcionario/tubo-cartas/${id}/detalle-json/`)
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById('edit-carta-id').value = data.id;
+          document.getElementById('edit-numero').value = data.numero_carta;
+          document.getElementById('edit-fecha').value = data.fecha;
+          document.getElementById('edit-estado').value = data.estado;
+          document.getElementById('edit-remitente').value = data.remitente;
+          document.getElementById('edit-destinatario').value = data.destinatario;
+          document.getElementById('edit-telefono').value = data.telefono;
+          document.getElementById('edit-materia').value = data.materia;
+          document.getElementById('edit-responsable').value = data.responsable_seguimiento_id;
+          document.getElementById('edit-area').value = data.area_derivada;
+          document.getElementById('edit-fecha-respuesta').value = data.fecha_respuesta;
+          document.getElementById('edit-fecha-cierre').value = data.fecha_cierre;
+          document.getElementById('edit-pronunciamiento').value = data.pronunciamiento;
+          document.getElementById('edit-observaciones').value = data.observaciones;
+          modalEdit.show();
+        })
+        .catch(() => Swal.fire('Error', 'No se pudo cargar la carta.', 'error'));
+    });
+  });
+
+  document.getElementById('btn-guardar-edit-carta').addEventListener('click', function() {
+    const id = document.getElementById('edit-carta-id').value;
+    const payload = {
+      numero_carta: document.getElementById('edit-numero').value.trim(),
+      fecha: document.getElementById('edit-fecha').value,
+      estado: document.getElementById('edit-estado').value,
+      remitente: document.getElementById('edit-remitente').value.trim(),
+      destinatario: document.getElementById('edit-destinatario').value.trim(),
+      telefono: document.getElementById('edit-telefono').value.trim(),
+      materia: document.getElementById('edit-materia').value.trim(),
+      responsable_seguimiento_id: document.getElementById('edit-responsable').value,
+      area_derivada: document.getElementById('edit-area').value.trim(),
+      fecha_respuesta: document.getElementById('edit-fecha-respuesta').value,
+      fecha_cierre: document.getElementById('edit-fecha-cierre').value,
+      pronunciamiento: document.getElementById('edit-pronunciamiento').value.trim(),
+      observaciones: document.getElementById('edit-observaciones').value.trim(),
+    };
+
+    fetch(`/funcionario/tubo-cartas/${id}/editar-ajax/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrftoken
+      },
+      body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        modalEdit.hide();
+        Swal.fire('¡Éxito!', data.message, 'success').then(() => window.location.reload());
+      } else {
+        Swal.fire('Error', data.message, 'error');
+      }
+    })
+    .catch(() => Swal.fire('Error', 'Fallo de comunicación con el servidor.', 'error'));
+  });
+});
+</script>
+{% endblock %}

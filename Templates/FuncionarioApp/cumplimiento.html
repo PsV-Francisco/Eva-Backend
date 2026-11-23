@@ -18,61 +18,56 @@
       <p class="section-note">{% if es_encargado_social %}Cumplimiento de tus metas como Encargado Social.{% else %}Cumplimiento de tus metas asignadas.{% endif %}</p>
     </div></div>
     <form method="get" class="search-panel mb-3">
-      <div><label class="form-label" for="periodo">Período</label><select class="form-select" id="periodo" name="periodo">{% for periodo in periodos %}<option value="{{ periodo.pk }}" {% if periodo == periodo_seleccionado %}selected{% endif %}>{{ periodo.nombre }}</option>{% endfor %}</select></div>
-      <button class="btn btn-primary" type="submit">Consultar</button>
+      <div><label class="form-label" for="periodo">Período</label><select class="form-select" id="periodo" name="periodo">{% for periodo in periodos %}<option value="{{ periodo.pk }}" {% if periodo == periodo_seleccionado %}selected{% endif %}>{{ periodo.nombre }}</option>{% empty %}<option value="">No hay períodos disponibles</option>{% endfor %}</select></div>
+      <button class="btn btn-primary" type="submit"{% if not periodos %} disabled{% endif %}>Consultar</button>
     </form>
     <div class="table-responsive"><table class="table align-middle">
       <thead>
         <tr>
           <th>Item</th>
-          {% if es_encargado_social %}
-            <th>Ponderador</th>
-            <th>Avance Actual</th>
-            <th>% de cumplimiento</th>
-            <th>Cumplimiento ponderado</th>
-          {% else %}
-            <th>Ponderación</th>
-            <th>Avance / Meta actual</th>
-            <th>% cumplimiento</th>
-            <th>Cumplimiento ponderado</th>
-          {% endif %}
+          <th>Ponderación</th>
+          <th>Avance</th>
+          <th>% de Cumplimiento</th>
+          <th>Cumplimiento Ponderado</th>
         </tr>
       </thead>
       <tbody>
       {% for row in summary.items %}
         <tr>
           <td><strong>{{ row.desempeno.item.nombre }}</strong></td>
-          {% if es_encargado_social %}
-            <td>{% if row.ponderacion is not None %}{{ row.ponderacion|floatformat:2 }}%{% else %}<span class="text-muted">Sin dato</span>{% endif %}</td>
-            <td>{{ row.avance|floatformat:2 }}</td>
-            <td>{{ row.cumplimiento|floatformat:2 }}% <span class="traffic-light traffic-{{ row.semaforo }}">{{ row.semaforo|title }}</span></td>
-            <td>{% if row.aporte is not None %}{{ row.aporte|floatformat:2 }}%{% else %}<span class="text-muted">Sin ponderación</span>{% endif %}</td>
-          {% else %}
-            <td>{% if row.ponderacion is not None %}{{ row.ponderacion|floatformat:2 }}%{% else %}<span class="text-muted">Sin dato</span>{% endif %}</td>
-            <td>{{ row.avance|floatformat:0 }} / {{ row.meta|floatformat:2 }}</td>
-            <td>{{ row.cumplimiento|floatformat:2 }}% <span class="traffic-light traffic-{{ row.semaforo }}">{{ row.semaforo|title }}</span></td>
-            <td>{% if row.aporte is not None %}{{ row.aporte|floatformat:2 }}%{% else %}<span class="text-muted">Sin ponderación</span>{% endif %}</td>
-          {% endif %}
+          <td>{% if row.ponderacion is not None %}{{ row.ponderacion|floatformat:2 }}%{% else %}<span class="text-muted">--</span>{% endif %}</td>
+          <td>{{ row.avance|floatformat:2 }}</td>
+          <td>{{ row.cumplimiento|floatformat:2 }}% <span class="traffic-light traffic-{{ row.semaforo }}">{{ row.semaforo|title }}</span></td>
+          <td>{% if row.aporte is not None %}{{ row.aporte|floatformat:2 }}%{% else %}<span class="text-muted">--</span>{% endif %}</td>
         </tr>
       {% empty %}
-        <tr><td colspan="5" class="empty-state">Sin ítems asignados para este período.</td></tr>
+        <tr>
+          <td>--</td>
+          <td>--</td>
+          <td>--</td>
+          <td>--</td>
+          <td>--</td>
+        </tr>
       {% endfor %}
       </tbody>
       {% if summary.items %}
       <tfoot>
         <tr>
           <th>Total</th>
-          {% if es_encargado_social %}
-            <th>—</th>
-            <th>{{ summary.total_avance|floatformat:2 }}</th>
-            <th>{{ summary.avance_real|floatformat:2 }}%</th>
-            <th>{% if summary.ponderacion_completa %}{{ summary.total_aporte|floatformat:2 }}%{% else %}<span class="text-muted">Incompleto</span>{% endif %}</th>
-          {% else %}
-            <th>—</th>
-            <th>{{ summary.total_avance|floatformat:0 }} / {{ summary.total_meta|floatformat:2 }}</th>
-            <th>{{ summary.avance_real|floatformat:2 }}%</th>
-            <th>{% if summary.ponderacion_completa %}{{ summary.total_aporte|floatformat:2 }}%{% else %}<span class="text-muted">Incompleto</span>{% endif %}</th>
-          {% endif %}
+          <th>{{ summary.total_ponderacion|floatformat:2 }}%</th>
+          <th>{{ summary.total_avance|floatformat:2 }}</th>
+          <th>{{ summary.avance_real|floatformat:2 }}%</th>
+          <th>{% if summary.ponderacion_completa %}{{ summary.total_aporte|floatformat:2 }}%{% else %}<span class="text-muted">Incompleto</span>{% endif %}</th>
+        </tr>
+      </tfoot>
+      {% else %}
+      <tfoot>
+        <tr>
+          <th>Total</th>
+          <th>--</th>
+          <th>--</th>
+          <th>--</th>
+          <th>--</th>
         </tr>
       </tfoot>
       {% endif %}
@@ -87,4 +82,19 @@
   <p>El semáforo compara el cumplimiento con el avance esperado a la fecha; el umbral compara con un porcentaje fijo.</p>{% if summary.items %}<p><strong>Estado frente al umbral:</strong> {% if clasificacion_umbral == 'sobre' %}Sobre el umbral{% else %}Bajo el umbral{% endif %} ({{ umbral_delegacion|floatformat:2 }}%).</p>{% else %}<p><strong>Sin ítems asignados.</strong> No se clasifica frente al umbral.</p>{% endif %}</aside>
 </section>
 </div></div>
+{% endblock %}
+{% block extra_js %}
+{% if sin_informacion %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        Swal.fire({
+            icon: 'info',
+            title: 'Sin registros',
+            text: 'No se encontró información ni ítems asignados para el período seleccionado.',
+            confirmButtonText: 'Aceptar',
+            confirmButtonColor: '#0d6efd'
+        });
+    });
+</script>
+{% endif %}
 {% endblock %}

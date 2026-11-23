@@ -286,3 +286,190 @@ select[multiple], select[size] { min-height: 140px; height: auto; }
   .metric { min-height: 88px; padding: .8rem; }
   .metric strong { font-size: 1.6rem; }
 }
+/* ==========================================================================
+   ESTILOS ADAPTADOS PARA LOGIN INSTITUCIONAL LA SERENA
+   ========================================================================== */
+
+/* Fondo completo con ilustración lineal de los edificios */
+.page-shell {
+  background-image: url('../img/fondo.png'); /* Reemplazar por tu archivo vectorial/imagen */
+  background-repeat: no-repeat;
+  background-position: center bottom;
+  background-size: contain;
+}
+
+/* Envoltorio principal para centrar la tarjeta */
+.login-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: calc(100vh - 240px);
+  padding: 2rem 1rem;
+}
+
+/* Tarjeta blanca flotante centrada con bordes redondeados y sombra */
+.login-card-central {
+  width: 100%;
+  max-width: 460px;
+  background: #ffffff;
+  padding: 2.5rem 2.2rem;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e9ecef;
+  text-align: center;
+}
+
+.login-card-central h2 {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 0.4rem;
+}
+
+.login-subtitle {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-bottom: 1.8rem;
+}
+
+.login-form-custom {
+  text-align: left;
+}
+
+.form-group-custom {
+  margin-bottom: 1.25rem;
+}
+
+.form-group-custom label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 0.4rem;
+}
+
+/* Campo de entrada con icono incorporado */
+.input-icon-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon-wrapper input {
+  width: 100%;
+  padding: 0.65rem 0.8rem 0.65rem 2.5rem;
+  border: 1px solid #ced4da;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input-icon-wrapper input:focus {
+  border-color: var(--institution-red);
+  box-shadow: 0 0 0 3px rgba(173, 0, 0, 0.12);
+  outline: none;
+}
+
+.field-icon {
+  position: absolute;
+  left: 0.8rem;
+  color: #8c8c8c;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+/* Botón de mostrar/ocultar contraseña */
+.password-eye-toggle {
+  position: absolute;
+  right: 0.6rem;
+  background: transparent;
+  border: none;
+  color: #8c8c8c;
+  padding: 0.3rem;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.password-eye-toggle:hover {
+  color: var(--institution-red);
+}
+
+/* Botón Rojo Institucional de ancho completo */
+.btn-login-red {
+  width: 100%;
+  padding: 0.8rem;
+  border-radius: 25px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  margin-top: 0.6rem;
+  background-color: var(--institution-red);
+  border-color: var(--institution-red);
+}
+
+.btn-login-red:hover {
+  background-color: var(--teal-dark);
+  border-color: var(--teal-dark);
+}
+
+.login-footer-link {
+  margin-top: 1.4rem;
+}
+
+.login-footer-link .auth-link {
+  color: var(--institution-red);
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.login-footer-link .auth-link:hover {
+  color: var(--teal-dark);
+}
+/* 1. Ocultar el título/encabezado heredado del Dashboard */
+.page-heading,
+.page-title,
+.content-header {
+  display: none !important;
+}
+
+/* 2. Configurar el contenedor principal para que ocupe exactamente el alto de la pantalla sin scroll */
+.page-shell,
+.login-page-container {
+  min-height: calc(100vh - 100px); /* Ajusta según el alto del header y footer */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+  
+  /* Imagen de fondo extendida a toda la pantalla */
+  background-image: url('../img/fondo.png');
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: cover; /* Cambiar 'contain' por 'cover' para eliminar marcos blancos */
+}
+
+/* 3. Ajustar márgenes de la tarjeta central */
+.login-card-central {
+  width: 100%;
+  max-width: 420px;
+  background: #ffffff;
+  padding: 2.2rem 2rem;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+  z-index: 2; /* Asegura que la tarjeta esté sobre el fondo */
+}
+/* Estilo para la casilla de fecha en la esquina superior derecha */
+.header-date-badge {
+  background-color: #ffffff;
+  color: #333333;
+  padding: 0.35rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  display: inline-block;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}

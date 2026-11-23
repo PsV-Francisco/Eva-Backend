@@ -11,7 +11,7 @@ class FuncionAdmin(admin.ModelAdmin):
 
 @admin.register(Item)
 class ItemAdmin(admin.ModelAdmin):
-	list_display = ('codigo', 'nombre', 'ponderacion', 'estado')
+	list_display = ('codigo', 'nombre','estado')
 	list_filter = ('estado',)
 	search_fields = ('codigo', 'nombre', 'descripcion')
 

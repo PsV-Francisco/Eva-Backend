@@ -177,6 +177,8 @@ def _role_key(name):
 
 @login_required
 def home_redirect(request):
+    if getattr(request.user, 'requiere_cambio_password', False):
+        return redirect('primer_ingreso')
     cargo = getattr(request.user, 'cargo', None)
     cargo_name = _role_key(getattr(cargo, 'nombre', ''))
 

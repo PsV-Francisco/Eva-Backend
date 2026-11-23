@@ -13,14 +13,22 @@ class PermissionDefinition:
 
 
 PERMISSION_CATALOG = (
+    #AdminApp Gestión de Delegaciones
+    PermissionDefinition('Administración', 'view_admin_delegations_detail', 'Consultar detalle JSON de delegación', 'administracion:detalle_delegacion_json', ('admin', 'administrador'), (('delegacion_id', 1),), False),
+    PermissionDefinition('Administración', 'edit_admin_delegations_ajax', 'Editar delegación por AJAX', 'administracion:editar_delegacion_ajax', ('admin', 'administrador'), (('delegacion_id', 1),), False),
+    PermissionDefinition('Administración', 'delete_admin_delegations', 'Eliminar delegación', 'administracion:eliminar_delegacion', ('admin', 'administrador'), (('delegacion_id', 1),), False),
+    
     PermissionDefinition('Coordinador', 'view_coordinator_reports', 'Consultar informes consolidados', 'coordinador:informes', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'view_coordinator_trends', 'Consultar tendencias históricas de cumplimiento', 'coordinador:tendencias', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'request_closed_period_authorization', 'Solicitar autorización para modificar períodos cerrados', 'coordinador:solicitudes_autorizacion', ('coordinador', 'admin', 'administrador')),
+    
     PermissionDefinition('Administración', 'review_closed_period_authorizations', 'Resolver solicitudes de autorización de períodos cerrados', 'administracion:solicitudes-autorizacion', ('admin', 'administrador')),
-    PermissionDefinition('Coordinador', 'manage_coordinator_goals', 'Administrar metas desde Coordinaci\u00f3n', 'coordinador:metas', ('coordinador', 'admin', 'administrador')),
-    PermissionDefinition('Coordinador', 'manage_coordinator_position_functions', 'Asignar funciones a cargos desde Coordinaci\u00f3n', 'coordinador:cargos_funciones', ('coordinador', 'admin', 'administrador')),
+    
+    PermissionDefinition('Coordinador', 'manage_coordinator_goals', 'Administrar metas desde Coordinación', 'coordinador:metas', ('coordinador', 'admin', 'administrador')),
+    PermissionDefinition('Coordinador', 'manage_coordinator_position_functions', 'Asignar funciones a cargos desde Coordinación', 'coordinador:cargos_funciones', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'view_coordinator_weights', 'Consultar ponderaciones por cargo o funcionario', 'coordinador:ponderaciones', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'manage_coordinator_periods', 'Administrar períodos del Coordinador', 'coordinador:periodos', ('coordinador', 'admin', 'administrador')),
+    
     PermissionDefinition('Administración', 'access_admin_dashboard', 'Consultar panel de inicio de Administración', 'administracion:dashboard', ('admin', 'administrador'), show_in_menu=False),
     PermissionDefinition('Administración', 'access_admin_users', 'Administrar usuarios', 'administracion:home', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_parameters', 'Administrar parámetros del sistema', 'administracion:parametros', ('admin', 'administrador')),
@@ -47,6 +55,14 @@ PERMISSION_CATALOG = (
     PermissionDefinition('Administración', 'access_admin_social_attentions', 'Consultar atenciones sociales por delegación', 'administracion:atenciones-sociales', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_commitments', 'Consultar compromisos por delegación', 'administracion:compromisos', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'manage_admin_goal_adjustments', 'Ajustar metas de desempeño', 'administracion:ajustes-metas', ('admin', 'administrador')),
+    
+    # Beneficiados / Solicitantes (AdminApp)
+    PermissionDefinition('Administración', 'access_admin_beneficiados', 'Consultar beneficiados', 'administracion:beneficiados', ('admin', 'administrador')),
+    PermissionDefinition('Administración', 'create_admin_beneficiados', 'Crear beneficiados por AJAX', 'administracion:crear_beneficiado_ajax', ('admin', 'administrador'), show_in_menu=False),
+    PermissionDefinition('Administración', 'view_admin_beneficiados_detail', 'Consultar detalle de beneficiado', 'administracion:detalle_beneficiado_json', ('admin', 'administrador'), (('beneficiado_id', 1),), False),
+    PermissionDefinition('Administración', 'edit_admin_beneficiados', 'Editar beneficiados por AJAX', 'administracion:editar_beneficiado_ajax', ('admin', 'administrador'), (('beneficiado_id', 1),), False),
+    PermissionDefinition('Administración', 'delete_admin_beneficiados', 'Eliminar beneficiados', 'administracion:eliminar_beneficiado', ('admin', 'administrador'), (('beneficiado_id', 1),), False),
+
     PermissionDefinition('Administración', 'create_admin_absences', 'Crear ausencias', 'administracion:ausencia-nueva', ('admin', 'administrador'), show_in_menu=False),
     PermissionDefinition('Administración', 'edit_admin_absences', 'Modificar ausencias', 'administracion:ausencia-editar', ('admin', 'administrador'), (('ausencia_id', 1),), False),
     PermissionDefinition('Administración', 'delete_admin_absences', 'Eliminar ausencias', 'administracion:ausencia-eliminar', ('admin', 'administrador'), (('ausencia_id', 1),), False),
@@ -71,41 +87,65 @@ PERMISSION_CATALOG = (
     PermissionDefinition('Administración', 'create_admin_juntas', 'Crear juntas de vecinos', 'administracion:junta-nueva', ('admin', 'administrador'), show_in_menu=False),
     PermissionDefinition('Administración', 'edit_admin_juntas', 'Modificar juntas de vecinos', 'administracion:junta-editar', ('admin', 'administrador'), (('junta_id', 1),), False),
     PermissionDefinition('Administración', 'delete_admin_juntas', 'Eliminar juntas de vecinos', 'administracion:junta-eliminar', ('admin', 'administrador'), (('junta_id', 1),), False),
+    
+    # Permisos de FuncionarioApp
     PermissionDefinition('Funcionario', 'access_employee_dashboard', 'Consultar registro de actividades', 'funcionario:home', ('funcionario',)),
     PermissionDefinition('Funcionario', 'manage_employee_activities', 'Gestionar actividades', 'funcionario:gestion_actividades', ('funcionario',)),
+    PermissionDefinition('Funcionario', 'view_employee_record_detail', 'Consultar detalle JSON de actividad', 'funcionario:detalle_registro_json', ('funcionario',), (('registro_id', 1),), False),
+    PermissionDefinition('Funcionario', 'edit_employee_record_ajax', 'Editar actividad por AJAX', 'funcionario:editar_registro_ajax', ('funcionario',), (('registro_id', 1),), False),
+    
     PermissionDefinition('Funcionario', 'access_funcionario_vecinos', 'Consultar vecinos', 'funcionario:vecinos', ('funcionario',)),
-    PermissionDefinition('Funcionario', 'manage_vecinos', 'Gestionar vecinos', 'funcionario:vecino_nuevo', ('funcionario',)),
-    PermissionDefinition('Funcionario', 'edit_vecinos', 'Modificar vecinos', 'funcionario:vecino_editar', ('funcionario',), (('vecino_id', 1),), False),
+    PermissionDefinition('Funcionario', 'manage_vecinos', 'Gestionar vecinos', 'funcionario:vecino_form', ('funcionario',), (), False),
+    PermissionDefinition('Funcionario', 'edit_vecinos', 'Modificar vecinos', 'funcionario:editar_vecino', ('funcionario',), (('vecino_id', 1),), False),
+    PermissionDefinition('Funcionario', 'view_vecino_detail', 'Consultar detalle JSON de vecino', 'funcionario:detalle_vecino_json', ('funcionario',), (('vecino_id', 1),), False),
+    PermissionDefinition('Funcionario', 'edit_vecino_ajax', 'Editar vecino por AJAX', 'funcionario:editar_vecino_ajax', ('funcionario',), (('vecino_id', 1),), False),
     PermissionDefinition('Funcionario', 'deactivate_vecinos', 'Desactivar vecinos', 'funcionario:vecino_desactivar', ('funcionario',), (('vecino_id', 1),), False),
     PermissionDefinition('Funcionario', 'delete_vecinos', 'Eliminar vecinos', 'funcionario:vecino_eliminar', ('funcionario',), (('vecino_id', 1),), False),
+    
+    PermissionDefinition('Funcionario', 'view_vecino_juntas_by_delegation', 'Consultar juntas por delegación para vecinos', 'funcionario:juntas_por_delegacion_vecino', ('funcionario',), (('delegacion_id', 1),), False),
+    PermissionDefinition('Funcionario', 'view_vecino_cargos_by_junta', 'Consultar cargos JV por junta para vecinos', 'funcionario:cargos_por_junta_vecino', ('funcionario',), (('junta_id', 1),), False),
+    PermissionDefinition('Funcionario', 'view_vecino_territorios_by_delegation', 'Consultar territorios por delegación para vecinos', 'funcionario:territorios_por_delegacion_vecino', ('funcionario',), (('delegacion_id', 1),), False),
+
     PermissionDefinition('Funcionario', 'access_funcionario_juntas', 'Consultar juntas de vecinos', 'funcionario:juntas', ('funcionario',)),
-    PermissionDefinition('Administración', 'create_juntas', 'Crear juntas de vecinos', 'funcionario:junta_nueva', ('admin', 'administrador')),
-    PermissionDefinition('Funcionario', 'edit_juntas', 'Modificar juntas de vecinos', 'funcionario:junta_editar', ('funcionario',), (('junta_id', 1),), False),
+    PermissionDefinition('Administración', 'create_juntas', 'Crear juntas de vecinos', 'funcionario:junta_form', ('admin', 'administrador'), (), False),
+    PermissionDefinition('Funcionario', 'edit_juntas', 'Modificar juntas de vecinos', 'funcionario:editar_junta', ('funcionario',), (('junta_id', 1),), False),
+    PermissionDefinition('Funcionario', 'view_junta_detail', 'Consultar detalle JSON de junta', 'funcionario:detalle_junta_json', ('funcionario',), (('junta_id', 1),), False),
+    PermissionDefinition('Funcionario', 'edit_junta_ajax', 'Editar junta por AJAX', 'funcionario:editar_junta_ajax', ('funcionario',), (('junta_id', 1),), False),
+    PermissionDefinition('Funcionario', 'deactivate_juntas', 'Desactivar juntas de vecinos', 'funcionario:junta_desactivar', ('funcionario',), (('junta_id', 1),), False),
     PermissionDefinition('Funcionario', 'delete_juntas', 'Eliminar juntas de vecinos sin relaciones', 'funcionario:junta_eliminar', ('funcionario',), (('junta_id', 1),), False),
+
+    PermissionDefinition('Funcionario', 'autocomplete_social_applicants', 'Autocompletar solicitantes sociales', 'funcionario:buscar_solicitantes', ('funcionario',), show_in_menu=False),
     PermissionDefinition('Funcionario', 'manage_employee_compliance', 'Consultar cumplimiento', 'funcionario:cumplimiento', ('funcionario',)),
     PermissionDefinition('Funcionario', 'manage_social_care', 'Administrar atención social', 'funcionario:atencion_social', ('funcionario',)),
-    PermissionDefinition('Funcionario', 'search_social_applicants', 'Buscar solicitantes', 'funcionario:buscar_solicitantes', ('funcionario',)),
-    PermissionDefinition(
-        'Funcionario',
-        'view_social_subattentions',
-        'Consultar subatenciones por tipo',
-        'funcionario:subatenciones_tipo',
-        ('funcionario',),
-        (('tipo_id', 1),),
-        False,
-    ),
+    PermissionDefinition('Funcionario', 'view_social_attention_detail', 'Consultar detalle de atención social', 'funcionario:detalle_atencion_json', ('funcionario',), (('atencion_id', 1),), False),
+    PermissionDefinition('Funcionario', 'edit_social_attention_ajax', 'Editar atención social por AJAX', 'funcionario:editar_atencion_ajax', ('funcionario',), (('atencion_id', 1),), False),
+    PermissionDefinition('Funcionario', 'access_social_cases', 'Gestionar casos y gestiones sociales', 'funcionario:casos_sociales', ('funcionario',)),
+    PermissionDefinition('Funcionario', 'create_social_management_ajax', 'Crear gestión social por AJAX', 'funcionario:crear_gestion_social_ajax', ('funcionario',), (), False),
+    PermissionDefinition('Funcionario', 'view_social_management_detail', 'Consultar detalle de gestión social', 'funcionario:detalle_gestion_social_json', ('funcionario',), (('gestion_id', 1),), False),
+    PermissionDefinition('Funcionario', 'edit_social_management_ajax', 'Editar gestión social por AJAX', 'funcionario:editar_gestion_social_ajax', ('funcionario',), (('gestion_id', 1),), False),
+    PermissionDefinition('Funcionario', 'search_social_applicants', 'Buscar solicitantes', 'funcionario:buscar_solicitantes_vista', ('funcionario',)),
+    PermissionDefinition('Funcionario', 'view_social_subattentions', 'Consultar subatenciones por tipo', 'funcionario:subatenciones_tipo', ('funcionario',), (('tipo_id', 1),), False),
     PermissionDefinition('Funcionario', 'manage_collective_agenda', 'Administrar agenda colectiva', 'funcionario:agenda_colectiva', ('funcionario',)),
     PermissionDefinition('Funcionario', 'create_employee_commitments', 'Crear compromisos como Funcionario', 'funcionario:compromiso_nuevo', ('funcionario',)),
     PermissionDefinition('Funcionario', 'edit_employee_commitments', 'Modificar compromisos como Funcionario', 'funcionario:compromiso_editar', ('funcionario',), (('compromiso_id', 1),), False),
     PermissionDefinition('Funcionario', 'upload_commitment_evidence', 'Cargar evidencia de compromisos como Funcionario', 'funcionario:compromiso_evidencia', ('funcionario',), (('compromiso_id', 1),), False),
+    #permisos para ambos roles (funcionario y delegado)
+    PermissionDefinition('Funcionario', 'manage_letter_tube', 'Tubo de cartas y correspondencia', 'funcionario:tubo_cartas', ('funcionario', 'delegado')),
+    PermissionDefinition('Funcionario', 'view_letter_detail', 'Consultar detalle JSON de carta', 'funcionario:detalle_carta_json', ('funcionario', 'delegado'), (('carta_id', 1),), False),
+    PermissionDefinition('Funcionario', 'edit_letter_ajax', 'Editar carta por AJAX', 'funcionario:editar_carta_ajax', ('funcionario', 'delegado'), (('carta_id', 1),), False),
+    
     PermissionDefinition('Supervisor / Verificador', 'review_evidence', 'Revisar y validar evidencias', 'supervisor:home', ('supervisor', 'verificador')),
     PermissionDefinition('Delegado', 'manage_commitments', 'Administrar compromisos', 'delegado:home', ('delegado',)),
     PermissionDefinition('Delegado', 'view_delegation_summary', 'Consultar resumen de delegación', 'delegado:resumen', ('delegado',)),
     PermissionDefinition('Coordinador', 'manage_periods', 'Administrar períodos e indicadores', 'coordinador:home', ('coordinador', 'admin', 'administrador')),
+    PermissionDefinition('Coordinador', 'view_coordinator_personal', 'Consultar desempeño personal de Coordinación', 'coordinador:personal', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Consulta', 'view_public_reports', 'Consultar información', 'vistaf:home', ('vistaf', 'consulta', 'usuario de consulta')),
 )
 
 PERMISSION_DESCRIPTIONS = {
+    'view_admin_delegations_detail': 'Consultar el detalle JSON de una delegación para edición.',
+    'edit_admin_delegations_ajax': 'Modificar datos de una delegación mediante AJAX.',
+    'delete_admin_delegations': 'Eliminar o desactivar delegaciones desde la administración.',
     'access_admin_dashboard': 'Consultar métricas generales y accesos rápidos de Administración.',
     'access_admin_users': 'Crear, editar y consultar cuentas de usuario.',
     'access_admin_parameters': 'Consultar y modificar parámetros generales del sistema.',
@@ -131,6 +171,11 @@ PERMISSION_DESCRIPTIONS = {
     'access_admin_records': 'Consultar registros de actividades por delegación.',
     'access_admin_social_attentions': 'Consultar atenciones sociales por delegación.',
     'access_admin_commitments': 'Consultar compromisos por delegación.',
+    'access_admin_beneficiados': 'Consultar beneficiados y solicitantes.',
+    'create_admin_beneficiados': 'Crear beneficiados desde la administración.',
+    'view_admin_beneficiados_detail': 'Consultar el detalle JSON de un beneficiado.',
+    'edit_admin_beneficiados': 'Modificar beneficiados desde la administración.',
+    'delete_admin_beneficiados': 'Eliminar beneficiados desde la administración.',
     'create_admin_records': 'Crear registros asociados a funcionarios y períodos abiertos.',
     'edit_admin_records': 'Modificar registros dentro de delegaciones autorizadas y períodos abiertos.',
     'create_admin_social_attentions': 'Crear atenciones sociales asociadas a funcionarios.',
@@ -158,14 +203,20 @@ PERMISSION_DESCRIPTIONS = {
     'delete_admin_juntas': 'Eliminar juntas de vecinos desde la administración.',
     'access_employee_dashboard': 'Consultar el registro de actividades propio.',
     'manage_employee_activities': 'Crear, editar y eliminar actividades propias.',
+    'view_employee_record_detail': 'Consultar el detalle JSON de una actividad para edición.',
+    'edit_employee_record_ajax': 'Modificar datos de una actividad mediante AJAX.',
     'access_funcionario_vecinos': 'Consultar vecinos de la delegación.',
     'manage_vecinos': 'Crear, editar, desactivar y eliminar vecinos.',
     'edit_vecinos': 'Modificar datos de vecinos.',
+    'view_vecino_detail': 'Consultar detalle JSON de un vecino.',
+    'edit_vecino_ajax': 'Modificar vecino por AJAX.',
     'deactivate_vecinos': 'Desactivar vecinos sin eliminar sus datos.',
     'delete_vecinos': 'Eliminar vecinos sin registros asociados.',
     'access_funcionario_juntas': 'Consultar juntas de vecinos de la delegación.',
-    'create_juntas': 'Crear juntas de vecinos. Actualmente disponible para Administrador.',
+    'create_juntas': 'Crear juntas de vecinos.',
     'edit_juntas': 'Modificar los datos de juntas de vecinos.',
+    'view_junta_detail': 'Consultar detalle JSON de una junta de vecinos.',
+    'edit_junta_ajax': 'Modificar junta de vecinos por AJAX.',
     'deactivate_juntas': 'Desactivar juntas de vecinos sin eliminar sus relaciones.',
     'delete_juntas': 'Eliminar juntas de vecinos que no tengan vecinos relacionados.',
     'manage_employee_compliance': 'Consultar el cumplimiento de actividades.',
@@ -191,6 +242,12 @@ PERMISSION_DESCRIPTIONS['view_coordinator_reports'] = 'Consultar informes consol
 PERMISSION_DESCRIPTIONS['view_coordinator_trends'] = 'Consultar la evolución histórica del cumplimiento por período, con filtros por delegación, cargo y funcionario.'
 PERMISSION_DESCRIPTIONS['request_closed_period_authorization'] = 'Solicitar cambios acotados de metas en períodos cerrados.'
 PERMISSION_DESCRIPTIONS['review_closed_period_authorizations'] = 'Aprobar o rechazar solicitudes de cambios en períodos cerrados.'
+PERMISSION_DESCRIPTIONS['view_social_attention_detail'] = 'Consultar el detalle JSON de una atención social para edición.'
+PERMISSION_DESCRIPTIONS['edit_social_attention_ajax'] = 'Modificar datos de una atención social mediante AJAX.'
+PERMISSION_DESCRIPTIONS['access_social_cases'] = 'Consultar y administrar la gestión de casos y gestiones sociales.'
+PERMISSION_DESCRIPTIONS['create_social_management_ajax'] = 'Crear una nueva gestión social mediante modal emergente AJAX.'
+PERMISSION_DESCRIPTIONS['view_social_management_detail'] = 'Consultar el detalle JSON de una gestión social para edición.'
+PERMISSION_DESCRIPTIONS['edit_social_management_ajax'] = 'Modificar fecha u observaciones de una gestión social mediante AJAX.'
 
 PERMISSION_BY_CODENAME = {
     definition.codename: definition
@@ -218,10 +275,15 @@ def cargo_key_for_access(name):
         'administrador del sistema',
     } or normalized.startswith(('administrador ', 'admin ')):
         return 'admin'
-    if normalized == 'encargado social' or normalized.startswith(
-        ('encargado social ', 'encargada social ', 'funcionario '),
+    
+    if (
+        normalized in {'encargado social', 'encargado área social', 'encargado area social'}
+        or normalized.startswith(
+            ('encargado social', 'encargada social', 'encargado área social', 'encargado area social', 'funcionario ')
+        )
     ):
         return 'funcionario'
+
     if normalized == 'funcionario':
         return 'funcionario'
     if normalized == 'coordinador' or normalized.startswith('coordinador '):

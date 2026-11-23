@@ -85,18 +85,10 @@ class ReclamoForm(PerformanceLinkedForm):
             'desempeno': 'Funcionario, ítem y período',
         }
 
-
+# Actualizado 22.11
 class HitoForm(BootstrapFormMixin, forms.ModelForm):
-    evento_recurrente = forms.TypedChoiceField(
-        choices=((0, 'No'), (1, 'Sí')),
-        coerce=int,
-        label='Evento recurrente',
-    )
-    incluir_agenda = forms.TypedChoiceField(
-        choices=((0, 'No'), (1, 'Sí')),
-        coerce=int,
-        label='Incluir en agenda',
-    )
+    evento_recurrente = forms.TypedChoiceField(choices=((0, 'No'), (1, 'Sí')),coerce=int,label='Evento recurrente',)
+    incluir_agenda = forms.TypedChoiceField(choices=((0, 'No'), (1, 'Sí')),coerce=int,label='Incluir en agenda',)
 
     class Meta:
         model = Hito
@@ -108,63 +100,38 @@ class HitoForm(BootstrapFormMixin, forms.ModelForm):
             'estado',
             'evento_recurrente',
             'incluir_agenda',
-            'periocidad',
+            'periodicidad',
             'territorio',
             'delegacion',
             'responsable',
             'registro',
         )
         widgets = {
-            'fecha_termino': forms.DateTimeInput(
-                attrs={'type': 'datetime-local'},
-            ),
+            'fecha_termino': forms.DateTimeInput(attrs={'type': 'datetime-local'},),
         }
         labels = {
             'fecha_termino': 'Fecha de término',
             'recursos_asociados': 'Recursos asociados',
-            'periocidad': 'Periodicidad',
+            'periodicidad': 'Periodicidad',
             'territorio': 'Territorio',
             'delegacion': 'Delegación',
             'responsable': 'Responsable',
             'registro': 'Registro asociado',
         }
 
-    def __init__(
-        self,
-        *args,
-        delegaciones=None,
-        territorios=None,
-        responsables=None,
-        registros=None,
-        **kwargs,
-    ):
+    def __init__(self,*args,delegaciones=None,territorios=None,responsables=None,registros=None,**kwargs,):
         super().__init__(*args, **kwargs)
-        self.fields['delegacion'].queryset = (
-            delegaciones if delegaciones is not None
-            else self.fields['delegacion'].queryset.none()
-        )
-        self.fields['territorio'].queryset = (
-            territorios if territorios is not None
-            else self.fields['territorio'].queryset.none()
-        )
-        self.fields['responsable'].queryset = (
-            responsables if responsables is not None
-            else self.fields['responsable'].queryset.none()
-        )
-        self.fields['registro'].queryset = (
-            registros if registros is not None
-            else self.fields['registro'].queryset.none()
-        )
+        self.fields['delegacion'].queryset = (delegaciones if delegaciones is not None else self.fields['delegacion'].queryset.none())
+        self.fields['territorio'].queryset = (territorios if territorios is not None else self.fields['territorio'].queryset.none())
+        self.fields['responsable'].queryset = (responsables if responsables is not None else self.fields['responsable'].queryset.none())
+        self.fields['registro'].queryset = (registros if registros is not None else self.fields['registro'].queryset.none())
 
     def clean(self):
         cleaned_data = super().clean()
         delegation = cleaned_data.get('delegacion')
         territory = cleaned_data.get('territorio')
         if delegation and territory and territory.delegacion_id != delegation.pk:
-            self.add_error(
-                'territorio',
-                'El territorio debe pertenecer a la delegación seleccionada.',
-            )
+            self.add_error('territorio','El territorio debe pertenecer a la delegación seleccionada.',)
         return cleaned_data
 
     def save(self, commit=True):

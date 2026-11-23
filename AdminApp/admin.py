@@ -3,8 +3,7 @@ from django import forms
 from django.contrib.admin.sites import NotRegistered
 from django.contrib.auth.models import Group
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
-
-from AdminApp.models import Cargo,Delegacion,Alerta,Comentarios,Historial,ParametroSistema,PasswordResetAuditEvent,Rol,Usuario
+from AdminApp.models import Cargo,Delegacion,Alerta,Historial,ParametroSistema,PasswordResetAuditEvent,Rol,Usuario
 from FuncionarioApp.models import Tipo,Subtipo
 
 from .audit import registrar_historial
@@ -129,13 +128,14 @@ class RolAdmin(admin.ModelAdmin):
 	def has_delete_permission(self, request, obj=None):
 		return False
 
-
+#esta clase no se utiliza actualmente, pero se deja comentada por si se requiere en el futuro para la gestión de tipos de atención
+"""
 @admin.register(Tipo)
 class TipoAtencionAdmin(admin.ModelAdmin):
 	list_display = ('nombre', 'estado')
 	list_filter = ('estado',)
 	search_fields = ('nombre',)
-
+"""
 
 @admin.register(Subtipo)
 class SubAtencionAdmin(admin.ModelAdmin):
@@ -189,6 +189,8 @@ class AlertaAdmin(admin.ModelAdmin):
 	search_fields = ('motivo', 'destinatario__email')
 
 
+#este bloque de código está comentado porque la clase ComentariosAdmin no se utiliza actualmente, pero se deja como referencia para posibles usos futuros
+"""
 @admin.register(Comentarios)
 class ComentariosAdmin(admin.ModelAdmin):
 	list_display = ('fecha', 'autor', 'registro', 'compromiso')
@@ -208,3 +210,4 @@ class ComentariosAdmin(admin.ModelAdmin):
 		'periodo_agenda_compromiso',
 		'agenda_delegacion_compromiso',
 	)
+"""

@@ -450,6 +450,8 @@ def _record_list(request, spec):
             filename=f'{spec.key}.csv',
             rows=rows,
             entity=f'Listado:{spec.key}',
+            title=f'Reporte de {spec.title}',
+            delegation=selected_delegation(request) or 'Todas las delegaciones',
             filters=filters,
             row_count=queryset.count(),
         )
@@ -923,12 +925,19 @@ def informes_generados(request):
                 formato='csv',
                 autor=request.user,
             )
+            selected_delegation_obj = (
+                Delegacion.objects.filter(pk=delegation_id).first()
+                if delegation_id.isdecimal()
+                else 'Todas las delegaciones'
+            )
             return csv_response(
                 request,
                 filename='informe_consolidado.csv',
                 rows=consolidated_report_csv_rows(period, rows, summaries),
                 entity='InformeConsolidado',
                 action='Exportar informe consolidado CSV',
+                title='Informe consolidado de cumplimiento',
+                delegation=selected_delegation_obj,
                 filters=filters,
                 row_count=len(rows),
                 period=period,
@@ -1003,6 +1012,8 @@ def resumen_delegacion(request):
             rows=rows,
             entity='ResumenDelegacion',
             action='Exportar resumen de delegación CSV',
+            title='Resumen de desempeño por delegación',
+            delegation=delegation or 'Todas las delegaciones',
             filters={
                 'delegacion': selected_delegation_value,
                 'periodo': str(period.pk) if period else '',
@@ -1344,7 +1355,7 @@ def _compromiso_en_alcance(request):
         Compromiso.objects.select_related(
             'agenda__delegacion',
             'agenda__periodo',
-        ).prefetch_related('responsable', 'evidencias_compromiso'),
+        ).select_related('evidencia').prefetch_related('responsable'),
         request,
         delegation_lookup='agenda__delegacion_id',
     )
@@ -1390,7 +1401,7 @@ def _compromiso_form(request, record_id=None):
             'No se puede modificar un compromiso de un período cerrado.',
         )
         return redirect(f'{list_url}?delegacion={selected_value}')
-    if editing and editing.evidencias_compromiso.exists():
+    if editing and bool(editing.evidencia_id):
         messages.error(
             request,
             'No se puede editar un compromiso que ya tiene evidencia asociada.',

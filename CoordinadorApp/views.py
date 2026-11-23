@@ -194,15 +194,91 @@ def home(request):
     if edit_id:
         return redirect(f"{reverse('coordinador:periodos')}?editar={edit_id}")
 
-    assigned_periods = Periodo.objects.filter(
-        desempenos__usuario=request.user,
-    ).distinct().order_by('-fecha_inicio')
-    period_id = request.GET.get('periodo')
+    periodos = Periodo.objects.order_by('-fecha_inicio', '-pk')
+    period_id = request.GET.get('periodo', '')
     period = (
-        assigned_periods.filter(pk=int(period_id)).first()
-        if period_id and period_id.isdecimal()
+        periodos.filter(pk=period_id).first()
+        if period_id.isdecimal()
         else None
-    ) or assigned_periods.first()
+    )
+    if period is None:
+        period = periodos.filter(
+            estado=Periodo.Estado.ABIERTO,
+        ).first() or periodos.first()
+
+    desempenos = (
+        Desempeno.objects.filter(periodo=period)
+        if period else Desempeno.objects.none()
+    )
+    registros = (
+        Registro.objects.filter(periodo=period)
+        if period else Registro.objects.none()
+    )
+    evidencias_pendientes = (
+        Evidencia.objects.filter(
+            registros__periodo=period,
+            estado=Evidencia.Estado.PENDIENTE,
+        ).distinct()
+        if period else Evidencia.objects.none()
+    )
+    return render(request, 'CoordinadorApp/dashboard.html', {
+        'sgr_role': 'Coordinación',
+        'sidebar_modules': _coordinator_management_modules(),
+        'periodos': periodos,
+        'periodo_seleccionado': period,
+        'open_period_count': periodos.filter(
+            estado=Periodo.Estado.ABIERTO,
+        ).count(),
+        'closed_period_count': periodos.filter(
+            estado=Periodo.Estado.CERRADO,
+        ).count(),
+        'goal_count': desempenos.count(),
+        'employee_count': desempenos.values('usuario_id').distinct().count(),
+        'activity_count': registros.count(),
+        'validated_activity_count': registros.filter(
+            estado=Registro.Estado.VALIDADA,
+        ).count(),
+        'pending_activity_count': registros.filter(
+            estado=Registro.Estado.PENDIENTE,
+        ).count(),
+        'pending_evidence_count': evidencias_pendientes.count(),
+    })
+
+
+def _coordinator_management_modules():
+    return (
+        {'label': 'Panel de Coordinación', 'url_name': 'coordinador:home'},
+        {'label': 'Tablero Personal', 'url_name': 'coordinador:personal'},
+        {'label': 'Gestión de períodos', 'url_name': 'coordinador:periodos'},
+        {'label': 'Gestión de metas', 'url_name': 'coordinador:metas'},
+        {'label': 'Funciones por cargo', 'url_name': 'coordinador:cargos_funciones'},
+        {'label': 'Ponderaciones', 'url_name': 'coordinador:ponderaciones'},
+        {'label': 'Informes de gestión', 'url_name': 'coordinador:informes'},
+        {'label': 'Tendencias históricas', 'url_name': 'coordinador:tendencias'},
+        {'label': 'Solicitar autorización', 'url_name': 'coordinador:solicitudes_autorizacion'},
+    )
+
+
+@cargo_required(
+    'coordinador', 'admin', 'administrador',
+    permission='view_coordinator_personal',
+)
+def personal(request):
+    edit_id = request.GET.get('editar')
+    if edit_id:
+        return redirect(f"{reverse('coordinador:periodos')}?editar={edit_id}")
+
+    periodos = Periodo.objects.order_by('-fecha_inicio', '-pk')
+    period_id = request.GET.get('periodo', '')
+    period = (
+        periodos.filter(pk=period_id).first()
+        if period_id.isdecimal()
+        else None
+    )
+    if period is None:
+        period = periodos.filter(
+            estado=Periodo.Estado.ABIERTO,
+        ).first() or periodos.first()
     performances = (
         Desempeno.objects.filter(
             usuario=request.user, periodo=period,
@@ -213,11 +289,8 @@ def home(request):
     has_items = bool(summary['items'])
     return render(request, 'FuncionarioApp/cumplimiento.html', {
         'sgr_role': 'Coordinación',
-        'sidebar_modules': (
-            {'label': 'Tablero Personal', 'url_name': 'coordinador:home'},
-            {'label': 'Gestión de períodos', 'url_name': 'coordinador:periodos'},
-        ),
-        'periodos': assigned_periods,
+        'sidebar_modules': _coordinator_management_modules(),
+        'periodos': periodos,
         'periodo_seleccionado': period,
         'summary': summary,
         'item_count': len(summary['items']),
@@ -226,19 +299,6 @@ def home(request):
             summary['avance_real'], tiene_items=has_items,
         ),
     })
-
-
-def _coordinator_management_modules():
-    return (
-        {'label': 'Tablero Personal', 'url_name': 'coordinador:home'},
-        {'label': 'Gestión de períodos', 'url_name': 'coordinador:periodos'},
-        {'label': 'Gestión de metas', 'url_name': 'coordinador:metas'},
-        {'label': 'Funciones por cargo', 'url_name': 'coordinador:cargos_funciones'},
-        {'label': 'Ponderaciones', 'url_name': 'coordinador:ponderaciones'},
-        {'label': 'Informes de gestión', 'url_name': 'coordinador:informes'},
-        {'label': 'Tendencias históricas', 'url_name': 'coordinador:tendencias'},
-        {'label': 'Solicitar autorización', 'url_name': 'coordinador:solicitudes_autorizacion'},
-    )
 
 
 @cargo_required(
@@ -363,7 +423,13 @@ def ponderaciones(request):
             'total': Decimal('0'),
         })
         grouped[key]['rows'].append(record)
-        grouped[key]['total'] += record.item.ponderacion or Decimal('0')
+
+        ponderacion_val = getattr(record, 'ponderacion', None)
+        if ponderacion_val is None and record.item:
+            ponderacion_val = getattr(record.item, 'ponderacion', Decimal('0'))
+
+        grouped[key]['total'] += ponderacion_val or Decimal('0')
+
     summaries = []
     for summary in grouped.values():
         total = summary['total']
@@ -436,7 +502,7 @@ def consolidated_report_rows(request):
             autor_id__in=user_ids,
             periodo_id=period.pk if period else None,
             estado=Registro.Estado.VALIDADA,
-            evidencias_registros__estado=Evidencia.Estado.APROBADA,
+            evidencia__estado=Evidencia.Estado.APROBADA,
         ).values('autor_id', 'item_id', 'periodo_id').annotate(
             cantidad=Count('pk', distinct=True),
         )
@@ -490,13 +556,25 @@ def informes(request):
         return HttpResponseNotAllowed(['GET'])
     data = consolidated_report_rows(request)
     periods, period, period_id, delegation_id, cargo_id, user_id, rows, summaries = data
-    if request.GET.get('export') == 'csv':
-        return csv_response(
+    export_fmt = request.GET.get('export')
+    if export_fmt in {'csv', 'excel'}:
+        from AdminApp.csv_utils import excel_rows_response
+
+        selected_delegation_obj = (
+            Delegacion.objects.filter(pk=delegation_id).first()
+            if delegation_id.isdecimal()
+            else 'Todas las delegaciones'
+        )
+        exporter = excel_rows_response if export_fmt == 'excel' else csv_response
+        ext = 'xlsx' if export_fmt == 'excel' else 'csv'
+        return exporter(
             request,
-            filename='informe_consolidado.csv',
+            filename=f'informe_consolidado.{ext}',
             rows=consolidated_report_csv_rows(period, rows, summaries),
             entity='InformeConsolidado',
-            action='Exportar informe consolidado CSV',
+            action=f'Exportar informe consolidado {ext.upper()}',
+            title='Informe consolidado de cumplimiento',
+            delegation=selected_delegation_obj,
             filters={
                 'periodo': period_id,
                 'delegacion': delegation_id,
@@ -674,32 +752,41 @@ def tendencias(request):
     else:
         empty_message = ''
 
-    if request.GET.get('export') == 'csv':
-        csv_rows = [[
-            'Período',
-            'Funcionarios considerados',
-            'Promedio de avance real (%)',
-            'Funcionarios sobre el umbral (%)',
-            'Funcionarios sin ítems',
-        ]]
-        csv_rows.extend([
-            row['periodo'].nombre,
-            row['funcionarios_considerados'],
-            row['promedio_avance_real'],
-            row['porcentaje_sobre_umbral'],
-            row['funcionarios_sin_items'],
-        ] for row in series)
-        return csv_response(
+    export_fmt = request.GET.get('export')
+    if export_fmt in {'csv', 'excel'}:
+        from AdminApp.csv_utils import excel_rows_response
+
+        selected_delegation_obj = (
+            Delegacion.objects.filter(pk=parsed_filters['delegacion']).first()
+            if parsed_filters.get('delegacion')
+            else 'Todas las delegaciones'
+        )
+        exporter = excel_rows_response if export_fmt == 'excel' else csv_response
+        ext = 'xlsx' if export_fmt == 'excel' else 'csv'
+        return exporter(
             request,
-            filename='tendencias_historicas.csv',
-            rows=csv_rows,
+            filename=f'tendencias_historicas.{ext}',
+            rows=[[
+                'Período',
+                'Funcionarios considerados',
+                'Promedio de avance real (%)',
+                'Funcionarios sobre el umbral (%)',
+                'Funcionarios sin ítems',
+            ]] + [[
+                item['periodo'].nombre,
+                item['funcionarios_considerados'],
+                item['promedio_avance_real'],
+                item['porcentaje_sobre_umbral'],
+                item['funcionarios_sin_items'],
+            ] for item in series],
             entity='TendenciasHistoricas',
-            action='Exportar tendencias históricas CSV',
-            filters={**raw_filters, 'periodos': period_limit},
+            action=f'Exportar tendencias históricas {ext.upper()}',
+            title='Reporte de tendencias históricas',
+            delegation=selected_delegation_obj,
+            filters=raw_filters,
             row_count=len(series),
             period=selected_periods[-1] if selected_periods else None,
         )
-
     return render(request, 'CoordinadorApp/tendencias.html', {
         'sgr_role': 'Coordinación',
         'sidebar_modules': _coordinator_management_modules(),

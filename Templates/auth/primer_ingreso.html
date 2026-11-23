@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}SGR | Primer ingreso{% endblock %}
+{% block page_title %}Definir contraseña definitiva{% endblock %}
+
+{% block content %}
+<section class="auth-card-wrap">
+  <div class="form-panel auth-card">
+    <p class="eyebrow">PRIMER INGRESO OBLIGATORIO</p>
+    <p>Ingresaste con una credencial temporal. Antes de continuar, debes establecer tu contraseña definitiva.</p>
+    <div class="password-requirements">
+      <strong>Requisitos de contraseña</strong>
+      {{ password_requirements|safe }}
+    </div>
+    <form method="post">
+      {% csrf_token %}
+      {% for field in form %}
+      <div class="mb-3">
+        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+        {% for error in field.errors %}
+        <div class="invalid-feedback d-block">{{ error }}</div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+      {% endif %}
+      <button class="btn btn-primary w-100" type="submit">Guardar contraseña definitiva</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

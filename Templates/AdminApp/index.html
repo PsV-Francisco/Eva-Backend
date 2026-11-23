@@ -58,6 +58,7 @@
         <label class="visually-hidden" for="user-status">Filtrar por estado</label>
         <select id="user-status" class="form-select" name="estado">
           <option value="">Todos los estados</option>
+          <option value="pendiente_activacion"{% if status == 'pendiente_activacion' %} selected{% endif %}>Pendiente de activación</option>
           <option value="activo"{% if status == 'activo' %} selected{% endif %}>Activo</option>
           <option value="inactivo"{% if status == 'inactivo' %} selected{% endif %}>Inactivo</option>
         </select>
@@ -76,15 +77,32 @@
           <tbody>
             {% for user in users %}
             <tr>
-              <td><strong>{{ user.get_full_name|default:user.email }}</strong><small class="d-block text-muted">{{ user.email }}</small></td>
+              <td>
+                <strong>{{ user.get_full_name|default:user.nombre|default:user.email }}</strong>
+                <small class="d-block text-muted">{{ user.email }}{% if user.rut %} · RUT {{ user.rut }}{% endif %}</small>
+              </td>
               <td>{{ user.delegacion|default:'—' }}</td>
               <td>{% for delegation in user.delegaciones_autorizadas.all %}<span class="tag">{{ delegation.nombre }}</span>{% empty %}<span class="text-muted">Ninguna</span>{% endfor %}</td>
               <td>{{ user.cargo|default:'—' }}</td>
               <td>{% for role in user.roles.all %}<span class="tag">{{ role.nombre }}</span>{% empty %}<span class="text-muted">Sin rol</span>{% endfor %}</td>
-              <td>{% if user.is_active %}<span class="status-dot">Activo</span>{% else %}<span class="status-dot status-off">Inactivo</span>{% endif %}</td>
+              <td>
+                {% if user.estado == 'pendiente_activacion' %}
+                <span class="badge text-bg-warning">Pendiente de activación</span>
+                {% elif user.is_active %}
+                <span class="status-dot">Activo</span>
+                {% else %}
+                <span class="status-dot status-off">Inactivo</span>
+                {% endif %}
+              </td>
               <td>
                 <div class="d-flex flex-wrap gap-1">
                   <a class="btn btn-sm btn-outline-primary" href="?editar={{ user.pk }}{% if pagination_query %}&amp;{{ pagination_query }}{% endif %}">Editar</a>
+                  {% if user.estado == 'pendiente_activacion' %}
+                  <form method="post">
+                    {% csrf_token %}<input type="hidden" name="action" value="reenviar_activacion"><input type="hidden" name="usuario_id" value="{{ user.pk }}">
+                    <button class="btn btn-sm btn-outline-warning" type="submit">Reenviar activación</button>
+                  </form>
+                  {% endif %}
                   {% if user.pk == last_active_admin_id %}
                   <span class="badge text-bg-warning align-self-center">Último Administrador activo protegido</span>
                   {% elif user.pk != request.user.pk and not user.is_superuser %}

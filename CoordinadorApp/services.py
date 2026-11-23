@@ -2,13 +2,13 @@ from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from AdminApp.audit import registrar_historial
 from AdminApp.models import ParametroSistema
 from CoordinadorApp.models import Desempeno, SolicitudAutorizacionPeriodo
-from FuncionarioApp.models import Registro
+from FuncionarioApp.models import Registro, limite_diario_actividades
 from SupervisorApp.models import Evidencia
 
 
@@ -141,6 +141,31 @@ def _semaforo(cumplimiento, esperado):
     return 'rojo'
 
 
+def _conteo_actividades_puntaje(user_ids, period_ids):
+    """Cuenta actividades validadas con evidencia aprobada y genera_puntaje='SI', respetando el tope diario."""
+    if not user_ids or not period_ids:
+        return {}
+    registros_qs = Registro.objects.filter(
+        autor_id__in=user_ids,
+        periodo_id__in=period_ids,
+        estado=Registro.Estado.VALIDADA,
+        evidencia__estado=Evidencia.Estado.APROBADA,
+    ).filter(
+        Q(genera_puntaje__iexact='SI') | Q(genera_puntaje__isnull=True) | Q(genera_puntaje='')
+    ).select_related('autor').order_by('autor_id', 'fecha', 'creado', 'pk')
+
+    diarios_por_usuario = defaultdict(int)
+    counts = defaultdict(Decimal)
+    for reg in registros_qs:
+        limite = limite_diario_actividades(reg.autor)
+        day_key = (reg.autor_id, reg.fecha)
+        if diarios_por_usuario[day_key] >= limite:
+            continue
+        diarios_por_usuario[day_key] += 1
+        counts[(reg.autor_id, reg.item_id, reg.periodo_id)] += Decimal('1')
+    return dict(counts)
+
+# Updated 17.11
 def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
     desempenos = list(desempenos)
     if not desempenos:
@@ -151,22 +176,15 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
             'avance_real': ZERO,
             'avance_esperado': ZERO,
             'total_aporte': ZERO,
+            'total_ponderacion': ZERO, # <-- Añadido
             'ponderacion_completa': False,
         }
 
     if counts is None:
-        registros_aprobados = Registro.objects.filter(
-            autor_id__in={row.usuario_id for row in desempenos},
-            periodo_id__in={row.periodo_id for row in desempenos},
-            estado=Registro.Estado.VALIDADA,
-            evidencias_registros__estado=Evidencia.Estado.APROBADA,
-        ).values('autor_id', 'item_id', 'periodo_id').annotate(
-            cantidad=Count('pk', distinct=True),
+        counts = _conteo_actividades_puntaje(
+            {row.usuario_id for row in desempenos},
+            {row.periodo_id for row in desempenos},
         )
-        counts = {
-            (row['autor_id'], row['item_id'], row['periodo_id']): Decimal(row['cantidad'])
-            for row in registros_aprobados
-        }
     cap = Decimal(cap if cap is not None else ParametroSistema.obtener(ParametroSistema.Clave.TOPE_CUMPLIMIENTO))
 
     items = []
@@ -174,6 +192,7 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
     total_meta = ZERO
     total_esperado = ZERO
     total_aporte = ZERO
+    total_ponderacion = ZERO  # <-- Añadido
     for desempenho in desempenos:
         avance = counts.get(
             (desempenho.usuario_id, desempenho.item_id, desempenho.periodo_id),
@@ -185,7 +204,7 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
             rounding=ROUND_HALF_UP,
         )
         esperado = porcentaje_esperado(desempenho.periodo, hoy=hoy)
-        ponderacion = desempenho.item.ponderacion
+        ponderacion = desempenho.ponderacion
         aporte = (
             (Decimal(ponderacion) * cumplimiento / HUNDRED).quantize(
                 Decimal('0.01'),
@@ -209,6 +228,8 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
         total_esperado += expected_amount
         if aporte is not None:
             total_aporte += aporte
+        if ponderacion is not None:
+            total_ponderacion += Decimal(ponderacion)  # <-- Añadido
 
     avance_real = (
         min(total_avance * HUNDRED / total_meta, cap)
@@ -225,6 +246,7 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
         'avance_real': avance_real,
         'avance_esperado': avance_esperado,
         'total_aporte': total_aporte.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
+        'total_ponderacion': total_ponderacion.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),  # <-- Añadido
         'ponderacion_completa': all(
             item['ponderacion'] is not None for item in items
         ),
@@ -286,17 +308,7 @@ def tendencias_cumplimiento(usuarios, periodos, *, cap, umbral):
             periodo_id__in=period_ids,
         ).select_related('item', 'periodo', 'usuario'),
     )
-    counts = {
-        (row['autor_id'], row['item_id'], row['periodo_id']): Decimal(row['cantidad'])
-        for row in Registro.objects.filter(
-            autor_id__in=user_ids,
-            periodo_id__in=period_ids,
-            estado=Registro.Estado.VALIDADA,
-            evidencias_registros__estado=Evidencia.Estado.APROBADA,
-        ).values('autor_id', 'item_id', 'periodo_id').annotate(
-            cantidad=Count('pk', distinct=True),
-        )
-    }
+    counts = _conteo_actividades_puntaje(user_ids, period_ids)
 
     performances_by_user_period = defaultdict(list)
     for desempenho in desempenos:

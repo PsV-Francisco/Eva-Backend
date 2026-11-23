@@ -733,7 +733,7 @@ class CoordinatorDashboardTests(TestCase):
         )
         self.client.force_login(self.coordinator)
 
-    def test_coordinator_dashboard_shows_threshold_and_item_detail(self):
+    def test_coordinator_personal_board_shows_threshold_and_item_detail(self):
         period = Periodo.objects.create(
             nombre='Período tablero',
             fecha_inicio=date(2026, 10, 1),
@@ -751,17 +751,95 @@ class CoordinatorDashboardTests(TestCase):
             meta=10,
         )
 
-        response = self.client.get(reverse('coordinador:home'))
+        response = self.client.get(reverse('coordinador:personal'))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Umbral fijo')
         self.assertContains(response, 'Ítem tablero')
 
-    def test_coordinator_dashboard_without_items_shows_empty_message(self):
-        response = self.client.get(reverse('coordinador:home'))
+    def test_coordinator_personal_board_without_items_shows_empty_message(self):
+        response = self.client.get(reverse('coordinador:personal'))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Sin ítems asignados')
+        self.assertContains(response, 'No hay períodos disponibles')
+
+    def test_coordinator_personal_board_lists_periods_without_personal_goals(self):
+        period = Periodo.objects.create(
+            nombre='Período visible para coordinación',
+            fecha_inicio=date(2026, 10, 1),
+            fecha_fin=date(2026, 10, 31),
+        )
+
+        response = self.client.get(reverse('coordinador:personal'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, period.nombre)
+        self.assertEqual(response.context['periodo_seleccionado'], period)
+        self.assertEqual(response.context['periodos'].count(), 1)
+
+    def test_coordinator_dashboard_shows_global_period_and_operational_metrics(self):
+        period = Periodo.objects.create(
+            nombre='Período del panel',
+            fecha_inicio=date(2026, 10, 1),
+            fecha_fin=date(2026, 10, 31),
+        )
+        item = Item.objects.create(nombre='Ítem del panel', ponderacion='50.0')
+        Desempeno.objects.create(
+            usuario=self.coordinator,
+            item=item,
+            periodo=period,
+            meta=10,
+        )
+
+        response = self.client.get(reverse('coordinador:home'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'CoordinadorApp/dashboard.html')
+        self.assertContains(response, 'Panel de Coordinación')
+        self.assertContains(response, period.nombre)
+        self.assertEqual(response.context['goal_count'], 1)
+        self.assertEqual(response.context['employee_count'], 1)
+
+    def test_coordinator_dashboard_period_filter_selects_requested_period(self):
+        first = Periodo.objects.create(
+            nombre='Período anterior del panel',
+            fecha_inicio=date(2026, 1, 1),
+            fecha_fin=date(2026, 6, 30),
+            estado=Periodo.Estado.CERRADO,
+        )
+        second = Periodo.objects.create(
+            nombre='Período actual del panel',
+            fecha_inicio=date(2026, 7, 1),
+            fecha_fin=date(2026, 12, 31),
+        )
+
+        response = self.client.get(
+            reverse('coordinador:home'),
+            {'periodo': first.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['periodo_seleccionado'], first)
+        self.assertContains(response, 'Período actual del panel')
+        self.assertContains(response, 'Período anterior del panel')
+
+    def test_legacy_period_edit_link_redirects_to_period_management(self):
+        period = Periodo.objects.create(
+            nombre='Período para editar',
+            fecha_inicio=date(2026, 10, 1),
+            fecha_fin=date(2026, 10, 31),
+        )
+
+        response = self.client.get(
+            reverse('coordinador:home'),
+            {'editar': period.pk},
+        )
+
+        self.assertRedirects(
+            response,
+            f"{reverse('coordinador:periodos')}?editar={period.pk}",
+        )
 
 
 class TrafficLightTests(SimpleTestCase):

@@ -5,11 +5,10 @@ from .models import Evidencia, RevisionEvidencia
 
 @admin.register(Evidencia)
 class EvidenciaAdmin(admin.ModelAdmin):
-	list_display = ('codigo', 'registro', 'compromiso', 'gestion_atencion', 'supervisor', 'fecha', 'estado')
+	list_display = ('codigo','fecha', 'estado')
 	list_filter = ('estado', 'fecha')
 	search_fields = (
-		'codigo', 'registro__codigo', 'compromiso__descripcion',
-		'gestion_atencion__codigo', 'supervisor__email',
+		'codigo',
 	)
 	readonly_fields = ('codigo', 'fecha')
 

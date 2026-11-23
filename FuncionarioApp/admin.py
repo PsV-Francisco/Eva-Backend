@@ -1,7 +1,6 @@
 from django.contrib import admin
-
 from CoordinadorApp.models import AtencionSocial,GestionAtencion
-from FuncionarioApp.models import CargoJv,Beneficiado,Registro,Territorio
+from FuncionarioApp.models import CargoJv,Registro,Territorio,Vecino
 
 
 @admin.register(Territorio)
@@ -18,10 +17,6 @@ class CargoJvAdmin(admin.ModelAdmin):
     search_fields = ('nombre', 'permisos', 'junta_vecino__nombre')
 
 
-@admin.register(Beneficiado)
-class BeneficiadoAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'apellido', 'telefono', 'email')
-    search_fields = ('nombre', 'apellido', 'telefono', 'email')
 
 
 @admin.register(Registro)
@@ -34,17 +29,24 @@ class RegistroAdmin(admin.ModelAdmin):
 
 @admin.register(AtencionSocial)
 class AtencionSocialAdmin(admin.ModelAdmin):
-	list_display = ('beneficiado', 'autor', 'tipo', 'subtipo', 'gestion_atencion', 'fecha', 'creado')
+	list_display = ('vecino', 'autor', 'tipo', 'subtipo', 'gestion_atencion', 'fecha', 'creado')
 	list_filter = ('tipo', 'subtipo', 'fecha')
-	search_fields = ('autor__email', 'beneficiado__nombre', 'beneficiado__apellido', 'resultado')
+	search_fields = ('autor__email', 'vecino__nombre', 'beneficiado__apellido', 'resultado')
 	readonly_fields = ('creado',)
 
 
 
 @admin.register(GestionAtencion)
 class GestionAtencionAdmin(admin.ModelAdmin):
-	list_display = ('numero_gestion', 'fecha', 'observaciones')
-	list_filter = ('numero_gestion', 'fecha')
+	list_display = ('fecha', 'observaciones',)
+	list_filter = ('fecha',)
 	search_fields = ('observaciones',)
 	readonly_fields = ('codigo',)
+
+@admin.register(Vecino)
+class VecinoAdmin(admin.ModelAdmin):
+    list_display = ('rut', 'nombre', 'telefono', 'delegacion', 'territorio', 'estado', 'activo')
+    list_filter = ('estado', 'activo', 'delegacion', 'territorio')
+    search_fields = ('rut', 'nombre', 'telefono', 'direccion')
+    readonly_fields = ('creado', 'actualizado')
 

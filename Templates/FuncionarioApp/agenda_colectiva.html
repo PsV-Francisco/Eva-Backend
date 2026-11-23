@@ -2,10 +2,164 @@
 {% block title %}Agenda colectiva | SGR{% endblock %}
 {% block page_title %}Agenda colectiva{% endblock %}
 {% block content %}
-<div class="dashboard-layout">{% include 'includes/role_sidebar.html' %}<div class="dashboard-main">
-{% if not delegation_assigned %}<div class="alert alert-warning">Tu cuenta no tiene una delegación asignada; no hay agenda colectiva disponible.</div>{% endif %}
-<section class="content-section"><div class="section-head"><h2>{% if periodo_seleccionado %}{{ periodo_seleccionado.nombre }}{% else %}Sin período abierto{% endif %}</h2></div><form method="get" class="search-panel mb-3"><label for="periodo">Período abierto</label><select id="periodo" name="periodo">{% for periodo in periodos %}<option value="{{ periodo.pk }}" {% if periodo == periodo_seleccionado %}selected{% endif %}>{{ periodo.nombre }}</option>{% endfor %}</select><button class="btn btn-primary" type="submit">Filtrar</button></form></section>
-<section class="content-section"><h2>Registros incluidos en agenda</h2><div class="table-responsive"><table class="table"><thead><tr><th>Fecha</th><th>Funcionario</th><th>Ítem</th><th>Actividad</th><th>Estado</th></tr></thead><tbody>{% for registro in registros %}<tr><td>{{ registro.fecha|date:'d/m/Y' }}</td><td>{{ registro.autor.get_full_name|default:registro.autor.email }}</td><td>{{ registro.item }}</td><td>{{ registro.descripcion }}</td><td>{{ registro.get_estado_display }}</td></tr>{% empty %}<tr><td colspan="5">No hay registros compartidos para el período.</td></tr>{% endfor %}</tbody></table></div></section>
-<section class="content-section"><div class="section-head"><h2>Compromisos de la delegación</h2><a class="btn btn-primary" href="{% url 'funcionario:compromiso_nuevo' %}">Nuevo compromiso</a></div><div class="table-responsive"><table class="table"><thead><tr><th>Fecha</th><th>Compromiso</th><th>Responsables</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{% for compromiso in compromisos %}<tr><td>{{ compromiso.fecha|date:'d/m/Y' }}</td><td>{{ compromiso.descripcion }}</td><td>{% for responsable in compromiso.responsable.all %}{{ responsable.get_full_name|default:responsable.email }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td><td>{{ compromiso.get_estado_display }}</td><td>{% if request.user in compromiso.responsable.all and compromiso.agenda.periodo.estado == 'abierto' %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="estado_compromiso"><input type="hidden" name="compromiso_id" value="{{ compromiso.pk }}"><input type="hidden" name="periodo" value="{{ periodo_seleccionado.pk }}"><select name="estado" aria-label="Nuevo estado"><option value="ingresado" {% if compromiso.estado == 'ingresado' %}selected{% endif %}>Ingresado</option><option value="pendiente" {% if compromiso.estado == 'pendiente' %}selected{% endif %}>Pendiente</option><option value="en_proceso" {% if compromiso.estado == 'en_proceso' %}selected{% endif %}>En proceso</option><option value="realizado" {% if compromiso.estado == 'realizado' %}selected{% endif %}>Realizado</option></select><button class="btn btn-sm btn-primary" type="submit">Guardar estado</button></form><a href="{% url 'funcionario:compromiso_evidencia' compromiso.pk %}">Cargar evidencia</a>{% if compromiso.evidencias_compromiso.all %}<span class="text-muted small">Edición general bloqueada porque ya tiene evidencias.</span>{% else %}<a href="{% url 'funcionario:compromiso_editar' compromiso.pk %}">Editar datos</a>{% endif %}{% elif compromiso.agenda.periodo.estado == 'cerrado' %}Período cerrado{% else %}Solo responsables asignados{% endif %}</td></tr>{% empty %}<tr><td colspan="5">No hay compromisos para el período.</td></tr>{% endfor %}</tbody></table></div></section>
-</div></div>
+<div class="dashboard-layout">
+    {% include 'includes/role_sidebar.html' %}
+    <div class="dashboard-main">
+        {% if not delegation_assigned %}
+        <div class="alert alert-warning">Tu cuenta no tiene una delegación asignada; no hay agenda colectiva disponible.</div>
+        {% endif %}
+
+        <section class="content-section">
+            <div class="section-head">
+                <h2>{% if periodo_seleccionado %}{{ periodo_seleccionado.nombre }}{% else %}Sin período abierto{% endif %}</h2>
+            </div>
+            
+            <!-- NUEVO FORMULARIO HU-29: Búsqueda y Filtros combinados -->
+            <form method="get" class="row g-3 mb-3 bg-light p-3 rounded shadow-sm border">
+                <div class="col-md-3">
+                    <label for="periodo" class="form-label fw-bold">Período abierto</label>
+                    <select id="periodo" name="periodo" class="form-select">
+                        {% for periodo in periodos %}
+                        <option value="{{ periodo.pk }}" {% if periodo == periodo_seleccionado %}selected{% endif %}>{{ periodo.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="q" class="form-label fw-bold">Búsqueda inteligente</label>
+                    <input type="text" class="form-control" id="q" name="q" value="{{ query }}" placeholder="Descripción o solicitante...">
+                </div>
+                <div class="col-md-3">
+                    <label for="estado_filtro" class="form-label fw-bold">Filtrar Estado</label>
+                    <select id="estado_filtro" name="estado_filtro" class="form-select">
+                        <option value="">Todos los estados</option>
+                        <option value="ingresado" {% if estado_filtro == 'ingresado' %}selected{% endif %}>Ingresado</option>
+                        <option value="pendiente" {% if estado_filtro == 'pendiente' %}selected{% endif %}>Pendiente</option>
+                        <option value="en_proceso" {% if estado_filtro == 'en_proceso' %}selected{% endif %}>En proceso</option>
+                        <option value="realizado" {% if estado_filtro == 'realizado' %}selected{% endif %}>Realizado</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end gap-2">
+                    <button class="btn btn-danger w-100 fw-bold" type="submit">Filtrar</button>
+                </div>
+            </form>
+        </section>
+
+        <!-- SECCIÓN DE REGISTROS -->
+        <section class="content-section">
+            <h2>Registros incluidos en agenda</h2>
+            <div class="table-responsive shadow-sm">
+                <table class="table table-striped">
+                    <thead class="table-dark">
+                        <tr><th>Fecha</th><th>Funcionario</th><th>Ítem</th><th>Actividad</th><th>Estado</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for registro in registros %}
+                        <tr>
+                            <td>{{ registro.fecha|date:'d/m/Y' }}</td>
+                            <td>{{ registro.autor.get_full_name|default:registro.autor.email }}</td>
+                            <td>{{ registro.item }}</td>
+                            <td>{{ registro.descripcion }}</td>
+                            <td>{{ registro.get_estado_display }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" class="text-center py-3">No hay registros compartidos para el período.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- SECCIÓN DE COMPROMISOS PAGINADA HU-29 -->
+        <section class="content-section">
+            <div class="section-head d-flex justify-content-between align-items-center mb-3">
+                <h2>Compromisos de la delegación</h2>
+                <a class="btn btn-danger fw-bold" href="{% url 'funcionario:compromiso_nuevo' %}">+ Nuevo compromiso</a>
+            </div>
+            <div class="table-responsive shadow-sm">
+                <table class="table table-striped align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Compromiso</th>
+                            <th>Responsables</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- ITERAMOS SOBRE page_obj EN VEZ DE compromisos -->
+                        {% for compromiso in page_obj %}
+                        <tr>
+                            <td>{{ compromiso.fecha|date:'d/m/Y' }}</td>
+                            <td>{{ compromiso.descripcion }}</td>
+                            <td>
+                                {% for responsable in compromiso.responsable.all %}
+                                    {{ responsable.get_full_name|default:responsable.email }}{% if not forloop.last %}, {% endif %}
+                                {% empty %}—{% endfor %}
+                            </td>
+                            <td>
+                                <span class="badge {% if compromiso.estado == 'realizado' %}bg-success{% elif compromiso.estado == 'en_proceso' %}bg-primary{% else %}bg-secondary{% endif %}">
+                                    {{ compromiso.get_estado_display }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if request.user in compromiso.responsable.all and compromiso.agenda.periodo.estado == 'abierto' %}
+                                    <form method="post" class="d-inline d-flex gap-2">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="action" value="estado_compromiso">
+                                        <input type="hidden" name="compromiso_id" value="{{ compromiso.pk }}">
+                                        <input type="hidden" name="periodo" value="{{ periodo_seleccionado.pk }}">
+                                        <select name="estado" aria-label="Nuevo estado" class="form-select form-select-sm" style="width: auto;">
+                                            <option value="ingresado" {% if compromiso.estado == 'ingresado' %}selected{% endif %}>Ingresado</option>
+                                            <option value="pendiente" {% if compromiso.estado == 'pendiente' %}selected{% endif %}>Pendiente</option>
+                                            <option value="en_proceso" {% if compromiso.estado == 'en_proceso' %}selected{% endif %}>En proceso</option>
+                                            <option value="realizado" {% if compromiso.estado == 'realizado' %}selected{% endif %}>Realizado</option>
+                                        </select>
+                                        <button class="btn btn-sm btn-primary" type="submit">Guardar</button>
+                                    </form>
+                                    <div class="mt-2">
+                                        <a href="{% url 'funcionario:compromiso_evidencia' compromiso.pk %}" class="text-decoration-none">Cargar evidencia</a>
+                                        {% if compromiso.evidencia %}
+                                            <br><span class="text-muted small">Edición general bloqueada porque ya tiene evidencias.</span>
+                                        {% else %}
+                                            | <a href="{% url 'funcionario:compromiso_editar' compromiso.pk %}" class="text-decoration-none">Editar datos</a>
+                                        {% endif %}
+                                    </div>
+                                {% elif compromiso.agenda.periodo.estado == 'cerrado' %}
+                                    <span class="text-muted small">Período cerrado</span>
+                                {% else %}
+                                    <span class="text-muted small">Solo responsables asignados</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" class="text-center py-4">No hay compromisos para los filtros seleccionados.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- CONTROLES DE PAGINACIÓN -->
+            {% if page_obj.has_other_pages %}
+            <nav class="mt-3">
+                <ul class="pagination justify-content-center">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item"><a class="page-link text-danger" href="?page={{ page_obj.previous_page_number }}&q={{ query }}&estado_filtro={{ estado_filtro }}&periodo={{ periodo_seleccionado.pk|default:'' }}">Anterior</a></li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link">Anterior</span></li>
+                    {% endif %}
+                    
+                    <li class="page-item active"><span class="page-link bg-danger border-danger">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span></li>
+                    
+                    {% if page_obj.has_next %}
+                        <li class="page-item"><a class="page-link text-danger" href="?page={{ page_obj.next_page_number }}&q={{ query }}&estado_filtro={{ estado_filtro }}&periodo={{ periodo_seleccionado.pk|default:'' }}">Siguiente</a></li>
+                    {% else %}
+                        <li class="page-item disabled"><span class="page-link">Siguiente</span></li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+        </section>
+    </div>
+</div>
 {% endblock %}

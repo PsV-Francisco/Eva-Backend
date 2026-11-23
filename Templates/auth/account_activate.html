@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block title %}SGR | Activación de cuenta{% endblock %}
+{% block page_title %}Activar cuenta y definir contraseña{% endblock %}
+
+{% block content %}
+<section class="auth-card-wrap">
+  <div class="form-panel auth-card">
+    {% if validlink %}
+    <p class="eyebrow">ACTIVACIÓN DE CUENTA</p>
+    <p>Bienvenido/a <strong>{{ target_user.nombre|default:target_user.email }}</strong>. Crea tu contraseña definitiva para activar tu acceso al sistema.</p>
+    <div class="password-requirements">
+      <strong>Requisitos de contraseña</strong>
+      {{ password_requirements|safe }}
+    </div>
+    <form method="post">
+      {% csrf_token %}
+      {% for field in form %}
+      <div class="mb-3">
+        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+        {% for error in field.errors %}
+        <div class="invalid-feedback d-block">{{ error }}</div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+      {% endif %}
+      <button class="btn btn-primary w-100" type="submit">Activar cuenta y guardar contraseña</button>
+    </form>
+    {% else %}
+    <p class="eyebrow">ENLACE DE ACTIVACIÓN NO VÁLIDO</p>
+    <p>Este enlace de activación no es válido, expiró o ya fue utilizado. Solicita al Administrador el reenvío de activación o utiliza la recuperación de contraseña.</p>
+    <a class="btn btn-primary w-100" href="{% url 'login' %}">Ir al inicio de sesión</a>
+    <p class="mt-3 mb-0"><a class="auth-link" href="{% url 'password_reset' %}">Recuperar contraseña</a></p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

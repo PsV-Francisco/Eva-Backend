@@ -21,7 +21,8 @@ SIDEBAR_SECTIONS = (
 )
 
 CURRENT_SECTION_BY_VIEW = {
-    'coordinador:home': ('metas-seguimiento', 'Tablero Personal'),
+    'coordinador:home': ('metas-seguimiento', 'Panel de Coordinación'),
+    'coordinador:personal': ('metas-seguimiento', 'Tablero Personal'),
     'vistaf:home': ('consulta', 'Búsqueda de información'),
     'administracion:dashboard': ('inicio', 'Inicio'),
 }
@@ -63,6 +64,7 @@ def _section_for(label, url_name):
         'administracion:metas',
         'administracion:parametros',
         'coordinador:home',
+        'coordinador:personal',
         'coordinador:metas',
         'coordinador:ponderaciones',
         'administracion:resumen-delegacion',
