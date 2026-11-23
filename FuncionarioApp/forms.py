@@ -365,7 +365,7 @@ class JuntaVecinoForm(BootstrapFormMixin, forms.ModelForm):
     def __init__(self, *args, delegaciones=None, **kwargs):
         super().__init__(*args, **kwargs)
         todas_delegaciones = Delegacion.objects.filter(
-            models.Q(estado=Delegacion.Estado.ACTIVA) | models.Q(estado__iexact='activo')
+            models.Q(estado=Delegacion.Estado.ACTIVADO) | models.Q(estado__iexact='activo')
         ).order_by('nombre')
 
         self.fields['delegacion'].queryset = todas_delegaciones

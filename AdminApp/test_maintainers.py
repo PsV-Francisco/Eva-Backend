@@ -79,7 +79,7 @@ class MaintainerTests(TestCase):
             'nombre': 'Delegación Centro',
             'direccion': 'Calle 1',
             'comuna': 'La Serena',
-            'estado': Delegacion.Estado.ACTIVA,
+            'estado': Delegacion.Estado.ACTIVADO,
         })
         self.assertRedirects(response, reverse('administracion:delegaciones'))
         delegation = Delegacion.objects.get(codigo='DEL-CENTRO')
@@ -97,7 +97,7 @@ class MaintainerTests(TestCase):
         })
         self.assertRedirects(response, reverse('administracion:delegaciones'))
         delegation.refresh_from_db()
-        self.assertEqual(delegation.estado, Delegacion.Estado.INACTIVA)
+        self.assertEqual(delegation.estado, Delegacion.Estado.DESACTIVADO)
 
     def test_delegation_code_is_backfilled_for_legacy_model_creations(self):
         delegation = Delegacion.objects.create(nombre='Código automático')
@@ -131,7 +131,7 @@ class MaintainerTests(TestCase):
 
         response = self.client.get(
             reverse('administracion:delegaciones'),
-            {'estado': Delegacion.Estado.ACTIVA},
+            {'estado': Delegacion.Estado.ACTIVADO},
         )
         self.assertContains(response, 'Delegación activa legado')
         self.assertContains(response, 'Activa')
@@ -139,7 +139,7 @@ class MaintainerTests(TestCase):
     def test_active_delegation_must_be_deactivated_before_deletion(self):
         delegation = Delegacion.objects.create(
             nombre='Delegación sin usuarios',
-            estado=Delegacion.Estado.ACTIVA,
+            estado=Delegacion.Estado.ACTIVADO,
         )
         listing = self.client.get(reverse('administracion:delegaciones'))
         self.assertContains(listing, 'Delegación sin usuarios')
@@ -158,7 +158,7 @@ class MaintainerTests(TestCase):
             {'action': 'cambiar_estado', 'object_id': delegation.pk},
         )
         delegation.refresh_from_db()
-        self.assertEqual(delegation.estado, Delegacion.Estado.INACTIVA)
+        self.assertEqual(delegation.estado, Delegacion.Estado.DESACTIVADO)
 
         response = self.client.post(
             reverse('administracion:delegaciones'),
@@ -646,7 +646,7 @@ class MaintainerTests(TestCase):
         )
         delegation = Delegacion.objects.create(
             nombre='Delegación para asignación',
-            estado=Delegacion.Estado.ACTIVA,
+            estado=Delegacion.Estado.ACTIVADO,
         )
 
         response = self.client.get(
@@ -686,7 +686,7 @@ class MaintainerTests(TestCase):
         active = Delegacion.objects.create(nombre='Delegación vigente')
         inactive = Delegacion.objects.create(
             nombre='Delegación desactivada',
-            estado=Delegacion.Estado.INACTIVA,
+            estado=Delegacion.Estado.DESACTIVADO,
         )
         managed_user = create_user(
             email='cuenta-contexto@sgr.test',
@@ -728,8 +728,8 @@ class MaintainerTests(TestCase):
                 codigo=f'NORTE-{index:02d}',
                 nombre=f'Norte {index:02d}',
                 estado=(
-                    Delegacion.Estado.ACTIVA
-                    if index % 2 == 0 else Delegacion.Estado.INACTIVA
+                    Delegacion.Estado.ACTIVADO
+                    if index % 2 == 0 else Delegacion.Estado.DESACTIVADO
                 ),
             )
 
@@ -748,12 +748,12 @@ class MaintainerTests(TestCase):
         Delegacion.objects.create(
             codigo='EXP-001',
             nombre='=HYPERLINK("https://example.invalid")',
-            estado=Delegacion.Estado.ACTIVA,
+            estado=Delegacion.Estado.ACTIVADO,
         )
         Delegacion.objects.create(
             codigo='EXP-002',
             nombre='No incluir',
-            estado=Delegacion.Estado.INACTIVA,
+            estado=Delegacion.Estado.DESACTIVADO,
         )
 
         response = self.client.get(

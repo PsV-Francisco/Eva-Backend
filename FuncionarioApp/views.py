@@ -614,7 +614,7 @@ def _vecinos_para_usuario(request):
 def _delegaciones_para_vecino(request):
     """Permite seleccionar cualquier delegación activa existente en el sistema."""
     return Delegacion.objects.filter(
-        Q(estado=Delegacion.Estado.ACTIVA)
+        Q(estado=Delegacion.Estado.ACTIVADO)
         | Q(estado__iexact='activo')
     ).order_by('nombre')
 
@@ -907,7 +907,7 @@ def _juntas_para_usuario(request):
 
 def _delegaciones_para_junta(request):
     return available_delegations(request.user).filter(
-        estado=Delegacion.Estado.ACTIVA,
+        estado=Delegacion.Estado.ACTIVADO,
     ).order_by('nombre')
 
 

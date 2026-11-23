@@ -173,7 +173,7 @@ def eliminar_beneficiado(request, beneficiado_id):
 )
 def dashboard(request):
     active_delegations = Delegacion.objects.filter(
-        Q(estado=Delegacion.Estado.ACTIVA)
+        Q(estado=Delegacion.Estado.ACTIVADO)
         | Q(estado__iexact='activo'),
     ).count()
     return render(request, 'AdminApp/dashboard.html', {

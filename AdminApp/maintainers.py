@@ -500,7 +500,7 @@ def display_value(record, field_name):
             and isinstance(record, Delegacion)
             and record.estado.casefold() == 'activo'
         ):
-            return Delegacion.Estado.ACTIVA.label
+            return Delegacion.Estado.ACTIVADO.label
         display_method = getattr(record, f'get_{field_name}_display', None)
         if display_method:
             return display_method()
