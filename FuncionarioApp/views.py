@@ -1279,11 +1279,23 @@ def editar_atencion_ajax(request, atencion_id):
     tipo_id = data.get('tipo_id')
     subtipo_id = data.get('subtipo_id')
     gestion_atencion_id = data.get('gestion_atencion_id')
+    etapa = data.get('etapa')
 
-    if not fecha or not tipo_id or not subtipo_id or not gestion_atencion_id or not vecino_id:
+    if not fecha or not tipo_id or not subtipo_id or not gestion_atencion_id or not vecino_id or not etapa:
         return JsonResponse({
             'success': False,
             'message': 'Por favor completa todos los campos obligatorios (*).'
+        }, status=400)
+
+    try:
+        etapa = int(etapa)
+    except (TypeError, ValueError):
+        return JsonResponse({'success': False, 'message': 'Etapa inválida.'}, status=400)
+
+    if AtencionSocial.objects.filter(gestion_atencion_id=gestion_atencion_id, etapa=etapa).exclude(pk=atencion.pk).exists():
+        return JsonResponse({
+            'success': False,
+            'message': f'La etapa {etapa} ya se encuentra registrada en esta gestión social.'
         }, status=400)
 
     try:
@@ -1295,6 +1307,7 @@ def editar_atencion_ajax(request, atencion_id):
             atencion.tipo_id = tipo_id
             atencion.subtipo_id = subtipo_id
             atencion.gestion_atencion_id = gestion_atencion_id
+            atencion.etapa = etapa
             atencion.save()
 
             registrar_historial(
@@ -1306,6 +1319,7 @@ def editar_atencion_ajax(request, atencion_id):
                     'tipo_id': atencion.tipo_id,
                     'subtipo_id': atencion.subtipo_id,
                     'gestion_id': atencion.gestion_atencion_id,
+                    'etapa': atencion.etapa,
                 },
             )
 
@@ -1329,6 +1343,7 @@ def detalle_atencion_json(request, atencion_id):
 
     return JsonResponse({
         'id': atencion.pk,
+        'etapa': atencion.etapa,
         'fecha': fecha_iso,
         'resultado': atencion.resultado or '',
         'observaciones': atencion.observaciones or '',

@@ -103,7 +103,7 @@
               <!-- 8. GESTIÓN SOCIAL (Etapa, Código, fecha y tiempo transcurrido) -->
               <td>
                 <div><strong class="gestion-codigo">{{ atencion.get_etapa_display }}</strong></div>
-                <small class="text-muted">Caso {{ atencion.gestion_atencion.codigo|slice:':8' }} ({{ atencion.gestion_atencion.fecha|date:'d/m/Y' }})</small>
+                <small class="text-muted">{% if atencion.gestion_atencion.nombre %}{{ atencion.gestion_atencion.nombre }} — {% endif %}Caso {{ atencion.gestion_atencion.codigo|slice:':8' }} ({{ atencion.gestion_atencion.fecha|date:'d/m/Y' }})</small>
                 {% if atencion.dias_desde_etapa_anterior is not None %}
                   <div><span class="badge bg-info text-dark mt-1">+{{ atencion.dias_desde_etapa_anterior }} días desde etapa anterior</span></div>
                 {% endif %}
@@ -183,11 +183,20 @@
               </select>
             </div>
 
-            <div class="col-12">
+            <div class="col-md-6">
               <label for="modal-gestion-atencion" class="form-label fw-bold">Gestión Social *</label>
               <select class="form-select" id="modal-gestion-atencion" required>
                 {% for g in form.fields.gestion_atencion.queryset %}
-                  <option value="{{ g.pk }}">Caso {{ g.codigo|slice:':8' }} ({{ g.fecha|date:'d/m/Y' }})</option>
+                  <option value="{{ g.pk }}">{% if g.nombre %}{{ g.nombre }} — {% endif %}Caso {{ g.codigo|slice:':8' }} ({{ g.fecha|date:'d/m/Y' }})</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-6">
+              <label for="modal-etapa" class="form-label fw-bold">Etapa *</label>
+              <select class="form-select" id="modal-etapa" required>
+                {% for val, label in form.fields.etapa.choices %}
+                  <option value="{{ val }}">{{ label }}</option>
                 {% endfor %}
               </select>
             </div>
@@ -212,7 +221,7 @@
   </div>
 </div>
 
-<script>
+<<script>
 document.addEventListener('DOMContentLoaded', function() {
     // 1. BUSCADOR INSTANTÁNEO (SIN BOTÓN)
     const searchInput = document.getElementById('tabla-search-input');
@@ -340,6 +349,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     document.getElementById('modal-vecino').value = data.vecino_id;
                     document.getElementById('modal-tipo').value = data.tipo_id;
                     document.getElementById('modal-gestion-atencion').value = data.gestion_atencion_id;
+                    document.getElementById('modal-etapa').value = data.etapa;
 
                     // Cargar subtipos precargados
                     modalSubtipoSelect.innerHTML = '';
@@ -374,6 +384,7 @@ document.addEventListener('DOMContentLoaded', function() {
             tipo_id: document.getElementById('modal-tipo').value,
             subtipo_id: document.getElementById('modal-subtipo').value,
             gestion_atencion_id: document.getElementById('modal-gestion-atencion').value,
+            etapa: document.getElementById('modal-etapa').value,
             resultado: document.getElementById('modal-resultado').value,
             observaciones: document.getElementById('modal-observaciones').value,
         };

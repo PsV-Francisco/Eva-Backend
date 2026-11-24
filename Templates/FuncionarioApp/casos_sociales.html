@@ -215,6 +215,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
+                document.getElementById('form-crear-gestion').reset();
                 Swal.fire({
                     icon: 'success',
                     title: '¡Gestión Creada!',
