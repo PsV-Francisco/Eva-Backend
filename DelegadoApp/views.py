@@ -15,7 +15,7 @@ from config.delegations import active_delegation
 from CoordinadorApp.models import Periodo
 from DelegadoApp.forms import CompromisoEstadoForm, CompromisoForm
 from DelegadoApp.models import Agenda, Compromiso, HistorialEstadoCompromiso, SeguimientoAcceso
-from DelegadoApp.services import actualizar_estado_compromiso, resumen_delegacion
+from DelegadoApp.services import actualizar_estado_compromiso, detalle_actividades, resumen_delegacion
 
 
 def _tracking_ip_key(ip_address):
@@ -347,6 +347,7 @@ def resumen(request):
 
     delegation = active_delegation(request)
     period_id = request.GET.get('periodo', '')
+    funcionario_id = request.GET.get('funcionario', '')
     selected_period = (
         Periodo.objects.filter(pk=int(period_id)).first()
         if period_id.isdecimal()
@@ -358,7 +359,22 @@ def resumen(request):
     summary = resumen_delegacion(
         delegation=delegation,
         period=selected_period,
+        funcionario_id=int(funcionario_id) if funcionario_id.isdecimal() else None,
     )
+    filter_options = (
+        resumen_delegacion(delegation=delegation, period=selected_period)
+        if funcionario_id else summary
+    )
+    detail_kind = request.GET.get('detalle', '')
+    detail_users = summary.get('funcionarios', [])
+    if detail_kind in {'verde', 'ambar', 'rojo'}:
+        detail_users = [row for row in detail_users if row['semaforo'] == detail_kind]
+    elif detail_kind == 'bajo':
+        detail_users = summary.get('below_threshold', [])
+    detail_records = detalle_actividades(
+        user_ids=[row['usuario'].pk for row in detail_users],
+        period=selected_period,
+    ) if detail_kind else []
     if request.GET.get('export') == 'csv':
         if not delegation:
             messages.error(request, 'Tu cuenta no tiene delegación asignada.')
@@ -371,6 +387,8 @@ def resumen(request):
             'Semáforo',
             'Último registro',
             'Fecha último registro',
+            'Días sin ingreso',
+            'Promedio diario',
         ]]
         rows.extend([
             row['usuario'].get_full_name() or row['usuario'].email,
@@ -380,6 +398,8 @@ def resumen(request):
             row['semaforo'],
             row['ultimo_registro'] or '',
             row['fecha_ultimo_registro'] or '',
+            'Sin registros' if row.get('dias_sin_ingreso') is None else row['dias_sin_ingreso'],
+            row.get('promedio_diario', ''),
         ] for row in summary['funcionarios'])
         return csv_response(
             request,
@@ -403,5 +423,10 @@ def resumen(request):
         ),
         'periodos': periods,
         'periodo_seleccionado': selected_period,
+        'ultima_actualizacion': timezone.localtime(),
+        'funcionarios_filtro': filter_options.get('funcionarios', []),
+        'selected_funcionario': funcionario_id,
+        'detail_kind': detail_kind,
+        'detail_records': detail_records,
         **summary,
     })

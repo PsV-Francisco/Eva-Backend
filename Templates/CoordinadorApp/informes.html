@@ -8,6 +8,7 @@
     <div>
         <p class="eyebrow">INFORME DE CUMPLIMIENTO</p>
         <h2>Resultados consolidados</h2>
+        <p class="section-note">Última actualización: {{ ultima_actualizacion|date:'d/m/Y H:i:s' }}</p>
         <p class="section-note">Período: {{ periodo_seleccionado|default:'Sin períodos' }}</p>
     </div>
     <div style="display:flex; gap:.5rem; flex-wrap:wrap;">

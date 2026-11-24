@@ -5,10 +5,11 @@
 <div class="dashboard-layout">
 {% include 'includes/role_sidebar.html' %}
 <div class="dashboard-main">
+<p class="section-note">Última actualización: {{ ultima_actualizacion|date:'d/m/Y H:i:s' }}</p>
 <div class="metric-grid metric-grid-four">
-  <article class="metric"><span>Ítems asignados</span><strong>{{ item_count }}</strong></article>
-  <article class="metric"><span>{% if es_encargado_social %}Avance actual{% else %}Avance aprobado{% endif %}</span><strong>{% if es_encargado_social %}{{ summary.total_avance|floatformat:2 }}{% else %}{{ summary.total_avance|floatformat:0 }}{% endif %}</strong></article>
-  <article class="metric"><span>Avance real</span><strong>{{ summary.avance_real|floatformat:2 }}%</strong></article>
+  <a class="metric" href="?periodo={{ periodo_seleccionado.pk }}&detalle=items"><span>Ítems asignados</span><strong>{{ item_count }}</strong></a>
+  <a class="metric" href="?periodo={{ periodo_seleccionado.pk }}&detalle=aprobado"><span>{% if es_encargado_social %}Avance actual{% else %}Avance aprobado{% endif %}</span><strong>{% if es_encargado_social %}{{ summary.total_avance|floatformat:2 }}{% else %}{{ summary.total_avance|floatformat:0 }}{% endif %}</strong></a>
+  <a class="metric" href="?periodo={{ periodo_seleccionado.pk }}&detalle=real"><span>Avance real</span><strong>{{ summary.avance_real|floatformat:2 }}%</strong></a>
   <article class="metric"><span>Avance esperado</span><strong>{{ summary.avance_esperado|floatformat:2 }}%</strong></article>
   <article class="metric"><span>Umbral fijo</span><strong>{% if summary.items %}{{ umbral_delegacion|floatformat:2 }}%{% else %}Sin ítems asignados{% endif %}</strong></article>
 </div>
@@ -82,6 +83,7 @@
   <p>El semáforo compara el cumplimiento con el avance esperado a la fecha; el umbral compara con un porcentaje fijo.</p>{% if summary.items %}<p><strong>Estado frente al umbral:</strong> {% if clasificacion_umbral == 'sobre' %}Sobre el umbral{% else %}Bajo el umbral{% endif %} ({{ umbral_delegacion|floatformat:2 }}%).</p>{% else %}<p><strong>Sin ítems asignados.</strong> No se clasifica frente al umbral.</p>{% endif %}</aside>
 </section>
 </div></div>
+{% if detail_kind %}<section class="content-section"><h2>Detalle de actividades</h2><div class="table-responsive"><table class="table"><thead><tr><th>Fecha</th><th>Funcionario</th><th>Ítem</th><th>Actividad</th><th>Estado</th><th>Evidencia</th><th>Puntaje</th></tr></thead><tbody>{% for detail in detail_records %}<tr><td>{{ detail.registro.fecha|date:'d/m/Y' }}</td><td>{{ detail.registro.autor.get_full_name|default:detail.registro.autor.email }}</td><td>{{ detail.registro.item.nombre }}</td><td>{{ detail.registro.descripcion }}</td><td>{{ detail.registro.get_estado_display }}</td><td>{{ detail.registro.evidencia.get_estado_display|default:'Sin evidencia' }}</td><td>{{ detail.puntaje_aportado }}</td></tr>{% empty %}<tr><td colspan="7">No hay actividades ponderables.</td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
 {% endblock %}
 {% block extra_js %}
 {% if sin_informacion %}

@@ -1,4 +1,5 @@
 from decimal import Decimal
+from django.contrib.auth import get_user_model
 from django.contrib import messages
 from django.db import transaction
 from django.db.models import Q
@@ -11,6 +12,7 @@ from config.delegations import active_delegation
 from FuncionarioApp.models import Registro
 from SupervisorApp.forms import RevisionEvidenciaForm
 from SupervisorApp.models import Evidencia, RevisionEvidencia
+from DelegadoApp.services import actividad_reciente
 
 
 def _evidencias_visibles(request):
@@ -147,6 +149,25 @@ def home(request):
         | Q(compromisos__agenda__periodo__estado__iexact=Periodo.Estado.ABIERTO)
     ).distinct()
 
+    periods = Periodo.objects.order_by('-fecha_inicio')
+    period_id = request.GET.get('periodo', '')
+    period = periods.filter(pk=int(period_id)).first() if period_id.isdecimal() else periods.filter(
+        estado=Periodo.Estado.ABIERTO,
+    ).first()
+    delegation = active_delegation(request)
+    users = get_user_model().objects.filter(
+        is_active=True,
+        usuariocargo__cargo__nombre__iexact='funcionario',
+        usuariocargo__fecha_fin__isnull=True,
+        usuariodelegacion__fecha_fin__isnull=True,
+    )
+    if delegation:
+        users = users.filter(usuariodelegacion__delegacion=delegation)
+    elif not request.user.is_superuser:
+        users = users.none()
+    users = list(users.distinct().order_by('last_name', 'first_name', 'email'))
+    activity_metrics = actividad_reciente(users, period)
+
     revisiones = RevisionEvidencia.objects.filter(
         verificador=request.user,
     ).select_related('evidencia').prefetch_related(
@@ -161,6 +182,12 @@ def home(request):
         'pending_count': evidencias.count(),
         'review_form': RevisionEvidenciaForm(),
         'revisiones': revisiones,
+        'periodos': periods,
+        'periodo_seleccionado': period,
+        'actividad_funcionarios': [
+            {'usuario': user, **activity_metrics.get(user.pk, {})}
+            for user in users
+        ],
         'sidebar_modules': (
             {'label': 'Validar evidencias', 'url_name': 'supervisor:home'},
         ),

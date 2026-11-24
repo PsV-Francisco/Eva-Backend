@@ -98,6 +98,7 @@
     </table>
 </div>
 </section>
+<section class="content-section"><div class="section-head"><div><p class="eyebrow">SEGUIMIENTO</p><h2>Control de actividad reciente de funcionarios</h2></div></div><form method="get" class="maintainer-filters"><label for="periodo">Período</label><select class="form-select" id="periodo" name="periodo">{% for periodo in periodos %}<option value="{{ periodo.pk }}"{% if periodo == periodo_seleccionado %} selected{% endif %}>{{ periodo.nombre }}</option>{% endfor %}</select><button class="btn btn-primary" type="submit">Filtrar</button></form><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Funcionario</th><th>Último registro</th><th>Días sin ingreso</th><th>Promedio diario</th></tr></thead><tbody>{% for row in actividad_funcionarios %}<tr><td>{{ row.usuario.get_full_name|default:row.usuario.email }}</td><td>{% if row.fecha_ultimo_registro %}{{ row.fecha_ultimo_registro|date:'d/m/Y' }} · {{ row.ultimo_registro }}{% else %}Sin registros{% endif %}</td><td>{% if row.dias_sin_ingreso is not None %}{{ row.dias_sin_ingreso }}{% else %}Sin registros{% endif %}</td><td>{{ row.promedio_diario|floatformat:2 }}</td></tr>{% empty %}<tr><td colspan="4">No hay funcionarios en el alcance.</td></tr>{% endfor %}</tbody></table></div></section>
 </div>
 </div>
 {% endblock %}

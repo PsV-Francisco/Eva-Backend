@@ -170,24 +170,35 @@ def _semaforo(cumplimiento, esperado):
     return 'rojo'
 
 
-def _conteo_actividades_puntaje(user_ids, period_ids):
-    """Cuenta actividades validadas con evidencia aprobada y genera_puntaje='SI', respetando el tope diario."""
+def actividades_puntuables(user_ids, period_ids):
+    """Devuelve las actividades que participan en el avance, respetando el tope diario."""
     if not user_ids or not period_ids:
-        return {}
+        return []
     registros_qs = Registro.objects.filter(
         autor_id__in=user_ids,
         periodo_id__in=period_ids,
         estado=Registro.Estado.VALIDADA,
-        evidencia__estado=Evidencia.Estado.APROBADA,).filter(Q(genera_puntaje__iexact='SI') | Q(genera_puntaje__isnull=True) | Q(genera_puntaje='')).select_related('autor').order_by('autor_id', 'fecha', 'creado', 'pk')
+        evidencia__estado=Evidencia.Estado.APROBADA,
+    ).filter(
+        Q(genera_puntaje__iexact='SI') | Q(genera_puntaje__isnull=True) | Q(genera_puntaje='')
+    ).select_related('autor', 'item', 'evidencia').order_by('autor_id', 'fecha', 'creado', 'pk')
 
     diarios_por_usuario = defaultdict(int)
-    counts = defaultdict(Decimal)
+    actividades = []
     for reg in registros_qs:
         limite = limite_diario_actividades(reg.autor)
         day_key = (reg.autor_id, reg.fecha)
         if diarios_por_usuario[day_key] >= limite:
             continue
         diarios_por_usuario[day_key] += 1
+        actividades.append(reg)
+    return actividades
+
+
+def _conteo_actividades_puntaje(user_ids, period_ids):
+    """Cuenta actividades ponderables usando la misma selección que el drill-down."""
+    counts = defaultdict(Decimal)
+    for reg in actividades_puntuables(user_ids, period_ids):
         counts[(reg.autor_id, reg.item_id, reg.periodo_id)] += Decimal('1')
     return dict(counts)
 
@@ -331,6 +342,7 @@ def tendencias_cumplimiento(usuarios, periodos, *, cap, umbral):
     series = []
     for periodo in periodos:
         total_avance_real = ZERO
+        total_avance_esperado = ZERO
         considerados = 0
         sobre_umbral = 0
         for usuario in usuarios:
@@ -339,15 +351,31 @@ def tendencias_cumplimiento(usuarios, periodos, *, cap, umbral):
                 continue
             considerados += 1
             total_avance_real += summary['avance_real']
-            if clasificar_umbral(summary['avance_real'],tiene_items=True,umbral=umbral,) == 'sobre':
+            total_avance_esperado += summary['avance_esperado']
+            if clasificar_umbral(
+                summary['avance_real'],
+                tiene_items=True,
+                umbral=umbral,
+            ) == 'sobre':
                 sobre_umbral += 1
 
-        promedio = (total_avance_real / Decimal(considerados) if considerados else ZERO).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        porcentaje_sobre = (Decimal(sobre_umbral) * HUNDRED / Decimal(considerados) if considerados else ZERO).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        promedio = (
+            total_avance_real / Decimal(considerados)
+            if considerados else ZERO
+        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        promedio_esperado = (
+            total_avance_esperado / Decimal(considerados)
+            if considerados else ZERO
+        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        porcentaje_sobre = (
+            Decimal(sobre_umbral) * HUNDRED / Decimal(considerados)
+            if considerados else ZERO
+        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         series.append({
             'periodo': periodo,
             'funcionarios_considerados': considerados,
             'promedio_avance_real': promedio,
+            'promedio_esperado': promedio_esperado,
             'porcentaje_sobre_umbral': porcentaje_sobre,
             'funcionarios_sin_items': len(usuarios) - considerados,
         })

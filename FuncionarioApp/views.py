@@ -24,7 +24,7 @@ from CoordinadorApp.services import clasificar_umbral, resumen_cumplimiento, umb
 
 # Importaciones de la aplicación DelegadoApp y SupervisorApp
 from DelegadoApp.models import Agenda, Compromiso
-from DelegadoApp.services import actualizar_estado_compromiso
+from DelegadoApp.services import actualizar_estado_compromiso, detalle_actividades
 from DelegadoApp.forms import CompromisoEstadoForm
 from SupervisorApp.models import Evidencia
 
@@ -131,6 +131,11 @@ def _render_cumplimiento(request):
     # El servicio central aplica las mismas reglas de validación, evidencia,
     # tope diario y genera_puntaje que utilizan Delegación y Coordinación.
     summary_detail = resumen_cumplimiento(detail_performances)
+    detail_kind = request.GET.get('detalle', '')
+    detail_records = detalle_actividades(
+        user_ids=[request.user.pk],
+        period=selected_period,
+    ) if detail_kind else []
 
     return render(request, 'FuncionarioApp/cumplimiento.html', {
         'sgr_role': 'Funcionario',
@@ -146,6 +151,9 @@ def _render_cumplimiento(request):
             tiene_items=bool(summary_detail['items']),
         ),
         'sin_informacion': sin_informacion,
+        'ultima_actualizacion': timezone.localtime(),
+        'detail_kind': detail_kind,
+        'detail_records': detail_records,
     })
 
 

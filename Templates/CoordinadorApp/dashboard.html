@@ -78,6 +78,7 @@
 <div class="dashboard-layout">
   {% include 'includes/role_sidebar.html' %}
   <div class="dashboard-main coordinator-dashboard">
+    <p class="section-note">Última actualización: {{ ultima_actualizacion|date:'d/m/Y H:i:s' }}</p>
     <p class="section-note">
       Resumen operacional para revisar períodos, metas, actividades y evidencias.
       {% if periodo_seleccionado %}

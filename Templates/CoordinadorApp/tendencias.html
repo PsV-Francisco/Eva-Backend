@@ -8,9 +8,11 @@
     .trend-grid { stroke: #d2d2d2; stroke-width: 1; }
     .trend-axis { stroke: #666; stroke-width: 1.5; }
     .trend-average { fill: none; stroke: #AD0000; stroke-width: 3; }
+    .trend-expected { fill: none; stroke: #0d6efd; stroke-width: 3; stroke-dasharray: 4 4; }
     .trend-over { fill: none; stroke: #666; stroke-width: 3; stroke-dasharray: 8 5; }
     .trend-threshold { stroke: #888; stroke-width: 2; stroke-dasharray: 5 5; }
     .trend-average-marker { fill: #AD0000; stroke: #fff; stroke-width: 2; }
+    .trend-expected-marker { fill: #0d6efd; stroke: #fff; stroke-width: 2; }
     .trend-over-marker { fill: #666; stroke: #fff; stroke-width: 2; }
     .trend-label { fill: #333; font-size: 12px; }
     .trend-legend { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: .75rem; }
@@ -73,9 +75,11 @@
                 <line class="trend-threshold" x1="70" x2="710" y1="{{ threshold_y }}" y2="{{ threshold_y }}" />
                 <text class="trend-label" x="704" y="{{ threshold_y|add:'-6' }}" text-anchor="end">Umbral {{ threshold|floatformat:2 }}%</text>
                 <polyline class="trend-average" points="{% for point in chart_points %}{{ point.x }},{{ point.promedio_y }} {% endfor %}" />
+                <polyline class="trend-expected" points="{% for point in chart_points %}{{ point.x }},{{ point.esperado_y }} {% endfor %}" />
                 <polyline class="trend-over" points="{% for point in chart_points %}{{ point.x }},{{ point.sobre_y }} {% endfor %}" />
                 {% for point in chart_points %}
                 <circle class="trend-average-marker" cx="{{ point.x }}" cy="{{ point.promedio_y }}" r="6" />
+                <circle class="trend-expected-marker" cx="{{ point.x }}" cy="{{ point.esperado_y }}" r="5" />
                 <rect class="trend-over-marker" x="{{ point.x|add:'-5' }}" y="{{ point.sobre_y|add:'-5' }}" width="10" height="10" />
                 <text class="trend-label" x="{{ point.x }}" y="282" text-anchor="middle">{{ point.periodo.nombre }}</text>
                 {% endfor %}
@@ -86,6 +90,7 @@
     </div>
     <div class="trend-legend" aria-hidden="true">
         <span><span class="trend-average-marker">●</span> Promedio de avance real</span>
+        <span><span class="trend-expected-marker">●</span> Avance esperado (%)</span>
         <span><span class="trend-over-marker">■</span> Funcionarios sobre el umbral</span>
         <span>-- Umbral configurado: {{ threshold }}%</span>
     </div>

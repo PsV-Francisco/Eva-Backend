@@ -246,6 +246,7 @@ def home(request):
             estado=Registro.Estado.PENDIENTE,
         ).count(),
         'pending_evidence_count': evidencias_pendientes.count(),
+        'ultima_actualizacion': timezone.localtime(),
     })
 
 
@@ -292,6 +293,7 @@ def personal(request):
         'sidebar_modules': _coordinator_management_modules(),
         'periodos': periodos,
         'periodo_seleccionado': period,
+        'ultima_actualizacion': timezone.localtime(),
         'summary': summary,
         'item_count': len(summary['items']),
         'umbral_delegacion': umbral_delegacion(),
@@ -560,6 +562,7 @@ def informes(request):
         'selected_cargo': cargo_id,
         'selected_user': user_id,
         'periodo_seleccionado': period,
+        'ultima_actualizacion': timezone.localtime(),
     })
 
 
@@ -616,8 +619,17 @@ def _trend_chart(series, threshold):
     chart_points = []
     for index, row in enumerate(points):
         x = round(left + (right - left) * index / (len(points) - 1))
-        chart_points.append({**row,'x': x,'promedio_y': round(bottom - float(row['promedio_avance_real']) * plot_height / chart_max),'sobre_y': round(bottom - float(row['porcentaje_sobre_umbral']) * plot_height / chart_max),})
-    ticks = [{'value': value, 'y': round(bottom - value * plot_height / chart_max)} for value in range(0, chart_max + 1, 25)]
+        chart_points.append({
+            **row,
+            'x': x,
+            'promedio_y': round(bottom - float(row['promedio_avance_real']) * plot_height / chart_max),
+            'esperado_y': round(bottom - float(row['promedio_esperado']) * plot_height / chart_max),
+            'sobre_y': round(bottom - float(row['porcentaje_sobre_umbral']) * plot_height / chart_max),
+        })
+    ticks = [
+        {'value': value, 'y': round(bottom - value * plot_height / chart_max)}
+        for value in range(0, chart_max + 1, 25)
+    ]
     threshold_y = round(bottom - float(threshold) * plot_height / chart_max)
     return chart_points, ticks, chart_max, threshold_y
 
@@ -702,7 +714,9 @@ def tendencias(request):
                 item['funcionarios_sin_items'],
             ] for item in series],entity='TendenciasHistoricas',action=f'Exportar tendencias históricas {ext.upper()}',
             title='Reporte de tendencias históricas',
-            delegation=selected_delegation_obj,filters=raw_filters,row_count=len(series),
+            delegation=selected_delegation_obj,
+            filters={**raw_filters, 'periodos': period_limit},
+            row_count=len(series),
             period=selected_periods[-1] if selected_periods else None,
         )
     return render(request, 'CoordinadorApp/tendencias.html', {

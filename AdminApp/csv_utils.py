@@ -1,6 +1,7 @@
 import csv
 from io import BytesIO
 
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
@@ -24,6 +25,69 @@ def quarter_label(period=None, reference_date=None):
     dt = reference_date or timezone.localdate()
     quarter = ((dt.month - 1) // 3) + 1
     return f'T{quarter} {dt.year}'
+
+
+FILTER_LABELS = {
+    'periodo': 'Período',
+    'periodos': 'Rango de períodos',
+    'delegacion': 'Delegación',
+    'cargo': 'Cargo',
+    'funcionario': 'Funcionario',
+    'usuario': 'Funcionario',
+    'fecha_inicio': 'Fecha inicial',
+    'fecha_fin': 'Fecha final',
+    'desde': 'Desde',
+    'hasta': 'Hasta',
+    'tipo_tendencia': 'Tipo de tendencia',
+    'estado': 'Estado',
+}
+
+
+def _filter_object_value(key, value):
+    """Return the human-readable value for a report filter."""
+    if hasattr(value, 'nombre') and key not in {'funcionario', 'usuario'}:
+        return value.nombre
+    if key in {'funcionario', 'usuario'} and hasattr(value, 'get_full_name'):
+        return value.get_full_name() or getattr(value, 'nombre', '') or value.email
+
+    if not isinstance(value, (str, int)) or not str(value).isdecimal():
+        return value
+
+    from AdminApp.models import Cargo, Delegacion
+    from CoordinadorApp.models import Periodo
+
+    model = {
+        'periodo': Periodo,
+        'delegacion': Delegacion,
+        'cargo': Cargo,
+        'funcionario': get_user_model(),
+        'usuario': get_user_model(),
+    }.get(key)
+    if model is None:
+        return 'Seleccionado'
+    obj = model.objects.filter(pk=value).first()
+    if obj is None:
+        return 'Seleccionado'
+    if key == 'periodo':
+        return obj.nombre
+    if key in {'funcionario', 'usuario'}:
+        return obj.get_full_name() or getattr(obj, 'nombre', '') or obj.email
+    return obj.nombre
+
+
+def formatear_filtros_aplicados(filters=None):
+    """Format report filters consistently for CSV, Excel and PDF exports."""
+    formatted = []
+    for key, value in (filters or {}).items():
+        if value in (None, '', 'todos', 'Todas', 'Todos'):
+            continue
+        label = FILTER_LABELS.get(key, key.replace('_', ' ').capitalize())
+        if key == 'periodos' and str(value).isdecimal():
+            display_value = f'Últimos {int(value)} períodos'
+        else:
+            display_value = _filter_object_value(key, value)
+        formatted.append(f'{label}: {display_value}')
+    return ', '.join(formatted) if formatted else 'Todos los registros (sin filtros específicos)'
 
 
 def build_report_metadata_rows(
@@ -50,14 +114,7 @@ def build_report_metadata_rows(
         if hasattr(period, 'nombre')
         else (str(period) if period else 'Todos los períodos')
     )
-    clean_filters = {
-        k: v for k, v in (filters or {}).items()
-        if v not in (None, '')
-    }
-    filters_label = (
-        ', '.join(f'{k}: {v}' for k, v in clean_filters.items())
-        if clean_filters else 'Sin filtros adicionales'
-    )
+    filters_label = formatear_filtros_aplicados(filters)
     return [
         [title],
         ['Fecha y hora de generación', now_str],
@@ -309,8 +366,12 @@ def pdf_rows_response(
     if delegation:
         meta += f' | Delegación: {delegation}'
     if period:
-        meta += f' | Período: {period}'
+        meta += f' | Período: {getattr(period, "nombre", period)}'
     elements.append(Paragraph(meta, styles['Normal']))
+    elements.append(Paragraph(
+        f'<b>Filtros aplicados:</b> {formatear_filtros_aplicados(filters)}',
+        styles['Normal'],
+    ))
     elements.append(Spacer(1, 12))
 
     table_data = [[str(cell) if cell is not None else '' for cell in row] for row in rows]
