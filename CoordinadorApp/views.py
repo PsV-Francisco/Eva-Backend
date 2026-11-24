@@ -557,16 +557,16 @@ def informes(request):
     data = consolidated_report_rows(request)
     periods, period, period_id, delegation_id, cargo_id, user_id, rows, summaries = data
     export_fmt = request.GET.get('export')
-    if export_fmt in {'csv', 'excel'}:
-        from AdminApp.csv_utils import excel_rows_response
+    if export_fmt in {'csv', 'excel', 'pdf'}:
+        from AdminApp.csv_utils import excel_rows_response, pdf_rows_response
 
         selected_delegation_obj = (
             Delegacion.objects.filter(pk=delegation_id).first()
             if delegation_id.isdecimal()
             else 'Todas las delegaciones'
         )
-        exporter = excel_rows_response if export_fmt == 'excel' else csv_response
-        ext = 'xlsx' if export_fmt == 'excel' else 'csv'
+        exporter = {'excel': excel_rows_response, 'pdf': pdf_rows_response}.get(export_fmt, csv_response)
+        ext = {'excel': 'xlsx', 'pdf': 'pdf'}.get(export_fmt, 'csv')
         return exporter(
             request,
             filename=f'informe_consolidado.{ext}',
@@ -753,16 +753,16 @@ def tendencias(request):
         empty_message = ''
 
     export_fmt = request.GET.get('export')
-    if export_fmt in {'csv', 'excel'}:
-        from AdminApp.csv_utils import excel_rows_response
+    if export_fmt in {'csv', 'excel', 'pdf'}:
+        from AdminApp.csv_utils import excel_rows_response, pdf_rows_response
 
         selected_delegation_obj = (
             Delegacion.objects.filter(pk=parsed_filters['delegacion']).first()
             if parsed_filters.get('delegacion')
             else 'Todas las delegaciones'
         )
-        exporter = excel_rows_response if export_fmt == 'excel' else csv_response
-        ext = 'xlsx' if export_fmt == 'excel' else 'csv'
+        exporter = {'excel': excel_rows_response, 'pdf': pdf_rows_response}.get(export_fmt, csv_response)
+        ext = {'excel': 'xlsx', 'pdf': 'pdf'}.get(export_fmt, 'csv')
         return exporter(
             request,
             filename=f'tendencias_historicas.{ext}',

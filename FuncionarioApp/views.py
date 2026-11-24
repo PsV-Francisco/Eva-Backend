@@ -1459,12 +1459,17 @@ def _carta_snapshot(carta):
         'fecha': carta.fecha.isoformat() if carta.fecha else None,
         'remitente': carta.remitente,
         'destinatario': carta.destinatario,
+        'telefono': carta.telefono,
         'materia': carta.materia,
-        'estado': carta.estado,
-        'area_derivada': carta.area_derivada,
-        'responsable_seguimiento_id': carta.responsable_seguimiento_id,
         'fecha_respuesta': carta.fecha_respuesta.isoformat() if carta.fecha_respuesta else None,
+        'responsable_seguimiento_id': carta.responsable_seguimiento_id,
+        'area_derivada': carta.area_derivada,
+        'pronunciamiento': carta.pronunciamiento,
+        'observaciones': carta.observaciones,
+        'documento_adjunto_id': carta.documento_adjunto_id,
         'fecha_cierre': carta.fecha_cierre.isoformat() if carta.fecha_cierre else None,
+        'estado': carta.estado,
+        'delegacion_id': carta.delegacion_id,
     }
 
 
@@ -1591,38 +1596,33 @@ def detalle_carta_json(request, carta_id):
 def editar_carta_ajax(request, carta_id):
     delegation = active_delegation(request)
     carta = get_object_or_404(Carta, pk=carta_id, delegacion=delegation)
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({'success': False, 'message': 'Payload JSON inválido.'}, status=400)
+    if request.content_type == 'application/json':
+        try:
+            payload = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({'success': False, 'message': 'Payload JSON inválido.'}, status=400)
+        if 'responsable_seguimiento_id' in payload and 'responsable_seguimiento' not in payload:
+            payload['responsable_seguimiento'] = payload['responsable_seguimiento_id']
+        files = None
+    else:
+        payload = request.POST
+        files = request.FILES or None
 
-    numero_carta = data.get('numero_carta', '').strip()
-    fecha = data.get('fecha')
-    remitente = data.get('remitente', '').strip()
-    destinatario = data.get('destinatario', '').strip()
-    materia = data.get('materia', '').strip()
-    responsable_id = data.get('responsable_seguimiento_id')
-    estado = data.get('estado')
-
-    if not numero_carta or not fecha or not remitente or not destinatario or not materia or not responsable_id or not estado:
-        return JsonResponse({'success': False, 'message': 'Completa todos los campos obligatorios (*).'}, status=400)
+    form = CartaForm(data=payload, files=files, instance=carta, delegation=delegation)
+    if not form.is_valid():
+        return JsonResponse({
+            'success': False,
+            'message': 'Revisa los datos de la carta.',
+            'errors': form.errors.get_json_data(),
+        }, status=400)
 
     before = _carta_snapshot(carta)
     try:
         with transaction.atomic():
-            carta.numero_carta = numero_carta
-            carta.fecha = fecha
-            carta.remitente = remitente
-            carta.destinatario = destinatario
-            carta.telefono = data.get('telefono', '').strip() or None
-            carta.materia = materia
-            carta.fecha_respuesta = data.get('fecha_respuesta') or None
-            carta.responsable_seguimiento_id = responsable_id
-            carta.area_derivada = data.get('area_derivada', '').strip()
-            carta.pronunciamiento = data.get('pronunciamiento', '').strip()
-            carta.observaciones = data.get('observaciones', '').strip()
-            carta.fecha_cierre = data.get('fecha_cierre') or None
-            carta.estado = estado
+            carta = form.save(commit=False)
+            archivo = form.cleaned_data.get('documento')
+            if archivo:
+                carta.documento_adjunto = Evidencia.objects.create(archivo=archivo)
             carta.save()
 
             registrar_historial(

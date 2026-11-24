@@ -269,3 +269,84 @@ def excel_rows_response(
     )
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
+
+def pdf_rows_response(
+    request,
+    *,
+    filename,
+    rows,
+    entity,
+    action,
+    title=None,
+    delegation=None,
+    filters=None,
+    row_count=None,
+    period=None,
+):
+    from io import BytesIO
+    from django.http import HttpResponse
+    from django.utils import timezone
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import landscape, letter
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(letter),
+        leftMargin=28,
+        rightMargin=28,
+        topMargin=28,
+        bottomMargin=28,
+    )
+    styles = getSampleStyleSheet()
+    elements = []
+
+    report_title = title or 'Reporte SGR - Municipalidad de La Serena'
+    elements.append(Paragraph(f'<b>{report_title}</b>', styles['Title']))
+    meta = f'Generado el {timezone.localtime().strftime("%d/%m/%Y %H:%M")}'
+    if delegation:
+        meta += f' | Delegación: {delegation}'
+    if period:
+        meta += f' | Período: {period}'
+    elements.append(Paragraph(meta, styles['Normal']))
+    elements.append(Spacer(1, 12))
+
+    table_data = [[str(cell) if cell is not None else '' for cell in row] for row in rows]
+    if not table_data:
+        table_data = [['Sin datos disponibles para los filtros seleccionados.']]
+
+    table = Table(table_data, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#9E1B1E')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F7F7F7')]),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+    ]))
+    elements.append(table)
+    doc.build(elements)
+
+    registrar_historial(
+        actor=request.user,
+        action=action,
+        entity=entity,
+        before=None,
+        after={
+            'formato': 'PDF',
+            'archivo': filename,
+            'filtros': filters or {},
+            'filas': row_count if row_count is not None else max(0, len(rows) - 1),
+        },
+        period=period,
+    )
+
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response

@@ -245,6 +245,10 @@
               <label class="form-label">Observaciones</label>
               <textarea class="form-control" id="edit-observaciones" rows="3"></textarea>
             </div>
+            <div class="col-md-6">
+              <label class="form-label">Reemplazar documento adjunto</label>
+              <input type="file" class="form-control" id="edit-documento" accept=".pdf,.jpg,.jpeg,.png">
+            </div>
           </div>
         </form>
       </div>
@@ -313,29 +317,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
   document.getElementById('btn-guardar-edit-carta').addEventListener('click', function() {
     const id = document.getElementById('edit-carta-id').value;
-    const payload = {
-      numero_carta: document.getElementById('edit-numero').value.trim(),
-      fecha: document.getElementById('edit-fecha').value,
-      estado: document.getElementById('edit-estado').value,
-      remitente: document.getElementById('edit-remitente').value.trim(),
-      destinatario: document.getElementById('edit-destinatario').value.trim(),
-      telefono: document.getElementById('edit-telefono').value.trim(),
-      materia: document.getElementById('edit-materia').value.trim(),
-      responsable_seguimiento_id: document.getElementById('edit-responsable').value,
-      area_derivada: document.getElementById('edit-area').value.trim(),
-      fecha_respuesta: document.getElementById('edit-fecha-respuesta').value,
-      fecha_cierre: document.getElementById('edit-fecha-cierre').value,
-      pronunciamiento: document.getElementById('edit-pronunciamiento').value.trim(),
-      observaciones: document.getElementById('edit-observaciones').value.trim(),
-    };
+    const payload = new FormData();
+    payload.append('numero_carta', document.getElementById('edit-numero').value.trim());
+    payload.append('fecha', document.getElementById('edit-fecha').value);
+    payload.append('estado', document.getElementById('edit-estado').value);
+    payload.append('remitente', document.getElementById('edit-remitente').value.trim());
+    payload.append('destinatario', document.getElementById('edit-destinatario').value.trim());
+    payload.append('telefono', document.getElementById('edit-telefono').value.trim());
+    payload.append('materia', document.getElementById('edit-materia').value.trim());
+    payload.append('responsable_seguimiento', document.getElementById('edit-responsable').value);
+    payload.append('area_derivada', document.getElementById('edit-area').value.trim());
+    payload.append('fecha_respuesta', document.getElementById('edit-fecha-respuesta').value);
+    payload.append('fecha_cierre', document.getElementById('edit-fecha-cierre').value);
+    payload.append('pronunciamiento', document.getElementById('edit-pronunciamiento').value.trim());
+    payload.append('observaciones', document.getElementById('edit-observaciones').value.trim());
+    const documento = document.getElementById('edit-documento').files[0];
+    if (documento) payload.append('documento', documento);
 
     fetch(`/funcionario/tubo-cartas/${id}/editar-ajax/`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
         'X-CSRFToken': csrftoken
       },
-      body: JSON.stringify(payload)
+      body: payload
     })
     .then(res => res.json())
     .then(data => {

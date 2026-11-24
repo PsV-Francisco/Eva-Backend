@@ -32,9 +32,6 @@ urlpatterns = [
     path('coordinador/', include('CoordinadorApp.urls')),
     path('admin-app/', include('AdminApp.urls')),
     path('consulta/', include('VistaFApp.urls')),
-    path('admin/', admin.site.urls),
-    path('funcionario/', include('FuncionarioApp.urls')),
-    path('delegado/', include('DelegadoApp.urls')),
     path('accounts/activar/<uidb64>/<token>/', password_reset.activar_cuenta, name='activar_cuenta'),
     path('accounts/primer-ingreso/', password_reset.primer_ingreso, name='primer_ingreso'),
 
