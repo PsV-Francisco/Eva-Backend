@@ -1444,7 +1444,7 @@ def editar_gestion_social_ajax(request, gestion_id):
             gestion.nombre = nombre
             gestion.fecha = fecha
             gestion.observaciones = observaciones
-            gestion.save(update_fields=['fecha', 'observaciones'])
+            gestion.save(update_fields=['nombre', 'fecha', 'observaciones'])
 
             registrar_historial(
                 actor=request.user,
