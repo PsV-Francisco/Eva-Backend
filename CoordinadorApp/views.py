@@ -24,6 +24,7 @@ from CoordinadorApp.authorization_forms import AuthorizationRequestForm
 from CoordinadorApp.services import _authorization_snapshot
 from CoordinadorApp.services import (
     clasificar_umbral,
+    consolidar_cumplimientos,
     resumen_cumplimiento,
     tendencias_cumplimiento,
     umbral_delegacion,
@@ -514,6 +515,7 @@ def consolidated_report_rows(request):
     summaries = defaultdict(lambda: {
         'delegacion': '', 'cargo': '', 'total_avance_real': ZERO,
         'con_items': 0, 'sobre': 0, 'bajo': 0, 'sin_items': 0,
+        'user_summaries': [],
     })
     for user in users:
         summary = resumen_cumplimiento(
@@ -524,9 +526,12 @@ def consolidated_report_rows(request):
         )
         delegation = user.delegacion.nombre if user.delegacion_id else 'Sin delegación'
         cargo = user.cargo.nombre if user.cargo_id else 'Sin cargo'
-        group = summaries[(delegation, cargo)]
+        # El consolidado es único por delegación; el cargo solo filtra el
+        # conjunto de funcionarios antes de aplicar la fórmula común.
+        group = summaries[delegation]
         group['delegacion'] = delegation
-        group['cargo'] = cargo
+        group['cargo'] = 'Todos los cargos'
+        group['user_summaries'].append(summary)
         if summary['items']:
             group['total_avance_real'] += summary['avance_real']
             group['con_items'] += 1
@@ -541,10 +546,16 @@ def consolidated_report_rows(request):
             'clasificacion': classification,
         })
     for group in summaries.values():
-        group['promedio_avance_real'] = (
-            group['total_avance_real'] / group['con_items']
-            if group['con_items'] else ZERO
-        ).quantize(Decimal('0.01'))
+        collective = consolidar_cumplimientos(
+            group.pop('user_summaries'),
+            threshold=threshold,
+        )
+        group.update(collective)
+        group['promedio_avance_real'] = collective['cumplimiento_colectivo']
+        group['verde'] = collective['distribucion_semaforo']['verde']['count']
+        group['ambar'] = collective['distribucion_semaforo']['ambar']['count']
+        group['rojo'] = collective['distribucion_semaforo']['rojo']['count']
+        group['sin_items'] = collective['distribucion_semaforo']['sin_items']['count']
     return periods, period, period_id or (str(period.pk) if period else ''), delegation_id, cargo_id, user_id, rows, list(summaries.values())
 
 

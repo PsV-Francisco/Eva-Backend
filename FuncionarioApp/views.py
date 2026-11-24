@@ -128,19 +128,9 @@ def _render_cumplimiento(request):
     if period_id and period_id.isdigit() and not detail_performances.exists():
         sin_informacion = True
 
-    detail_counts = {}
-    if selected_period and detail_performances.exists():
-        registro_counts_detail = Registro.objects.filter(
-            autor=request.user,
-            periodo=selected_period,
-        ).values('item_id').annotate(total=Count('id'))
-        counts_detail_dict = {r['item_id']: Decimal(r['total']) for r in registro_counts_detail}
-
-        for row in detail_performances:
-            avance_val = counts_detail_dict.get(row.item_id, Decimal(row.avance or 0))
-            detail_counts[(row.usuario_id, row.item_id, row.periodo_id)] = avance_val
-
-    summary_detail = resumen_cumplimiento(detail_performances, counts=detail_counts)
+    # El servicio central aplica las mismas reglas de validación, evidencia,
+    # tope diario y genera_puntaje que utilizan Delegación y Coordinación.
+    summary_detail = resumen_cumplimiento(detail_performances)
 
     return render(request, 'FuncionarioApp/cumplimiento.html', {
         'sgr_role': 'Funcionario',

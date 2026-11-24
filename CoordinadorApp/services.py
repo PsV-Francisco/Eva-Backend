@@ -10,6 +10,7 @@ from AdminApp.models import ParametroSistema
 from CoordinadorApp.models import Desempeno, SolicitudAutorizacionPeriodo
 from FuncionarioApp.models import Registro, limite_diario_actividades
 from SupervisorApp.models import Evidencia
+from DelegadoApp.models import Ausencia, Licencia
 
 
 ZERO = Decimal('0.00')
@@ -118,15 +119,62 @@ def dias_habiles(inicio, termino):
     return total
 
 
-def porcentaje_esperado(periodo, *, hoy=None):
-    hoy = hoy or timezone.localdate()
+def _dias_no_trabajados(periodo, usuario, inicio, termino):
+    if usuario is None or termino < inicio:
+        return 0
+
+    inicio = max(inicio, periodo.fecha_inicio)
+    termino = min(termino, periodo.fecha_fin)
+    if termino < inicio:
+        return 0
+
+    licencia_days = 0
+    for licencia in Licencia.objects.filter(usuario=usuario):
+        licencia_inicio = licencia.fecha_inicio.date()
+        licencia_fin = licencia.fecha_fin.date()
+        licencia_inicio = max(licencia_inicio, inicio)
+        licencia_fin = min(licencia_fin, termino)
+        licencia_days += dias_habiles(licencia_inicio, licencia_fin)
+
+    ausencia_days = set(
+        ausencia.fecha.date()
+        for ausencia in Ausencia.objects.filter(
+            usuario=usuario,
+            fecha__date__range=(inicio, termino),
+        )
+        if inicio <= ausencia.fecha.date() <= termino
+        and ausencia.fecha.weekday() < 5
+    )
+    return licencia_days + len(ausencia_days)
+
+
+def porcentaje_esperado(periodo, fecha_corte=None, usuario=None, *, hoy=None):
+    fecha_corte = fecha_corte or hoy or timezone.localdate()
     total = dias_habiles(periodo.fecha_inicio, periodo.fecha_fin)
-    if not total or hoy < periodo.fecha_inicio:
+    if usuario is not None:
+        total -= (getattr(usuario, 'dias_adm', 0) or 0)
+        total -= (getattr(usuario, 'dias_libres', 0) or 0)
+        total -= _dias_no_trabajados(
+            periodo,
+            usuario,
+            periodo.fecha_inicio,
+            periodo.fecha_fin,
+        )
+        total = max(total, 1)
+    if not total or fecha_corte < periodo.fecha_inicio:
         return ZERO
     transcurridos = dias_habiles(
         periodo.fecha_inicio,
-        min(hoy, periodo.fecha_fin),
+        min(fecha_corte, periodo.fecha_fin),
     )
+    if usuario is not None:
+        transcurridos -= _dias_no_trabajados(
+            periodo,
+            usuario,
+            periodo.fecha_inicio,
+            min(fecha_corte, periodo.fecha_fin),
+        )
+        transcurridos = max(transcurridos, 0)
     return (Decimal(transcurridos) * HUNDRED / Decimal(total)).quantize(
         Decimal('0.01'),
         rounding=ROUND_HALF_UP,
@@ -203,7 +251,11 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
             Decimal('0.01'),
             rounding=ROUND_HALF_UP,
         )
-        esperado = porcentaje_esperado(desempenho.periodo, hoy=hoy)
+        esperado = porcentaje_esperado(
+            desempenho.periodo,
+            fecha_corte=hoy,
+            usuario=desempenho.usuario,
+        )
         ponderacion = desempenho.ponderacion
         aporte = (
             (Decimal(ponderacion) * cumplimiento / HUNDRED).quantize(
@@ -261,6 +313,46 @@ def cumplimiento_por_usuario(desempenos, *, hoy=None):
     return {
         user_id: _resumen_desde_items(items)
         for user_id, items in by_user.items()
+    }
+
+
+def consolidar_cumplimientos(summaries, *, threshold=None):
+    """Consolida funcionarios usando una única fórmula de promedio simple."""
+    summaries = list(summaries)
+    with_items = [summary for summary in summaries if summary['items']]
+    collective = (
+        sum((summary['avance_real'] for summary in with_items), ZERO)
+        / Decimal(len(with_items))
+        if with_items else ZERO
+    ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    counts = {'verde': 0, 'ambar': 0, 'rojo': 0, 'sin_items': 0}
+    for summary in summaries:
+        if not summary['items']:
+            counts['sin_items'] += 1
+            continue
+        state = _semaforo(summary['avance_real'], summary['avance_esperado'])
+        counts[state] += 1
+    total = Decimal(len(summaries))
+    distribution = {
+        state: {
+            'count': count,
+            'percentage': (
+                (Decimal(count) * HUNDRED / total).quantize(
+                    Decimal('0.01'), rounding=ROUND_HALF_UP,
+                ) if total else ZERO
+            ),
+        }
+        for state, count in counts.items()
+    }
+    below = sum(
+        1 for summary in with_items
+        if threshold is not None and summary['avance_real'] < threshold
+    )
+    return {
+        'total_funcionarios': len(summaries),
+        'cumplimiento_colectivo': collective,
+        'distribucion_semaforo': distribution,
+        'cantidad_bajo_umbral': below,
     }
 
 
