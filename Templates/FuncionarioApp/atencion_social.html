@@ -242,23 +242,44 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // 2. CREACIÓN / FORMULARIO PRINCIPAL 
+  // 2. CREACIÓN / FORMULARIO PRINCIPAL 
     const formElement = document.getElementById('atencion-social-form');
     const vecinoSelect = document.getElementById('id_vecino');
-    const fieldsToToggle = [
-        document.getElementById('id_nombre'),
-        document.getElementById('id_apellido'),
-        document.getElementById('id_telefono'),
-        document.getElementById('id_email')
-    ];
+    const nombreInput = document.getElementById('id_nombre');
+    const apellidoInput = document.getElementById('id_apellido');
+    const telefonoInput = document.getElementById('id_telefono');
+    const emailInput = document.getElementById('id_email');
+    const fieldsToToggle = [nombreInput, apellidoInput, telefonoInput, emailInput];
+
+    const vecinosData = {
+        {% for b in form.fields.vecino.queryset %}
+        "{{ b.pk }}": {
+            nombre: "{{ b.nombre|default:''|escapejs }}",
+            apellido: "{{ b.apellido|default:''|escapejs }}",
+            telefono: "{{ b.telefono|default:''|escapejs }}",
+            email: "{{ b.email|default:''|escapejs }}"
+        }{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    };
 
     function toggleVecinoFields() {
-        const hasSelection = Boolean(vecinoSelect && vecinoSelect.value);
+        const selectedId = vecinoSelect ? vecinoSelect.value : '';
+        const hasSelection = Boolean(selectedId);
+
+        if (hasSelection && vecinosData[selectedId]) {
+            const v = vecinosData[selectedId];
+            if (nombreInput) nombreInput.value = v.nombre;
+            if (apellidoInput) apellidoInput.value = v.apellido;
+            if (telefonoInput) telefonoInput.value = v.telefono;
+            if (emailInput) emailInput.value = v.email;
+        } else {
+            fieldsToToggle.forEach(field => {
+                if (field) field.value = '';
+            });
+        }
+
         fieldsToToggle.forEach(field => {
-            if (field) {
-                field.disabled = hasSelection;
-                if (hasSelection) field.value = '';
-            }
+            if (field) field.disabled = hasSelection;
         });
     }
 
@@ -269,9 +290,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (formElement) {
         formElement.addEventListener('submit', function() {
-            fieldsToToggle.forEach(field => {
-                if (field) field.disabled = false;
-            });
+            if (!vecinoSelect || !vecinoSelect.value) {
+                fieldsToToggle.forEach(field => {
+                    if (field) field.disabled = false;
+                });
+            }
         });
     }
 
