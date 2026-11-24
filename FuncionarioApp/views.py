@@ -24,7 +24,7 @@ from CoordinadorApp.services import clasificar_umbral, resumen_cumplimiento, umb
 
 # Importaciones de la aplicación DelegadoApp y SupervisorApp
 from DelegadoApp.models import Agenda, Compromiso
-from DelegadoApp.services import actualizar_estado_compromiso, detalle_actividades
+from DelegadoApp.services import agenda_items, actualizar_compromiso, actualizar_estado_compromiso, detalle_actividades, marcar_compromisos_vencidos
 from DelegadoApp.forms import CompromisoEstadoForm
 from SupervisorApp.models import Evidencia
 
@@ -391,10 +391,13 @@ def agenda_colectiva(request):
         else:
             state_form = CompromisoEstadoForm(request.POST)
             if state_form.is_valid():
-                if actualizar_estado_compromiso(
+                if actualizar_compromiso(
                     compromiso=commitment,
                     autor=request.user,
                     nuevo_estado=state_form.cleaned_data['estado'],
+                    observaciones=state_form.cleaned_data.get('observaciones', ''),
+                    responsables=list(commitment.responsable.all()),
+                    action='Actualizar compromiso desde Funcionario',
                 ):
                     messages.success(request, 'El estado y su historial quedaron actualizados.')
                 else:
@@ -419,6 +422,11 @@ def agenda_colectiva(request):
     commitments = Compromiso.objects.none()
 
     if delegation_id and selected_period:
+        commitments_scope = Compromiso.objects.filter(
+            agenda__delegacion_id=delegation_id,
+            agenda__periodo=selected_period,
+        )
+        marcar_compromisos_vencidos(commitments_scope, request.user)
         registros = Registro.objects.filter(
             autor__usuariodelegacion__delegacion_id=delegation_id,
             autor__usuariodelegacion__fecha_fin__isnull=True,
@@ -442,6 +450,13 @@ def agenda_colectiva(request):
         if estado_filtro:
             commitments = commitments.filter(estado=estado_filtro)
 
+    agenda_results = agenda_items(
+        delegation_id=delegation_id,
+        period=selected_period,
+        query=query,
+        actor=request.user,
+    ) if delegation_id and selected_period else []
+
     paginator = Paginator(commitments, 10)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
@@ -456,18 +471,41 @@ def agenda_colectiva(request):
         'delegation_assigned': bool(delegation_id),
         'query': query,
         'estado_filtro': estado_filtro,
+        'agenda_results': agenda_results,
     })
+
+
+@cargo_required('funcionario', permission='search_collective_agenda')
+@require_GET
+def agenda_busqueda_json(request):
+    delegation = active_delegation(request)
+    periods = Periodo.objects.filter(estado=Periodo.Estado.ABIERTO).order_by('-fecha_inicio')
+    period_id = request.GET.get('periodo', '')
+    period = periods.filter(pk=int(period_id)).first() if period_id.isdecimal() else periods.first()
+    if not delegation or not period:
+        return JsonResponse({'results': []})
+    marcar_compromisos_vencidos(
+        Compromiso.objects.filter(agenda__delegacion_id=delegation.pk, agenda__periodo=period),
+        request.user,
+    )
+    return JsonResponse({'results': agenda_items(
+        delegation_id=delegation.pk,
+        period=period,
+        query=request.GET.get('q', '').strip(),
+        actor=request.user,
+    )})
 
 
 def _compromiso_snapshot(compromiso):
     return {
         'descripcion': compromiso.descripcion,
-        'solicitante': compromiso.solicitante,
-        'territorio': compromiso.territorio,
-        'fecha': compromiso.fecha.isoformat(),
+        'solicitante_id': compromiso.solicitante_id,
+        'territorio_id': compromiso.territorio_id,
+        'fecha_compromiso': compromiso.fecha_compromiso.isoformat(),
         'observaciones': compromiso.observaciones,
         'tipo_id': compromiso.tipo_id,
         'subtipo_id': compromiso.subtipo_id,
+        'responsable_ids': sorted(compromiso.responsable.values_list('pk', flat=True)),
     }
 
 

@@ -78,5 +78,23 @@
     });
   });
 </script>
+<script>
+document.querySelectorAll('form').forEach((form) => {
+  const action = form.querySelector('input[name="action"][value="estado"]');
+  const select = form.querySelector('select[name="estado"]');
+  if (!action || !select) return;
+  [['cerrado', 'Cerrado'], ['no_aplica', 'No aplica'], ['vencido', 'Vencido']].forEach(([value, label]) => {
+    if (!select.querySelector(`option[value="${value}"]`)) select.add(new Option(label, value));
+  });
+  if (!form.querySelector('textarea[name="observaciones"]')) {
+    const textarea = document.createElement('textarea');
+    textarea.name = 'observaciones';
+    textarea.className = 'form-control form-control-sm';
+    textarea.rows = 1;
+    textarea.placeholder = 'Avance / observaciones';
+    select.insertAdjacentElement('afterend', textarea);
+  }
+});
+</script>
 {% endblock %}
 {% endblock %}

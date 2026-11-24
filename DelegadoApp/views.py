@@ -17,7 +17,7 @@ from config.delegations import active_delegation
 from CoordinadorApp.models import Periodo
 from DelegadoApp.forms import CompromisoEstadoForm, CompromisoForm
 from DelegadoApp.models import Agenda, Compromiso, HistorialEstadoCompromiso, SeguimientoAcceso
-from DelegadoApp.services import actualizar_estado_compromiso, detalle_actividades, resumen_delegacion
+from DelegadoApp.services import actualizar_compromiso, actualizar_estado_compromiso, detalle_actividades, marcar_compromisos_vencidos, resumen_delegacion
 
 
 def _tracking_ip_key(ip_address):
@@ -153,6 +153,7 @@ def home(request):
         ).prefetch_related(
             'responsable', 'historial_estados'
         )
+        marcar_compromisos_vencidos(commitments, request.user)
 
     if request.method == 'POST' and request.POST.get('action') == 'estado':
         if not delegation_id:
@@ -165,10 +166,13 @@ def home(request):
                 state_form = CompromisoEstadoForm(request.POST)
                 if state_form.is_valid():
                     new_state = state_form.cleaned_data['estado']
-                    if actualizar_estado_compromiso(
+                    if actualizar_compromiso(
                         compromiso=compromiso,
                         autor=request.user,
                         nuevo_estado=new_state,
+                        observaciones=state_form.cleaned_data.get('observaciones', ''),
+                        responsables=list(commitment.responsable.all()),
+                        action='Actualizar compromiso desde Delegado',
                     ):
                         messages.success(request, 'El estado y su historial quedaron actualizados.')
                     else:
@@ -241,7 +245,7 @@ def home(request):
                 try:
                     before = {
                         'descripcion': commitment.descripcion,
-                        'fecha': commitment.fecha.isoformat(),
+                        'fecha_compromiso': commitment.fecha_compromiso.isoformat(),
                         'estado': commitment.estado,
                         'observaciones': commitment.observaciones,
                     }
@@ -285,7 +289,7 @@ def home(request):
             if commitment:
                 before = {
                     'descripcion': commitment.descripcion,
-                    'fecha': commitment.fecha.isoformat(),
+                    'fecha_compromiso': commitment.fecha_compromiso.isoformat(),
                     'estado': commitment.estado,
                     'observaciones': commitment.observaciones,
                 }
@@ -297,7 +301,7 @@ def home(request):
                 form.save_m2m()
                 new_snapshot = {
                     'descripcion': commitment.descripcion,
-                    'fecha': commitment.fecha.isoformat(),
+                    'fecha_compromiso': commitment.fecha_compromiso.isoformat(),
                     'estado': commitment.estado,
                     'observaciones': commitment.observaciones,
                 }

@@ -45,6 +45,7 @@ urlpatterns = [
     path('casos-sociales/<int:gestion_id>/editar-ajax/', views.editar_gestion_social_ajax, name='editar_gestion_social_ajax'),
     #URLS de Agenda Colectiva
     path('agenda-colectiva/', views.agenda_colectiva, name='agenda_colectiva'),
+    path('agenda-colectiva/busqueda-json/', views.agenda_busqueda_json, name='agenda_busqueda_json'),
     path('compromisos/nuevo/', views.nuevo_compromiso, name='compromiso_nuevo'),
     path('compromisos/<int:compromiso_id>/editar/',views.editar_compromiso,name='compromiso_editar',),
     path('compromisos/<int:compromiso_id>/evidencia/',views.cargar_evidencia_compromiso,name='compromiso_evidencia',),

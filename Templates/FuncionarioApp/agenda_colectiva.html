@@ -15,7 +15,7 @@
             </div>
             
             <!-- NUEVO FORMULARIO HU-29: Búsqueda y Filtros combinados -->
-            <form method="get" class="row g-3 mb-3 bg-light p-3 rounded shadow-sm border">
+            <form method="get" id="agenda-search-form" class="row g-3 mb-3 bg-light p-3 rounded shadow-sm border">
                 <div class="col-md-3">
                     <label for="periodo" class="form-label fw-bold">Período abierto</label>
                     <select id="periodo" name="periodo" class="form-select">
@@ -36,16 +36,19 @@
                         <option value="pendiente" {% if estado_filtro == 'pendiente' %}selected{% endif %}>Pendiente</option>
                         <option value="en_proceso" {% if estado_filtro == 'en_proceso' %}selected{% endif %}>En proceso</option>
                         <option value="realizado" {% if estado_filtro == 'realizado' %}selected{% endif %}>Realizado</option>
+                        <option value="cerrado" {% if estado_filtro == 'cerrado' %}selected{% endif %}>Cerrado</option>
+                        <option value="no_aplica" {% if estado_filtro == 'no_aplica' %}selected{% endif %}>No aplica</option>
+                        <option value="vencido" {% if estado_filtro == 'vencido' %}selected{% endif %}>Vencido</option>
                     </select>
                 </div>
                 <div class="col-md-2 d-flex align-items-end gap-2">
-                    <button class="btn btn-danger w-100 fw-bold" type="submit">Filtrar</button>
+                    <button class="btn btn-outline-secondary w-100 fw-bold" id="clear-agenda-search" type="button">Limpiar</button>
                 </div>
             </form>
         </section>
 
         <!-- SECCIÓN DE REGISTROS -->
-        <section class="content-section">
+        <section class="content-section d-none">
             <h2>Registros incluidos en agenda</h2>
             <div class="table-responsive shadow-sm">
                 <table class="table table-striped">
@@ -70,7 +73,7 @@
         </section>
 
         <!-- SECCIÓN DE COMPROMISOS PAGINADA HU-29 -->
-        <section class="content-section">
+        <section class="content-section d-none">
             <div class="section-head d-flex justify-content-between align-items-center mb-3">
                 <h2>Compromisos de la delegación</h2>
                 <a class="btn btn-danger fw-bold" href="{% url 'funcionario:compromiso_nuevo' %}">+ Nuevo compromiso</a>
@@ -114,7 +117,11 @@
                                             <option value="pendiente" {% if compromiso.estado == 'pendiente' %}selected{% endif %}>Pendiente</option>
                                             <option value="en_proceso" {% if compromiso.estado == 'en_proceso' %}selected{% endif %}>En proceso</option>
                                             <option value="realizado" {% if compromiso.estado == 'realizado' %}selected{% endif %}>Realizado</option>
+                                            <option value="cerrado" {% if compromiso.estado == 'cerrado' %}selected{% endif %}>Cerrado</option>
+                                            <option value="no_aplica" {% if compromiso.estado == 'no_aplica' %}selected{% endif %}>No aplica</option>
+                                            <option value="vencido" {% if compromiso.estado == 'vencido' %}selected{% endif %}>Vencido</option>
                                         </select>
+                                        <textarea name="observaciones" class="form-control form-control-sm" rows="1" placeholder="Avance / observaciones">{{ compromiso.observaciones }}</textarea>
                                         <button class="btn btn-sm btn-primary" type="submit">Guardar</button>
                                     </form>
                                     <div class="mt-2">
@@ -160,6 +167,78 @@
             </nav>
             {% endif %}
         </section>
+        <section class="content-section">
+            <div class="section-head"><h2>Resultados del Tubo</h2><span id="agenda-search-status" class="text-muted small"></span></div>
+            <div class="table-responsive shadow-sm">
+                <table class="table table-striped" id="agenda-results-table">
+                    <thead class="table-dark"><tr><th>Código</th><th>Fecha</th><th>Origen</th><th>Solicitante</th><th>Descripción</th><th>Estado</th></tr></thead>
+                    <tbody id="agenda-results">
+                    {% for item in agenda_results %}
+                        <tr><td>{{ item.code }}</td><td>{{ item.date|slice:':10' }}</td><td>{{ item.source }}</td><td>{{ item.applicant }}</td><td>{{ item.description }}</td><td>{{ item.status }}</td></tr>
+                    {% empty %}<tr><td colspan="6" class="text-center py-3">No hay registros para los filtros seleccionados.</td></tr>{% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
     </div>
 </div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(() => {
+  const input = document.getElementById('q');
+  const period = document.getElementById('periodo');
+  const clear = document.getElementById('clear-agenda-search');
+  const body = document.getElementById('agenda-results');
+  const status = document.getElementById('agenda-search-status');
+  const endpoint = "{% url 'funcionario:agenda_busqueda_json' %}";
+  let timer;
+  function render(results) {
+    body.replaceChildren();
+    if (!results.length) {
+      const row = document.createElement('tr');
+      const cell = document.createElement('td');
+      cell.colSpan = 7;
+      cell.className = 'text-center py-3';
+      cell.textContent = 'No hay registros para los filtros seleccionados.';
+      row.appendChild(cell);
+      body.appendChild(row);
+    } else {
+      for (const item of results) {
+        const row = document.createElement('tr');
+        for (const value of [item.code, item.date.slice(0, 10), item.source, item.applicant, item.description, item.status]) {
+          const cell = document.createElement('td');
+          cell.textContent = value || '—';
+          row.appendChild(cell);
+        }
+        const action = document.createElement('td');
+        if (item.editable) {
+          const link = document.createElement('a');
+          link.className = 'btn btn-sm btn-outline-primary';
+          link.href = item.edit_url;
+          link.textContent = 'Editar';
+          action.appendChild(link);
+        } else {
+          action.textContent = 'Solo lectura';
+          action.className = 'text-muted small';
+        }
+        row.appendChild(action);
+        body.appendChild(row);
+      }
+    }
+    status.textContent = `${results.length} resultado${results.length === 1 ? '' : 's'}`;
+  }
+  function search() {
+    const params = new URLSearchParams({q: input.value, periodo: period.value});
+    fetch(`${endpoint}?${params}`, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(response => response.json())
+      .then(data => render(data.results || []))
+      .catch(() => { status.textContent = 'No fue posible actualizar la búsqueda'; });
+  }
+  input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 300); });
+  period.addEventListener('change', search);
+  clear.addEventListener('click', () => { input.value = ''; search(); input.focus(); });
+  search();
+})();
+</script>
 {% endblock %}

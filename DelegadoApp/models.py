@@ -31,6 +31,9 @@ class Compromiso(models.Model):
 		PENDIENTE = 'pendiente', 'Pendiente'
 		EN_PROCESO = 'en_proceso', 'En proceso'
 		REALIZADO = 'realizado', 'Realizado'
+		CERRADO = 'cerrado', 'Cerrado'
+		NO_APLICA = 'no_aplica', 'No aplica'
+		VENCIDO = 'vencido', 'Vencido'
 
 	class Ambito(models.TextChoices):
 		INTERNO = 'interno','Interno'
@@ -98,9 +101,6 @@ class Compromiso(models.Model):
 		return self.descripcion
 
 	def save(self, *args, **kwargs):
-		if self.agenda_id:
-			self.periodo_agenda = self.agenda.periodo_id
-			self.delegacion_agenda = self.agenda.delegacion_id
 		return super().save(*args, **kwargs)
 
 	

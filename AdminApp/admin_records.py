@@ -1331,9 +1331,9 @@ def _compromiso_snapshot(compromiso):
         'delegacion_id': compromiso.agenda.delegacion_id,
         'periodo_id': compromiso.agenda.periodo_id,
         'descripcion': compromiso.descripcion,
-        'solicitante': compromiso.solicitante,
-        'territorio': compromiso.territorio,
-        'fecha': compromiso.fecha.isoformat(),
+        'solicitante_id': compromiso.solicitante_id,
+        'territorio_id': compromiso.territorio_id,
+        'fecha_compromiso': compromiso.fecha_compromiso.isoformat(),
         'estado': compromiso.estado,
         'responsables': list(
             compromiso.responsable.order_by('pk').values_list(

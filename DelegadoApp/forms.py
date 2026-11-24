@@ -88,3 +88,4 @@ class CompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
 
 class CompromisoEstadoForm(BootstrapFormMixin, forms.Form):
     estado = forms.ChoiceField(choices=Compromiso.Estado.choices, label='Actualizar estado', widget=forms.Select(attrs={'class': 'form-select'}))
+    observaciones = forms.CharField(required=False, label='Avance / observaciones', widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}))
