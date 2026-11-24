@@ -15,7 +15,7 @@
       <div>
         <p class="eyebrow">NUEVA GESTIÓN</p>
         <h2>Registrar gestión social</h2>
-        <p class="section-note">Ingresa la fecha y las observaciones para generar una nueva gestión social. El código alfanumérico único de 20 caracteres se asignará automáticamente.</p>
+        <p class="section-note">Ingresa la fecha, el nombre y las observaciones para generar una nueva gestión social. El código alfanumérico único de 20 caracteres se asignará automáticamente.</p>
 
         <form id="form-crear-gestion" novalidate>
           {% csrf_token %}
@@ -25,8 +25,13 @@
           </div>
 
           <div class="mb-3">
-              <label class="form-label" for="id_nombre">Nombre de la gestión (opcional)</label>
-              <input type="text" class="form-control" id="id_nombre" maxlength="60" placeholder="Ej: Subsidio habitacional Sra. María">
+            <label class="form-label" for="id_nombre">Nombre de la gestión (opcional)</label>
+            <input type="text" class="form-control" id="id_nombre" maxlength="60" placeholder="Ej: Subsidio habitacional Sra. María">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="id_observaciones">Observaciones</label>
+            <textarea class="form-control" id="id_observaciones" rows="3" placeholder="Detalles u observaciones de la gestión..."></textarea>
           </div>
 
           <button class="btn btn-primary" type="button" id="btn-registrar-gestion">Registrar gestión</button>

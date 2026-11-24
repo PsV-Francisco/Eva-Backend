@@ -1450,7 +1450,7 @@ def editar_gestion_social_ajax(request, gestion_id):
                 actor=request.user,
                 action='Editar gestión social',
                 entity=f'GestionAtencion:{gestion.pk}',
-                after={'fecha': str(gestion.fecha), 'observaciones': gestion.observaciones},
+                after={'nombre': gestion.nombre, 'fecha': str(gestion.fecha), 'observaciones': gestion.observaciones},
             )
 
         return JsonResponse({'success': True, 'message': 'La gestión social se actualizó correctamente.'})
