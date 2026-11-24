@@ -57,7 +57,7 @@
           <input type="date" id="filter-fecha" class="form-control" placeholder="dd/mm/aaaa">
         </div>
         <div class="col-md-8">
-          <label class="form-label small text-muted mb-1">Filtrar por Código u Observaciones</label>
+          <label class="form-label small text-muted mb-1">Filtrar por Código, Nombre u Observaciones</label>
           <input type="text" id="filter-texto" class="form-control" placeholder="Escribe para buscar instantáneamente...">
         </div>
       </div>
@@ -67,6 +67,7 @@
           <thead>
             <tr>
               <th>CÓDIGO GESTIÓN</th>
+              <th>NOMBRE</th>
               <th>FECHA</th>
               <th>OBSERVACIONES</th>
               <th class="text-center">ATENCIONES ASOCIADAS</th>
@@ -77,6 +78,7 @@
             {% for g in gestiones %}
             <tr class="gestion-row" data-fecha="{{ g.fecha|date:'Y-m-d' }}" data-texto="{{ g.codigo }} {{ g.nombre|default:'' }} {{ g.observaciones }}">
               <td><strong class="font-monospace text-primary">{{ g.codigo }}</strong></td>
+              <td>{{ g.nombre|default:'—' }}</td>
               <td>{{ g.fecha|date:'d/m/Y' }}</td>
               <td>{{ g.observaciones|default:'—' }}</td>
               <td class="text-center">
