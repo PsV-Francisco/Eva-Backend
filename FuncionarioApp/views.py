@@ -1378,6 +1378,7 @@ def crear_gestion_social_ajax(request):
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'message': 'Payload JSON inválido.'}, status=400)
 
+    nombre = (data.get('nombre') or '').strip() or None
     fecha = data.get('fecha')
     observaciones = data.get('observaciones', '').strip()
 
@@ -1387,6 +1388,7 @@ def crear_gestion_social_ajax(request):
     try:
         with transaction.atomic():
             gestion = GestionAtencion.objects.create(
+                nombre=nombre,
                 fecha=fecha,
                 observaciones=observaciones
             )
@@ -1394,7 +1396,7 @@ def crear_gestion_social_ajax(request):
                 actor=request.user,
                 action='Crear gestión social',
                 entity=f'GestionAtencion:{gestion.pk}',
-                after={'codigo': str(gestion.codigo), 'fecha': str(gestion.fecha)},
+                after={'codigo': str(gestion.codigo), 'nombre': gestion.nombre, 'fecha': str(gestion.fecha)},
             )
 
         return JsonResponse({
@@ -1412,6 +1414,7 @@ def detalle_gestion_social_json(request, gestion_id):
     gestion = get_object_or_404(GestionAtencion, pk=gestion_id)
     return JsonResponse({
         'id': gestion.pk,
+        'nombre': gestion.nombre or '',
         'codigo': gestion.codigo,
         'fecha': gestion.fecha.strftime('%Y-%m-%d') if gestion.fecha else '',
         'observaciones': gestion.observaciones or '',
@@ -1429,6 +1432,7 @@ def editar_gestion_social_ajax(request, gestion_id):
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'message': 'Payload JSON inválido.'}, status=400)
 
+    nombre = (data.get('nombre') or '').strip() or None
     fecha = data.get('fecha')
     observaciones = data.get('observaciones', '').strip()
 
@@ -1437,6 +1441,7 @@ def editar_gestion_social_ajax(request, gestion_id):
 
     try:
         with transaction.atomic():
+            gestion.nombre = nombre
             gestion.fecha = fecha
             gestion.observaciones = observaciones
             gestion.save(update_fields=['fecha', 'observaciones'])
