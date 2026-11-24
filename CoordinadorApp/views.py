@@ -1,9 +1,6 @@
-from collections import defaultdict
-from decimal import Decimal
-
+#Importaciones de Django
 from django.contrib import messages
 from django.contrib.auth import get_user_model
-import math
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef
 from django.core.paginator import Paginator
@@ -11,48 +8,51 @@ from django.http import HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
-
+from collections import defaultdict
+from decimal import Decimal
+import math
+#Importaciones de AdminApp
 from AdminApp.audit import registrar_historial
 from AdminApp.csv_utils import csv_response
 from AdminApp.maintainers import maintainer
 from AdminApp.models import Cargo, Delegacion, ParametroSistema
 from config.decorators import cargo_required
+from AdminApp.csv_utils import excel_rows_response, pdf_rows_response
+#Importaciones de CoordinadorApp
 from CoordinadorApp.forms import PeriodoForm
 from CoordinadorApp.models import Desempeno, Periodo, SolicitudAutorizacionPeriodo
 from CoordinadorApp.reporting import consolidated_report_csv_rows
 from CoordinadorApp.authorization_forms import AuthorizationRequestForm
 from CoordinadorApp.services import _authorization_snapshot
-from CoordinadorApp.services import (
-    clasificar_umbral,
-    consolidar_cumplimientos,
-    resumen_cumplimiento,
-    tendencias_cumplimiento,
-    umbral_delegacion,
-    ZERO,
-)
+from CoordinadorApp.services import (clasificar_umbral,consolidar_cumplimientos,resumen_cumplimiento,tendencias_cumplimiento,umbral_delegacion,ZERO)
+#Importaciones de Modelos Necesarios
 from DelegadoApp.models import Agenda
 from FuncionarioApp.models import Registro
 from SupervisorApp.models import Evidencia
 
 
+
 def _period_snapshot(periodo):
-    return {
-        'nombre': periodo.nombre,
-        'fecha_inicio': periodo.fecha_inicio.isoformat(),
-        'fecha_fin': periodo.fecha_fin.isoformat(),
-        'estado': periodo.estado,
-    }
+    """
+    Serializa los atributos clave de un objeto Periodo
+    (nombre, fechas en formato ISO y estado) en un diccionario para registrar auditorías de cambios.
+    """
+    return {'nombre': periodo.nombre,'fecha_inicio': periodo.fecha_inicio.isoformat(),'fecha_fin': periodo.fecha_fin.isoformat(), 'estado': periodo.estado}
 
 
 def _has_associated_records(periodo):
-    return (
-        periodo.desempenos.exists()
-        or periodo.registros.exists()
-        or periodo.agendas.exists()
-    )
+    """
+    Verifica si un período tiene registros asociados en desempeño,
+    actividades o agendas para impedir su eliminación directa y mantener la integridad referencial.
+    """
+    return (periodo.desempenos.exists() or periodo.registros.exists() or periodo.agendas.exists())
 
 
 def _periods_view(request):
+    """
+    Gestiona el ciclo de vida CRUD y los cambios de estado (abrir, cerrar, eliminar) de los períodos,
+    validando permisos por cargo y registrando auditoría en el historial.
+    """
     cargo_name = request.user.cargo.nombre.strip().casefold()
     is_coordinator = cargo_name == 'coordinador'
     can_reopen = cargo_name in {'coordinador', 'admin', 'administrador'}
@@ -175,18 +175,21 @@ def _periods_view(request):
     })
 
 
-@cargo_required(
-    'coordinador', 'admin', 'administrador', permission='manage_coordinator_periods',
-)
+@cargo_required('coordinador', 'admin', 'administrador', permission='manage_coordinator_periods')
 def periodos(request):
+    """
+    Vista principal que expone la gestión completa de períodos
+    al delegar la ejecución en la lógica interna de administración de períodos.
+    """
     return _periods_view(request)
 
 
-@cargo_required(
-    'coordinador', 'admin', 'administrador',
-    permission='manage_periods',
-)
+@cargo_required('coordinador', 'admin', 'administrador',permission='manage_periods')
 def home(request):
+    """
+    Renderiza el panel general de Coordinación con métricas clave de períodos,
+    metas, funcionarios, registros y evidencias pendientes, manteniendo compatibilidad con envíos POST legados.
+    """
     if request.method == 'POST':
         # Compatibilidad con formularios antiguos sin perder el cuerpo POST.
         return _periods_view(request)
@@ -247,6 +250,9 @@ def home(request):
 
 
 def _coordinator_management_modules():
+    """
+    Retorna la estructura de navegación lateral con las rutas y etiquetas de los módulos disponibles para el rol de Coordinación.
+    """
     return (
         {'label': 'Panel de Coordinación', 'url_name': 'coordinador:home'},
         {'label': 'Tablero Personal', 'url_name': 'coordinador:personal'},
@@ -260,32 +266,25 @@ def _coordinator_management_modules():
     )
 
 
-@cargo_required(
-    'coordinador', 'admin', 'administrador',
-    permission='view_coordinator_personal',
-)
+@cargo_required('coordinador', 'admin', 'administrador',permission='view_coordinator_personal')
 def personal(request):
+    """
+    Presenta el tablero de cumplimiento individual del usuario autenticado para el período seleccionado, evaluando su avance real frente al umbral de delegación.
+    """
     edit_id = request.GET.get('editar')
     if edit_id:
         return redirect(f"{reverse('coordinador:periodos')}?editar={edit_id}")
 
     periodos = Periodo.objects.order_by('-fecha_inicio', '-pk')
     period_id = request.GET.get('periodo', '')
-    period = (
-        periodos.filter(pk=period_id).first()
-        if period_id.isdecimal()
-        else None
-    )
+    period = (periodos.filter(pk=period_id).first() if period_id.isdecimal() else None)
     if period is None:
         period = periodos.filter(
             estado=Periodo.Estado.ABIERTO,
         ).first() or periodos.first()
-    performances = (
-        Desempeno.objects.filter(
-            usuario=request.user, periodo=period,
-        ).select_related('item', 'periodo')
-        if period else Desempeno.objects.none()
-    )
+    performances = (Desempeno.objects.filter(usuario=request.user, periodo=period,).select_related('item', 'periodo')
+        if period else Desempeno.objects.none())
+    
     summary = resumen_cumplimiento(performances)
     has_items = bool(summary['items'])
     return render(request, 'FuncionarioApp/cumplimiento.html', {
@@ -302,31 +301,20 @@ def personal(request):
     })
 
 
-@cargo_required(
-    'coordinador', 'admin', 'administrador',
-    permission='request_closed_period_authorization',
-)
+@cargo_required('coordinador', 'admin', 'administrador',permission='request_closed_period_authorization')
 def solicitudes_autorizacion(request):
+    """
+    Permite a Coordinación crear nuevas solicitudes de autorización para operar sobre períodos cerrados o cancelar solicitudes pendientes,
+    registrando cada acción en el historial.
+    """
     if request.method == 'POST':
         if request.POST.get('action') == 'cancelar':
-            solicitud = get_object_or_404(
-                SolicitudAutorizacionPeriodo,
-                pk=request.POST.get('solicitud_id'),
-                solicitante=request.user,
-                estado=SolicitudAutorizacionPeriodo.Estado.PENDIENTE,
-            )
+            solicitud = get_object_or_404(SolicitudAutorizacionPeriodo,pk=request.POST.get('solicitud_id'),solicitante=request.user,estado=SolicitudAutorizacionPeriodo.Estado.PENDIENTE)
             before = _authorization_snapshot(solicitud)
             solicitud.estado = SolicitudAutorizacionPeriodo.Estado.CANCELADA
             solicitud.decidida_en = timezone.now()
             solicitud.save(update_fields=['estado', 'decidida_en'])
-            registrar_historial(
-                actor=request.user,
-                action='Cancelar solicitud de autorización',
-                entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}',
-                before=before,
-                after=_authorization_snapshot(solicitud),
-                period=solicitud.periodo,
-            )
+            registrar_historial(actor=request.user,action='Cancelar solicitud de autorización',entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}',before=before,after=_authorization_snapshot(solicitud),period=solicitud.periodo)
             messages.success(request, 'La solicitud fue cancelada.')
             return redirect('coordinador:solicitudes_autorizacion')
         form = AuthorizationRequestForm(request.POST)
@@ -336,20 +324,12 @@ def solicitudes_autorizacion(request):
             solicitud.alcances = ['metas']
             solicitud.save()
             form.save_m2m()
-            registrar_historial(
-                actor=request.user,
-                action='Solicitar autorización de período',
-                entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}',
-                after=_authorization_snapshot(solicitud),
-                period=solicitud.periodo,
-            )
+            registrar_historial(actor=request.user,action='Solicitar autorización de período',entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}',after=_authorization_snapshot(solicitud),period=solicitud.periodo)
             messages.success(request, 'La solicitud quedó pendiente de revisión.')
             return redirect('coordinador:solicitudes_autorizacion')
     else:
         form = AuthorizationRequestForm()
-    solicitudes = SolicitudAutorizacionPeriodo.objects.filter(
-        solicitante=request.user,
-    ).select_related('periodo').prefetch_related('funcionarios')
+    solicitudes = SolicitudAutorizacionPeriodo.objects.filter(solicitante=request.user).select_related('periodo').prefetch_related('funcionarios')
     return render(request, 'CoordinadorApp/solicitudes_autorizacion.html', {
         'sgr_role': 'Coordinación',
         'form': form,
@@ -358,58 +338,41 @@ def solicitudes_autorizacion(request):
     })
 
 
-@cargo_required(
-    'coordinador', 'admin', 'administrador',
-    permission='manage_coordinator_goals',
-)
+@cargo_required('coordinador', 'admin', 'administrador',permission='manage_coordinator_goals')
 def metas(request):
-    return maintainer(
-        request,
-        'metas',
-        route_name='coordinador:metas',
-        sgr_role='Coordinación',
-        sidebar_modules=_coordinator_management_modules(),
-        protect_closed_periods=True,
-        global_scope=True,
-        coordinator_meta_delete=True,
+    """
+    Delega al mantenedor genérico la gestión global de metas,
+    aplicando protección contra edición en períodos cerrados y advertencias sobre la suma total de ponderaciones.
+    """
+    return maintainer(request,'metas',route_name='coordinador:metas',sgr_role='Coordinación',sidebar_modules=_coordinator_management_modules(),
+        protect_closed_periods=True,global_scope=True,coordinator_meta_delete=True,
         warn_weight_total=True,
         closed_period_authorization=True,
     )
 
 
-@cargo_required(
-    'coordinador', 'admin', 'administrador',
-    permission='manage_coordinator_position_functions',
-)
+@cargo_required('coordinador', 'admin', 'administrador',permission='manage_coordinator_position_functions')
 def cargos_funciones(request):
-    return maintainer(
-        request,
-        'cargos-funciones',
-        route_name='coordinador:cargos_funciones',
-        sgr_role='Coordinación',
-        sidebar_modules=_coordinator_management_modules(),
-        global_scope=True,
-    )
+    """
+    Delega al mantenedor genérico la administración global de la asignación de funciones asociadas a cada cargo dentro del sistema.
+    """
+    return maintainer(request,'cargos-funciones',route_name='coordinador:cargos_funciones',sgr_role='Coordinación',sidebar_modules=_coordinator_management_modules(),global_scope=True)
 
 
-@cargo_required(
-    'coordinador', 'admin', 'administrador',
-    permission='view_coordinator_weights',
-)
+@cargo_required('coordinador', 'admin', 'administrador',permission='view_coordinator_weights')
 def ponderaciones(request):
+    """
+    Agrupa los desempeños por período y funcionario para calcular y validar la suma porcentual de sus ponderaciones
+    (incompleta, cumple 100 % o excede 100 %).
+    """
     period_id = request.GET.get('periodo', '')
     cargo_id = request.GET.get('cargo', '')
     user_id = request.GET.get('funcionario', '')
-    queryset = Desempeno.objects.select_related(
-        'item', 'periodo', 'usuario',
-    ).order_by('periodo__fecha_inicio', 'usuario__email', 'item__nombre')
+    queryset = Desempeno.objects.select_related('item', 'periodo', 'usuario',).order_by('periodo__fecha_inicio', 'usuario__email', 'item__nombre')
     if period_id.isdecimal():
         queryset = queryset.filter(periodo_id=period_id)
     if cargo_id.isdecimal():
-        queryset = queryset.filter(
-            usuario__usuariocargo__cargo_id=cargo_id,
-            usuario__usuariocargo__fecha_fin__isnull=True,
-        ).distinct()
+        queryset = queryset.filter(usuario__usuariocargo__cargo_id=cargo_id,usuario__usuariocargo__fecha_fin__isnull=True,).distinct()
     if user_id.isdecimal():
         queryset = queryset.filter(usuario_id=user_id)
 
@@ -448,9 +411,7 @@ def ponderaciones(request):
         'summaries': summaries,
         'periodos': Periodo.objects.order_by('-fecha_inicio'),
         'cargos': Cargo.objects.filter(estado=Cargo.Estado.ACTIVO).order_by('nombre'),
-        'funcionarios': get_user_model().objects.filter(
-            is_active=True,
-        ).order_by('last_name', 'first_name', 'email'),
+        'funcionarios': get_user_model().objects.filter(is_active=True,).order_by('last_name', 'first_name', 'email'),
         'selected_period': period_id,
         'selected_cargo': cargo_id,
         'selected_user': user_id,
@@ -458,6 +419,10 @@ def ponderaciones(request):
 
 
 def _report_filters(request):
+    """
+    Extrae y resuelve los parámetros de filtrado desde la petición HTTP
+    (período activo o seleccionado, delegación, cargo y funcionario) para los reportes.
+    """
     periods = Periodo.objects.order_by('-fecha_inicio')
     period_id = request.GET.get('periodo', '')
     if period_id.isdecimal():
@@ -471,6 +436,10 @@ def _report_filters(request):
 
 
 def consolidated_report_rows(request):
+    """
+    Consolida los indicadores de avance real, clasificación por umbral y 
+    distribución semafórica a nivel individual y agregado por delegación.
+    """
     periods, period, period_id, delegation_id, cargo_id, user_id = _report_filters(request)
     cap = ParametroSistema.obtener(ParametroSistema.Clave.TOPE_CUMPLIMIENTO)
     threshold = ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_DELEGACION)
@@ -478,35 +447,24 @@ def consolidated_report_rows(request):
         is_active=True,
     ).order_by('last_name', 'first_name', 'email')
     if delegation_id.isdecimal():
-        users = users.filter(
-            usuariodelegacion__delegacion_id=delegation_id,
-            usuariodelegacion__fecha_fin__isnull=True,
-        ).distinct()
+        users = users.filter(usuariodelegacion__delegacion_id=delegation_id,usuariodelegacion__fecha_fin__isnull=True,).distinct()
     if cargo_id.isdecimal():
-        users = users.filter(
-            usuariocargo__cargo_id=cargo_id,
-            usuariocargo__fecha_fin__isnull=True,
-        ).distinct()
+        users = users.filter(usuariocargo__cargo_id=cargo_id,usuariocargo__fecha_fin__isnull=True,).distinct()
     if user_id.isdecimal():
         users = users.filter(pk=user_id)
     users = list(users)
     user_ids = {user.pk for user in users}
     performances = Desempeno.objects.none()
     if period and user_ids:
-        performances = Desempeno.objects.filter(
-            periodo=period, usuario_id__in=user_ids,
-        ).select_related('item', 'periodo', 'usuario')
+        performances = Desempeno.objects.filter(periodo=period, usuario_id__in=user_ids,).select_related('item', 'periodo', 'usuario')
     performances = list(performances)
     counts = {
         (row['autor_id'], row['item_id'], row['periodo_id']): row['cantidad']
-        for row in Registro.objects.filter(
-            autor_id__in=user_ids,
-            periodo_id=period.pk if period else None,
-            estado=Registro.Estado.VALIDADA,
+        for row in Registro.objects.filter(autor_id__in=user_ids,periodo_id=period.pk if period else None,estado=Registro.Estado.VALIDADA,
             evidencia__estado=Evidencia.Estado.APROBADA,
         ).values('autor_id', 'item_id', 'periodo_id').annotate(
-            cantidad=Count('pk', distinct=True),
-        )
+            cantidad=Count('pk', distinct=True),)
+    
     } if period and user_ids else {}
     performances_by_user = defaultdict(list)
     for performance in performances:
@@ -546,10 +504,7 @@ def consolidated_report_rows(request):
             'clasificacion': classification,
         })
     for group in summaries.values():
-        collective = consolidar_cumplimientos(
-            group.pop('user_summaries'),
-            threshold=threshold,
-        )
+        collective = consolidar_cumplimientos(group.pop('user_summaries'),threshold=threshold)
         group.update(collective)
         group['promedio_avance_real'] = collective['cumplimiento_colectivo']
         group['verde'] = collective['distribucion_semaforo']['verde']['count']
@@ -559,29 +514,25 @@ def consolidated_report_rows(request):
     return periods, period, period_id or (str(period.pk) if period else ''), delegation_id, cargo_id, user_id, rows, list(summaries.values())
 
 
-@cargo_required(
-    'coordinador', 'admin', 'administrador', permission='view_coordinator_reports',
-)
+@cargo_required('coordinador', 'admin', 'administrador', permission='view_coordinator_reports')
 def informes(request):
+    """
+    Genera la vista paginada del informe consolidado de cumplimiento y
+    gestiona su exportación en formatos CSV, Excel o PDF con registro de auditoría.
+    """
     if request.method != 'GET':
         return HttpResponseNotAllowed(['GET'])
     data = consolidated_report_rows(request)
     periods, period, period_id, delegation_id, cargo_id, user_id, rows, summaries = data
     export_fmt = request.GET.get('export')
     if export_fmt in {'csv', 'excel', 'pdf'}:
-        from AdminApp.csv_utils import excel_rows_response, pdf_rows_response
-
-        selected_delegation_obj = (
-            Delegacion.objects.filter(pk=delegation_id).first()
+        selected_delegation_obj = (Delegacion.objects.filter(pk=delegation_id).first()
             if delegation_id.isdecimal()
             else 'Todas las delegaciones'
         )
         exporter = {'excel': excel_rows_response, 'pdf': pdf_rows_response}.get(export_fmt, csv_response)
         ext = {'excel': 'xlsx', 'pdf': 'pdf'}.get(export_fmt, 'csv')
-        return exporter(
-            request,
-            filename=f'informe_consolidado.{ext}',
-            rows=consolidated_report_csv_rows(period, rows, summaries),
+        return exporter(request,filename=f'informe_consolidado.{ext}',rows=consolidated_report_csv_rows(period, rows, summaries),
             entity='InformeConsolidado',
             action=f'Exportar informe consolidado {ext.upper()}',
             title='Informe consolidado de cumplimiento',
@@ -592,9 +543,8 @@ def informes(request):
                 'cargo': cargo_id,
                 'funcionario': user_id,
             },
-            row_count=len(rows),
-            period=period,
-        )
+            row_count=len(rows),period=period)
+    
     page = Paginator(rows, 25).get_page(request.GET.get('page'))
     return render(request, 'CoordinadorApp/informes.html', {
         'sgr_role': 'Coordinación',
@@ -614,6 +564,10 @@ def informes(request):
 
 
 def _trend_range(raw_value):
+    """
+    Valida y normaliza el parámetro numérico de cantidad de períodos a consultar en las tendencias históricas,
+    acotándolo entre 1 y 12 (6 por defecto).
+    """
     if raw_value in (None, ''):
         return 6, ''
     if not raw_value.isdecimal():
@@ -632,90 +586,68 @@ def _trend_range(raw_value):
 
 
 def _trend_filter_id(raw_value, label):
+    """
+    Valida que los identificadores recibidos por parámetro
+    correspondan a enteros positivos dentro del rango permitido por la base de datos.
+    """
     if raw_value in (None, ''):
         return None, ''
     if not raw_value.isdecimal():
         return None, f'El identificador de {label} no es válido; no hay resultados para ese filtro.'
     normalized = raw_value.lstrip('0')
-    if (
-        not normalized
-        or len(normalized) > 19
-        or (len(normalized) == 19 and normalized > '9223372036854775807')
-    ):
+    if (not normalized or len(normalized) > 19 or (len(normalized) == 19 and normalized > '9223372036854775807')):
         return None, f'El identificador de {label} no es válido; no hay resultados para ese filtro.'
     return int(normalized), ''
 
 
 def _trend_chart(series, threshold):
+    """
+    Calcula las coordenadas cartesianas (ejes X e Y), 
+    marcas de escala y la línea base del umbral para graficar la evolución histórica de cumplimiento.
+    """
     points = [row for row in series if row['funcionarios_considerados']]
     if len(points) < 2:
         return [], [], 100, 0
 
-    max_value = max(
-        max(row['promedio_avance_real'], row['porcentaje_sobre_umbral'])
-        for row in points
-    )
+    max_value = max(max(row['promedio_avance_real'], row['porcentaje_sobre_umbral']) for row in points)
     chart_max = max(100, math.ceil(float(max_value) / 25) * 25)
     left, right, top, bottom = 82, 678, 40, 260
     plot_height = bottom - top
     chart_points = []
     for index, row in enumerate(points):
         x = round(left + (right - left) * index / (len(points) - 1))
-        chart_points.append({
-            **row,
-            'x': x,
-            'promedio_y': round(bottom - float(row['promedio_avance_real']) * plot_height / chart_max),
-            'sobre_y': round(bottom - float(row['porcentaje_sobre_umbral']) * plot_height / chart_max),
-        })
-    ticks = [
-        {'value': value, 'y': round(bottom - value * plot_height / chart_max)}
-        for value in range(0, chart_max + 1, 25)
-    ]
+        chart_points.append({**row,'x': x,'promedio_y': round(bottom - float(row['promedio_avance_real']) * plot_height / chart_max),'sobre_y': round(bottom - float(row['porcentaje_sobre_umbral']) * plot_height / chart_max),})
+    ticks = [{'value': value, 'y': round(bottom - value * plot_height / chart_max)} for value in range(0, chart_max + 1, 25)]
     threshold_y = round(bottom - float(threshold) * plot_height / chart_max)
     return chart_points, ticks, chart_max, threshold_y
 
 
-@cargo_required(
-    'coordinador', 'admin', 'administrador',
-    permission='view_coordinator_trends',
-)
+@cargo_required('coordinador', 'admin', 'administrador',permission='view_coordinator_trends')
 def tendencias(request):
+    """
+    Construye el análisis evolutivo del cumplimiento a través de múltiples períodos filtrados por delegación,
+    cargo o funcionario, permitiendo su visualización gráfica y exportación.
+    """
     if request.method != 'GET':
         return HttpResponseNotAllowed(['GET'])
 
     period_limit, range_message = _trend_range(request.GET.get('periodos', ''))
-    selected_periods = list(
-        Periodo.objects.order_by('-fecha_inicio', '-pk')[:period_limit],
-    )
+    selected_periods = list(Periodo.objects.order_by('-fecha_inicio', '-pk')[:period_limit])
     selected_periods.reverse()
 
-    raw_filters = {
-        'delegacion': request.GET.get('delegacion', ''),
-        'cargo': request.GET.get('cargo', ''),
-        'funcionario': request.GET.get('funcionario', ''),
-    }
+    raw_filters = {'delegacion': request.GET.get('delegacion', ''),'cargo': request.GET.get('cargo', ''),
+        'funcionario': request.GET.get('funcionario', ''),}
+    
     parsed_filters = {}
     filter_message = ''
-    for key, label in (
-        ('delegacion', 'delegación'),
-        ('cargo', 'cargo'),
-        ('funcionario', 'funcionario'),
-    ):
+    for key, label in (('delegacion', 'delegación'),('cargo', 'cargo'),('funcionario', 'funcionario'),):
         parsed_filters[key], error = _trend_filter_id(raw_filters[key], label)
         if error and not filter_message:
             filter_message = error
 
     User = get_user_model()
-    filter_models = {
-        'delegacion': Delegacion,
-        'cargo': Cargo,
-        'funcionario': User,
-    }
-    filter_labels = {
-        'delegacion': 'delegación',
-        'cargo': 'cargo',
-        'funcionario': 'funcionario',
-    }
+    filter_models = {'delegacion': Delegacion,'cargo': Cargo,'funcionario': User}
+    filter_labels = {'delegacion': 'delegación','cargo': 'cargo','funcionario': 'funcionario'}
     for key, value in parsed_filters.items():
         if value is not None and not filter_models[key].objects.filter(pk=value).exists():
             filter_message = (
@@ -724,35 +656,19 @@ def tendencias(request):
             )
             break
 
-    users = User.objects.filter(
-        is_active=True,
-    ).order_by('last_name', 'first_name', 'email')
+    users = User.objects.filter(is_active=True,).order_by('last_name', 'first_name', 'email')
     if parsed_filters['delegacion'] is not None:
-        users = users.filter(
-            usuariodelegacion__delegacion_id=parsed_filters['delegacion'],
-            usuariodelegacion__fecha_fin__isnull=True,
-        ).distinct()
+        users = users.filter(usuariodelegacion__delegacion_id=parsed_filters['delegacion'],usuariodelegacion__fecha_fin__isnull=True,).distinct()
     if parsed_filters['cargo'] is not None:
-        users = users.filter(
-            usuariocargo__cargo_id=parsed_filters['cargo'],
-            usuariocargo__fecha_fin__isnull=True,
-        ).distinct()
+        users = users.filter(usuariocargo__cargo_id=parsed_filters['cargo'],usuariocargo__fecha_fin__isnull=True,).distinct()
     if parsed_filters['funcionario'] is not None:
         users = users.filter(pk=parsed_filters['funcionario'])
     users = list(users) if not filter_message else []
 
     cap = ParametroSistema.obtener(ParametroSistema.Clave.TOPE_CUMPLIMIENTO)
     threshold = umbral_delegacion()
-    series = tendencias_cumplimiento(
-        users,
-        selected_periods,
-        cap=cap,
-        umbral=threshold,
-    )
-    chart_points, chart_ticks, chart_max, threshold_y = _trend_chart(
-        series,
-        threshold,
-    )
+    series = tendencias_cumplimiento(users,selected_periods,cap=cap,umbral=threshold)
+    chart_points, chart_ticks, chart_max, threshold_y = _trend_chart(series,threshold)
 
     if filter_message:
         empty_message = filter_message
@@ -765,37 +681,28 @@ def tendencias(request):
 
     export_fmt = request.GET.get('export')
     if export_fmt in {'csv', 'excel', 'pdf'}:
-        from AdminApp.csv_utils import excel_rows_response, pdf_rows_response
-
-        selected_delegation_obj = (
-            Delegacion.objects.filter(pk=parsed_filters['delegacion']).first()
+        selected_delegation_obj = (Delegacion.objects.filter(pk=parsed_filters['delegacion']).first() 
             if parsed_filters.get('delegacion')
-            else 'Todas las delegaciones'
-        )
+            else 'Todas las delegaciones')
+        
         exporter = {'excel': excel_rows_response, 'pdf': pdf_rows_response}.get(export_fmt, csv_response)
         ext = {'excel': 'xlsx', 'pdf': 'pdf'}.get(export_fmt, 'csv')
-        return exporter(
-            request,
-            filename=f'tendencias_historicas.{ext}',
+        return exporter(request,filename=f'tendencias_historicas.{ext}',
             rows=[[
                 'Período',
                 'Funcionarios considerados',
                 'Promedio de avance real (%)',
                 'Funcionarios sobre el umbral (%)',
-                'Funcionarios sin ítems',
-            ]] + [[
+                'Funcionarios sin ítems',]] + 
+            [[
                 item['periodo'].nombre,
                 item['funcionarios_considerados'],
                 item['promedio_avance_real'],
                 item['porcentaje_sobre_umbral'],
                 item['funcionarios_sin_items'],
-            ] for item in series],
-            entity='TendenciasHistoricas',
-            action=f'Exportar tendencias históricas {ext.upper()}',
+            ] for item in series],entity='TendenciasHistoricas',action=f'Exportar tendencias históricas {ext.upper()}',
             title='Reporte de tendencias históricas',
-            delegation=selected_delegation_obj,
-            filters=raw_filters,
-            row_count=len(series),
+            delegation=selected_delegation_obj,filters=raw_filters,row_count=len(series),
             period=selected_periods[-1] if selected_periods else None,
         )
     return render(request, 'CoordinadorApp/tendencias.html', {
@@ -809,9 +716,7 @@ def tendencias(request):
         'periodos': selected_periods,
         'delegaciones': Delegacion.objects.order_by('nombre'),
         'cargos': Cargo.objects.filter(estado=Cargo.Estado.ACTIVO).order_by('nombre'),
-        'funcionarios': User.objects.filter(
-            is_active=True,
-        ).order_by('last_name', 'first_name', 'email'),
+        'funcionarios': User.objects.filter(is_active=True,).order_by('last_name', 'first_name', 'email'),
         'selected_delegation': raw_filters['delegacion'],
         'selected_cargo': raw_filters['cargo'],
         'selected_user': raw_filters['funcionario'],

@@ -1,11 +1,11 @@
+#Importaciones de Django
 from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
-
 from django.db.models import Count, Q
 from django.utils import timezone
-
 from AdminApp.audit import registrar_historial
+#Importación de Modelos
 from AdminApp.models import ParametroSistema
 from CoordinadorApp.models import Desempeno, SolicitudAutorizacionPeriodo
 from FuncionarioApp.models import Registro, limite_diario_actividades
@@ -17,10 +17,8 @@ ZERO = Decimal('0.00')
 HUNDRED = Decimal('100')
 META_SCOPE = 'metas'
 
-
 def max_dias_autorizacion():
     return int(ParametroSistema.obtener(ParametroSistema.Clave.MAX_DIAS_AUTORIZACION))
-
 
 def _authorization_snapshot(request):
     return {
@@ -38,8 +36,7 @@ def expire_authorizations():
     now = timezone.now()
     queryset = SolicitudAutorizacionPeriodo.objects.filter(
         estado=SolicitudAutorizacionPeriodo.Estado.APROBADA,
-        vence_en__lte=now,
-    ).select_related('periodo').prefetch_related('funcionarios')
+        vence_en__lte=now).select_related('periodo').prefetch_related('funcionarios')
     for authorization in queryset:
         before = _authorization_snapshot(authorization)
         authorization.estado = SolicitudAutorizacionPeriodo.Estado.VENCIDA
@@ -57,12 +54,7 @@ def expire_authorizations():
 def authorization_for(actor, period, scope=META_SCOPE, funcionario=None):
     expire_authorizations()
     now = timezone.now()
-    candidates = SolicitudAutorizacionPeriodo.objects.filter(
-        solicitante=actor,
-        periodo=period,
-        estado=SolicitudAutorizacionPeriodo.Estado.APROBADA,
-        vence_en__gt=now,
-    ).prefetch_related('funcionarios')
+    candidates = SolicitudAutorizacionPeriodo.objects.filter(solicitante=actor,periodo=period,estado=SolicitudAutorizacionPeriodo.Estado.APROBADA,vence_en__gt=now).prefetch_related('funcionarios')
     for authorization in candidates:
         if scope not in (authorization.alcances or []):
             continue
@@ -163,22 +155,11 @@ def porcentaje_esperado(periodo, fecha_corte=None, usuario=None, *, hoy=None):
         total = max(total, 1)
     if not total or fecha_corte < periodo.fecha_inicio:
         return ZERO
-    transcurridos = dias_habiles(
-        periodo.fecha_inicio,
-        min(fecha_corte, periodo.fecha_fin),
-    )
+    transcurridos = dias_habiles(periodo.fecha_inicio,min(fecha_corte, periodo.fecha_fin))
     if usuario is not None:
-        transcurridos -= _dias_no_trabajados(
-            periodo,
-            usuario,
-            periodo.fecha_inicio,
-            min(fecha_corte, periodo.fecha_fin),
-        )
+        transcurridos -= _dias_no_trabajados(periodo,usuario,periodo.fecha_inicio,min(fecha_corte, periodo.fecha_fin))
         transcurridos = max(transcurridos, 0)
-    return (Decimal(transcurridos) * HUNDRED / Decimal(total)).quantize(
-        Decimal('0.01'),
-        rounding=ROUND_HALF_UP,
-    )
+    return (Decimal(transcurridos) * HUNDRED / Decimal(total)).quantize(Decimal('0.01'),rounding=ROUND_HALF_UP)
 
 
 def _semaforo(cumplimiento, esperado):
@@ -197,10 +178,7 @@ def _conteo_actividades_puntaje(user_ids, period_ids):
         autor_id__in=user_ids,
         periodo_id__in=period_ids,
         estado=Registro.Estado.VALIDADA,
-        evidencia__estado=Evidencia.Estado.APROBADA,
-    ).filter(
-        Q(genera_puntaje__iexact='SI') | Q(genera_puntaje__isnull=True) | Q(genera_puntaje='')
-    ).select_related('autor').order_by('autor_id', 'fecha', 'creado', 'pk')
+        evidencia__estado=Evidencia.Estado.APROBADA,).filter(Q(genera_puntaje__iexact='SI') | Q(genera_puntaje__isnull=True) | Q(genera_puntaje='')).select_related('autor').order_by('autor_id', 'fecha', 'creado', 'pk')
 
     diarios_por_usuario = defaultdict(int)
     counts = defaultdict(Decimal)
@@ -224,7 +202,7 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
             'avance_real': ZERO,
             'avance_esperado': ZERO,
             'total_aporte': ZERO,
-            'total_ponderacion': ZERO, # <-- Añadido
+            'total_ponderacion': ZERO,
             'ponderacion_completa': False,
         }
 
@@ -242,39 +220,15 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
     total_aporte = ZERO
     total_ponderacion = ZERO  # <-- Añadido
     for desempenho in desempenos:
-        avance = counts.get(
-            (desempenho.usuario_id, desempenho.item_id, desempenho.periodo_id),
-            ZERO,
-        )
+        avance = counts.get((desempenho.usuario_id, desempenho.item_id, desempenho.periodo_id),ZERO)
         meta = Decimal(desempenho.meta)
-        cumplimiento = min(avance * HUNDRED / meta, cap).quantize(
-            Decimal('0.01'),
-            rounding=ROUND_HALF_UP,
-        )
-        esperado = porcentaje_esperado(
-            desempenho.periodo,
-            fecha_corte=hoy,
-            usuario=desempenho.usuario,
-        )
+        cumplimiento = min(avance * HUNDRED / meta, cap).quantize(Decimal('0.01'),rounding=ROUND_HALF_UP)
+        esperado = porcentaje_esperado(desempenho.periodo,fecha_corte=hoy,usuario=desempenho.usuario)
         ponderacion = desempenho.ponderacion
-        aporte = (
-            (Decimal(ponderacion) * cumplimiento / HUNDRED).quantize(
-                Decimal('0.01'),
-                rounding=ROUND_HALF_UP,
-            )
-            if ponderacion is not None else None
-        )
+        aporte = ((Decimal(ponderacion) * cumplimiento / HUNDRED).quantize(Decimal('0.01'),rounding=ROUND_HALF_UP)
+            if ponderacion is not None else None)
         expected_amount = meta * esperado / HUNDRED
-        items.append({
-            'desempeno': desempenho,
-            'avance': avance,
-            'meta': meta,
-            'cumplimiento': cumplimiento,
-            'esperado': esperado,
-            'ponderacion': ponderacion,
-            'aporte': aporte,
-            'semaforo': _semaforo(cumplimiento, esperado),
-        })
+        items.append({'desempeno': desempenho,'avance': avance,'meta': meta,'cumplimiento': cumplimiento,'esperado': esperado,'ponderacion': ponderacion,'aporte': aporte,'semaforo': _semaforo(cumplimiento, esperado),})
         total_avance += avance
         total_meta += meta
         total_esperado += expected_amount
@@ -283,14 +237,9 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
         if ponderacion is not None:
             total_ponderacion += Decimal(ponderacion)  # <-- Añadido
 
-    avance_real = (
-        min(total_avance * HUNDRED / total_meta, cap)
-        if total_meta else ZERO
-    ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-    avance_esperado = (
-        total_esperado * HUNDRED / total_meta
-        if total_meta else ZERO
-    ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    avance_real = (min(total_avance * HUNDRED / total_meta, cap)
+        if total_meta else ZERO).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    avance_esperado = (total_esperado * HUNDRED / total_meta if total_meta else ZERO).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
     return {
         'items': items,
         'total_avance': total_avance,
@@ -298,7 +247,7 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
         'avance_real': avance_real,
         'avance_esperado': avance_esperado,
         'total_aporte': total_aporte.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
-        'total_ponderacion': total_ponderacion.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),  # <-- Añadido
+        'total_ponderacion': total_ponderacion.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
         'ponderacion_completa': all(
             item['ponderacion'] is not None for item in items
         ),
@@ -336,18 +285,8 @@ def consolidar_cumplimientos(summaries, *, threshold=None):
     distribution = {
         state: {
             'count': count,
-            'percentage': (
-                (Decimal(count) * HUNDRED / total).quantize(
-                    Decimal('0.01'), rounding=ROUND_HALF_UP,
-                ) if total else ZERO
-            ),
-        }
-        for state, count in counts.items()
-    }
-    below = sum(
-        1 for summary in with_items
-        if threshold is not None and summary['avance_real'] < threshold
-    )
+            'percentage': ((Decimal(count) * HUNDRED / total).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP,) if total else ZERO)} for state, count in counts.items()}
+    below = sum(1 for summary in with_items if threshold is not None and summary['avance_real'] < threshold)
     return {
         'total_funcionarios': len(summaries),
         'cumplimiento_colectivo': collective,
@@ -359,14 +298,8 @@ def consolidar_cumplimientos(summaries, *, threshold=None):
 def _resumen_desde_items(items):
     total_avance = sum((item['avance'] for item in items), ZERO)
     total_meta = sum((item['meta'] for item in items), ZERO)
-    total_esperado = sum(
-        (item['meta'] * item['esperado'] / HUNDRED for item in items),
-        ZERO,
-    )
-    total_aporte = sum(
-        (item['aporte'] for item in items if item['aporte'] is not None),
-        ZERO,
-    )
+    total_esperado = sum((item['meta'] * item['esperado'] / HUNDRED for item in items),ZERO)
+    total_aporte = sum((item['aporte'] for item in items if item['aporte'] is not None),ZERO)
     cap = Decimal(ParametroSistema.obtener(ParametroSistema.Clave.TOPE_CUMPLIMIENTO))
     avance_real = min(total_avance * HUNDRED / total_meta, cap) if total_meta else ZERO
     avance_esperado = total_esperado * HUNDRED / total_meta if total_meta else ZERO
@@ -375,15 +308,9 @@ def _resumen_desde_items(items):
         'total_avance': total_avance,
         'total_meta': total_meta,
         'avance_real': avance_real.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
-        'avance_esperado': avance_esperado.quantize(
-            Decimal('0.01'),
-            rounding=ROUND_HALF_UP,
-        ),
+        'avance_esperado': avance_esperado.quantize(Decimal('0.01'),rounding=ROUND_HALF_UP),
         'total_aporte': total_aporte.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
-        'ponderacion_completa': all(
-            item['ponderacion'] is not None for item in items
-        ),
-    }
+        'ponderacion_completa': all(item['ponderacion'] is not None for item in items),}
 
 
 def tendencias_cumplimiento(usuarios, periodos, *, cap, umbral):
@@ -394,19 +321,12 @@ def tendencias_cumplimiento(usuarios, periodos, *, cap, umbral):
 
     user_ids = {usuario.pk for usuario in usuarios}
     period_ids = {periodo.pk for periodo in periodos}
-    desempenos = list(
-        Desempeno.objects.filter(
-            usuario_id__in=user_ids,
-            periodo_id__in=period_ids,
-        ).select_related('item', 'periodo', 'usuario'),
-    )
+    desempenos = list(Desempeno.objects.filter(usuario_id__in=user_ids,periodo_id__in=period_ids,).select_related('item', 'periodo', 'usuario'))
     counts = _conteo_actividades_puntaje(user_ids, period_ids)
 
     performances_by_user_period = defaultdict(list)
     for desempenho in desempenos:
-        performances_by_user_period[
-            (desempenho.usuario_id, desempenho.periodo_id)
-        ].append(desempenho)
+        performances_by_user_period[(desempenho.usuario_id, desempenho.periodo_id)].append(desempenho)
 
     series = []
     for periodo in periodos:
@@ -414,30 +334,16 @@ def tendencias_cumplimiento(usuarios, periodos, *, cap, umbral):
         considerados = 0
         sobre_umbral = 0
         for usuario in usuarios:
-            summary = resumen_cumplimiento(
-                performances_by_user_period.get((usuario.pk, periodo.pk), ()),
-                counts=counts,
-                cap=cap,
-            )
+            summary = resumen_cumplimiento(performances_by_user_period.get((usuario.pk, periodo.pk), ()),counts=counts,cap=cap)
             if not summary['items']:
                 continue
             considerados += 1
             total_avance_real += summary['avance_real']
-            if clasificar_umbral(
-                summary['avance_real'],
-                tiene_items=True,
-                umbral=umbral,
-            ) == 'sobre':
+            if clasificar_umbral(summary['avance_real'],tiene_items=True,umbral=umbral,) == 'sobre':
                 sobre_umbral += 1
 
-        promedio = (
-            total_avance_real / Decimal(considerados)
-            if considerados else ZERO
-        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        porcentaje_sobre = (
-            Decimal(sobre_umbral) * HUNDRED / Decimal(considerados)
-            if considerados else ZERO
-        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        promedio = (total_avance_real / Decimal(considerados) if considerados else ZERO).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        porcentaje_sobre = (Decimal(sobre_umbral) * HUNDRED / Decimal(considerados) if considerados else ZERO).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         series.append({
             'periodo': periodo,
             'funcionarios_considerados': considerados,

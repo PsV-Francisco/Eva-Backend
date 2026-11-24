@@ -1,29 +1,19 @@
 from django.contrib.auth import get_user_model
-from datetime import date
-from datetime import timedelta
-from decimal import Decimal
-
 from django.contrib.auth.models import Permission
-from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 from django.urls import reverse
-
-from AdminApp.models import Cargo, Delegacion, Historial, ParametroSistema
-from CoordinadorApp.models import (
-    Desempeno,
-    Funcion,
-    Item,
-    Periodo,
-    PeriodoSemana,
-    SolicitudAutorizacionPeriodo,
-)
 from django.db.models.deletion import ProtectedError
+from AdminApp.models import Cargo, Delegacion, Historial, ParametroSistema
+from CoordinadorApp.models import (Desempeno,Funcion,Item,Periodo,PeriodoSemana,SolicitudAutorizacionPeriodo)
 from CoordinadorApp.services import _semaforo, authorization_for, max_dias_autorizacion, porcentaje_esperado, record_authorization_use, resumen_cumplimiento, tendencias_cumplimiento, validate_authorization_expiry
 from FuncionarioApp.models import Registro, Subtipo, Tipo
 from SupervisorApp.models import Evidencia
 from config.permissions import PERMISSION_CATALOG, PERMISSION_DESCRIPTIONS
 from AdminApp.templatetags.navigation_tags import sidebar_sections
 from test_helpers import create_user
+from datetime import date
+from datetime import timedelta
+from decimal import Decimal
 
 
 class ClosedPeriodAuthorizationTests(TestCase):
