@@ -954,6 +954,13 @@ class DesempenoForm(BootstrapFormMixin, forms.ModelForm):
 
 class HistorialFilterForm(BootstrapFormMixin, forms.Form):
     q = forms.CharField(label='Buscar', required=False, max_length=120)
+    entidad = forms.CharField(label='Entidad', required=False, max_length=120)
+    usuario = forms.ModelChoiceField(
+        label='Usuario',
+        required=False,
+        queryset=Usuario.objects.filter(is_active=True).order_by('email'),
+        empty_label='Todos',
+    )
     accion = forms.ChoiceField(label='Acción', required=False)
     desde = forms.DateField(
         label='Desde',

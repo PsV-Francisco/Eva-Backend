@@ -148,8 +148,17 @@ class SubAtencionAdmin(admin.ModelAdmin):
 class HistorialAdmin(admin.ModelAdmin):
 	list_display = ('accion', 'autor', 'periodo', 'fecha_modificacion')
 	list_filter = ('accion', 'periodo', 'fecha_modificacion')
-	search_fields = ('accion', 'autor__email', 'object_id')
-	readonly_fields = ('fecha_modificacion', 'valor_anterior', 'valor_nuevo')
+	search_fields = ('accion', 'autor__email', 'entidad_afectada')
+	readonly_fields = tuple(field.name for field in Historial._meta.fields)
+
+	def has_add_permission(self, request):
+		return False
+
+	def has_change_permission(self, request, obj=None):
+		return False
+
+	def has_delete_permission(self, request, obj=None):
+		return False
 
 
 @admin.register(ParametroSistema)

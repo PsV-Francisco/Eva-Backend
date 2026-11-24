@@ -1,6 +1,8 @@
 # Importaciones de Django y estándar
+from datetime import date
 from decimal import Decimal
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q
@@ -16,7 +18,7 @@ from AdminApp.delegation_scope import (available_delegations, filter_by_delegati
 from AdminApp.models import Delegacion
 
 # Importaciones de la aplicación FuncionarioApp
-from FuncionarioApp.models import (Carta,CargoJv,JuntaVecino,Registro,Subtipo,Territorio,Tipo,Vecino,normalizar_telefono)
+from FuncionarioApp.models import (Carta,CargoJv,JuntaVecino,Registro,Subtipo,Territorio,Tipo,Vecino,normalizar_telefono,validar_periodo_semanal_abierto)
 
 # Importaciones de la aplicación CoordinadorApp
 from CoordinadorApp.models import AtencionSocial, Desempeno, GestionAtencion, Item, Periodo
@@ -343,10 +345,18 @@ def editar_registro_ajax(request, registro_id):
     if not fecha or not descripcion or not item_id or not periodo_id or not tipo_id or not subtipo_id:
         return JsonResponse({'success': False, 'message': 'Por favor completa todos los campos requeridos (*).'}, status=400)
 
+    try:
+        fecha_actividad = date.fromisoformat(fecha)
+        validar_periodo_semanal_abierto(fecha_actividad)
+    except (TypeError, ValueError):
+        return JsonResponse({'success': False, 'message': 'La fecha de actividad no es válida.'}, status=400)
+    except ValidationError as error:
+        return JsonResponse({'success': False, 'message': error.message}, status=400)
+
     before = _registro_snapshot(registro)
     try:
         with transaction.atomic():
-            registro.fecha = fecha
+            registro.fecha = fecha_actividad
             registro.descripcion = descripcion
             registro.contacto = contacto
             registro.telefono = telefono

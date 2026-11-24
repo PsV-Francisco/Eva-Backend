@@ -1,5 +1,6 @@
 import uuid
 import re
+from datetime import datetime, time, timedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -7,6 +8,7 @@ from django.utils import timezone
 
 
 MAX_ACTIVIDADES_DIARIAS = 7
+WEEKLY_CLOSURE_MESSAGE = 'El período semanal está cerrado'
 
 
 def normalizar_telefono(value):
@@ -17,6 +19,29 @@ def limite_diario_actividades(user):
 	"""Retorna el tope diario de actividades para el funcionario (por defecto 7)."""
 	custom_limit = getattr(user, 'limite_actividad', 0) or 0
 	return custom_limit if custom_limit > 0 else MAX_ACTIVIDADES_DIARIAS
+
+
+def fecha_cierre_semanal(fecha, now=None):
+	"""Return the local Monday 23:59:59.999999 deadline for an activity date."""
+	if not fecha:
+		return None
+	fecha = fecha.date() if isinstance(fecha, datetime) else fecha
+	lunes = fecha - timedelta(days=fecha.weekday())
+	lunes_siguiente = lunes + timedelta(days=7)
+	deadline = datetime.combine(lunes_siguiente, time.max)
+	return timezone.make_aware(deadline, timezone.get_current_timezone())
+
+
+def periodo_semanal_abierto(fecha, now=None):
+	if not fecha:
+		return True
+	actual = timezone.localtime(now or timezone.now())
+	return actual <= fecha_cierre_semanal(fecha, actual)
+
+
+def validar_periodo_semanal_abierto(fecha, now=None):
+	if not periodo_semanal_abierto(fecha, now):
+		raise ValidationError(WEEKLY_CLOSURE_MESSAGE)
 
 
 def validar_y_normalizar_rut(rut_input):
@@ -119,6 +144,7 @@ class Registro(models.Model):
 
 	def clean(self):
 		super().clean()
+		validar_periodo_semanal_abierto(self.fecha)
 		if self.autor_id and self.fecha and self.estado != self.Estado.ANULADA:
 			limite = limite_diario_actividades(self.autor)
 			existentes = (

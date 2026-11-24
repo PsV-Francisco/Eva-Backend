@@ -1,4 +1,5 @@
 from django import forms
+from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.utils import timezone
 from django.db import models
@@ -15,6 +16,7 @@ from FuncionarioApp.models import (
     Tipo,
     Vecino,
     tipo_subtipo_predeterminados,
+    validar_periodo_semanal_abierto,
 )
 from config.forms import BootstrapFormMixin
 from SupervisorApp.files import validate_evidence_file
@@ -185,6 +187,16 @@ class RegistroForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
     def clean_evidencia(self):
         uploaded_file = self.cleaned_data.get('evidencia')
         return validate_evidence_file(uploaded_file) if uploaded_file else uploaded_file
+
+    def clean(self):
+        cleaned_data = super().clean()
+        fecha = cleaned_data.get('fecha')
+        if fecha:
+            try:
+                validar_periodo_semanal_abierto(fecha)
+            except ValidationError as error:
+                self.add_error('fecha', error.message)
+        return cleaned_data
 
     def save(self, commit=True):
         instance = super().save(commit=False)

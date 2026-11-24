@@ -608,6 +608,14 @@ class Historial(models.Model):
     def __str__(self):
         return f'{self.accion} ({self.fecha_modificacion:%Y-%m-%d %H:%M})'
 
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError('Los registros de auditoría son inmutables.')
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError('Los registros de auditoría no se pueden eliminar.')
+
 #
 class PasswordResetAuditEvent(models.Model):
     class Action(models.TextChoices):

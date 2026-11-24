@@ -729,6 +729,10 @@ def historial(request):
         )
     if form.cleaned_data['accion']:
         entries = entries.filter(accion=form.cleaned_data['accion'])
+    if form.cleaned_data['entidad']:
+        entries = entries.filter(entidad_afectada__icontains=form.cleaned_data['entidad'])
+    if form.cleaned_data['usuario']:
+        entries = entries.filter(autor=form.cleaned_data['usuario'])
     if form.cleaned_data['desde']:
         entries = entries.filter(
             fecha_modificacion__date__gte=form.cleaned_data['desde'],
