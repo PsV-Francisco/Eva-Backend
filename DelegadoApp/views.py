@@ -1,10 +1,12 @@
 import secrets
 from datetime import datetime
+from io import BytesIO
 
 from django.contrib import messages
 from django.core.cache import cache
 from django.db import transaction
 from django.db.models.deletion import ProtectedError
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
@@ -340,10 +342,117 @@ def home(request):
         ),
     })
 
-from AdminApp.csv_utils import csv_response
+def _resumen_excel_response(request, *, delegation, period, rows, **_metadata):
+    """Construye el resumen de delegación como un XLSX formateado."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    headers = [
+        'Funcionario', 'Correo', 'Cumplimiento (%)', 'Esperado (%)',
+        'Semáforo', 'Último registro', 'Fecha último registro',
+        'Días sin ingreso', 'Promedio diario',
+    ]
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = 'Resumen'
+    sheet.sheet_view.showGridLines = False
+
+    red = 'B91C1C'
+    neutral = '374151'
+    thin = Side(style='thin', color='D1D5DB')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    header_fill = PatternFill('solid', fgColor=red)
+    neutral_fill = PatternFill('solid', fgColor='F3F4F6')
+    zebra_fill = PatternFill('solid', fgColor='F9FAFB')
+    semaforo_fills = {
+        'verde': PatternFill('solid', fgColor='DCFCE7'),
+        'ambar': PatternFill('solid', fgColor='FEF3C7'),
+        'rojo': PatternFill('solid', fgColor='FEE2E2'),
+    }
+
+    total_columns = len(headers)
+    sheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_columns)
+    title = sheet.cell(1, 1, 'Resumen de desempeño de delegación')
+    title.font = Font(name='Calibri', size=16, bold=True, color=neutral)
+    title.fill = neutral_fill
+    sheet.row_dimensions[1].height = 28
+
+    generated_at = timezone.localtime().replace(tzinfo=None)
+    metadata = (
+        ('Delegación', str(delegation)),
+        ('Trimestre', getattr(period, 'nombre', '') if period else 'Sin período'),
+        ('Generado por', request.user.get_full_name() or request.user.email),
+        ('Fecha', generated_at),
+    )
+    for row_number, (label, value) in enumerate(metadata, start=2):
+        label_cell = sheet.cell(row_number, 1, label)
+        label_cell.font = Font(bold=True, color=neutral)
+        label_cell.fill = neutral_fill
+        sheet.cell(row_number, 2, value)
+        sheet.merge_cells(start_row=row_number, start_column=2, end_row=row_number, end_column=total_columns)
+        for column in range(1, total_columns + 1):
+            sheet.cell(row_number, column).border = border
+    sheet['B5'].number_format = 'dd/mm/yyyy hh:mm:ss'
+
+    header_row = 7
+    for column, header in enumerate(headers, start=1):
+        cell = sheet.cell(header_row, column, header)
+        cell.fill = header_fill
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell.border = border
+    sheet.row_dimensions[header_row].height = 30
+
+    for row_number, row in enumerate(rows, start=header_row + 1):
+        values = [
+            row['usuario'].get_full_name() or row['usuario'].email,
+            row['usuario'].email,
+            row['cumplimiento'], row['esperado'], row['semaforo'].title(),
+            row.get('ultimo_registro') or 'Sin registros',
+            row.get('fecha_ultimo_registro'), row.get('dias_sin_ingreso'),
+            row.get('promedio_diario', 0),
+        ]
+        for column, value in enumerate(values, start=1):
+            cell = sheet.cell(row_number, column, value)
+            cell.border = border
+            cell.alignment = Alignment(vertical='center', wrap_text=column in {1, 2, 6})
+            if row_number % 2 == 0:
+                cell.fill = zebra_fill
+        sheet.cell(row_number, 3).number_format = '0.00"%"'
+        sheet.cell(row_number, 4).number_format = '0.00"%"'
+        sheet.cell(row_number, 7).number_format = 'dd/mm/yyyy'
+        sheet.cell(row_number, 9).number_format = '0.00'
+        sheet.cell(row_number, 5).fill = semaforo_fills.get(
+            str(row['semaforo']).casefold(), zebra_fill,
+        )
+        sheet.row_dimensions[row_number].height = 24
+
+    widths = (28, 34, 18, 16, 14, 42, 23, 18, 18)
+    for column, width in enumerate(widths, start=1):
+        sheet.column_dimensions[get_column_letter(column)].width = width
+    sheet.freeze_panes = 'A8'
+    sheet.auto_filter.ref = f'A{header_row}:{get_column_letter(total_columns)}{sheet.max_row}'
+
+    output = BytesIO()
+    workbook.save(output)
+    registrar_historial(
+        actor=request.user,
+        action='Exportar resumen de delegación XLSX',
+        entity='ResumenDelegacion',
+        after={'periodo': period.pk if period else None, 'filas': len(rows)},
+        period=period,
+    )
+    response = HttpResponse(
+        output.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    response['Content-Disposition'] = 'attachment; filename="resumen_delegacion.xlsx"'
+    return response
+
+
 @cargo_required('delegado', permission='view_delegation_summary')
 def resumen(request):
-    from AdminApp.csv_utils import csv_response
 
     delegation = active_delegation(request)
     period_id = request.GET.get('periodo', '')
@@ -375,43 +484,15 @@ def resumen(request):
         user_ids=[row['usuario'].pk for row in detail_users],
         period=selected_period,
     ) if detail_kind else []
-    if request.GET.get('export') == 'csv':
+    if request.GET.get('export') == 'xlsx':
         if not delegation:
             messages.error(request, 'Tu cuenta no tiene delegación asignada.')
             return redirect('delegado:resumen')
-        rows = [[
-            'Funcionario',
-            'Correo',
-            'Cumplimiento (%)',
-            'Esperado (%)',
-            'Semáforo',
-            'Último registro',
-            'Fecha último registro',
-            'Días sin ingreso',
-            'Promedio diario',
-        ]]
-        rows.extend([
-            row['usuario'].get_full_name() or row['usuario'].email,
-            row['usuario'].email,
-            row['cumplimiento'],
-            row['esperado'],
-            row['semaforo'],
-            row['ultimo_registro'] or '',
-            row['fecha_ultimo_registro'] or '',
-            'Sin registros' if row.get('dias_sin_ingreso') is None else row['dias_sin_ingreso'],
-            row.get('promedio_diario', ''),
-        ] for row in summary['funcionarios'])
-        return csv_response(
-            request,
-            filename='resumen_delegacion.csv',
-            rows=rows,
-            entity='ResumenDelegacion',
-            action='Exportar resumen de delegación CSV',
-            title='Resumen de desempeño por delegación',
+        return _resumen_excel_response(
+            request=request,
             delegation=delegation,
-            filters={'periodo': str(selected_period.pk) if selected_period else ''},
-            row_count=len(summary['funcionarios']),
             period=selected_period,
+            rows=filter_options['funcionarios'],
         )
 
     return render(request, 'DelegadoApp/resumen.html', {
