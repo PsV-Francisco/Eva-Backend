@@ -35,6 +35,7 @@ from config.decorators import cargo_required
 from config.delegations import active_delegation
 from FuncionarioApp.forms import (AtencionSocialForm,CartaForm,CompromisoEvidenciaForm,FuncionarioCompromisoForm,GestionAtencionForm,JuntaVecinoForm,RegistroForm,VecinoForm)
 
+from django.utils import timezone
 
 @cargo_required('funcionario', permission='access_employee_dashboard')
 def home(request):
