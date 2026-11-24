@@ -714,7 +714,18 @@ def historial(request):
     ).distinct()
     form = HistorialFilterForm(request.GET or None, actions=actions)
     if not form.is_valid():
-        return HttpResponseBadRequest('Revisa los filtros del historial.')
+        page_obj = Paginator(Historial.objects.none(), 25).get_page(request.GET.get('page'))
+        return render(request, 'AdminApp/audit_viewer.html', {
+            'sgr_role': 'AdministraciÃ³n',
+            'page_title': 'Historial del sistema',
+            'columns': ('Fecha', 'AcciÃ³n', 'Entidad', 'Autor', 'PerÃ­odo', 'Valor anterior', 'Valor nuevo'),
+            'rows': [],
+            'filter_form': form,
+            'page_obj': page_obj,
+            'pagination_query': _audit_pagination_query(request),
+            'result_count': 0,
+            'route_name': 'administracion:historial',
+        })
 
     entries = Historial.objects.select_related(
         'autor', 'periodo',
@@ -775,7 +786,18 @@ def historial(request):
 def password_reset_audit(request):
     form = PasswordResetAuditFilterForm(request.GET or None)
     if not form.is_valid():
-        return HttpResponseBadRequest('Revisa los filtros de auditoría.')
+        page_obj = Paginator(PasswordResetAuditEvent.objects.none(), 25).get_page(request.GET.get('page'))
+        return render(request, 'AdminApp/audit_viewer.html', {
+            'sgr_role': 'AdministraciÃ³n',
+            'page_title': 'AuditorÃ­a de recuperaciÃ³n de contraseÃ±a',
+            'columns': ('Fecha', 'Evento', 'Usuario', 'DirecciÃ³n IP', 'LÃ­mite aplicado'),
+            'rows': [],
+            'filter_form': form,
+            'page_obj': page_obj,
+            'pagination_query': _audit_pagination_query(request),
+            'result_count': 0,
+            'route_name': 'administracion:auditoria-recuperacion',
+        })
 
     entries = PasswordResetAuditEvent.objects.select_related(
         'user',

@@ -33,8 +33,8 @@ def home(request):
 		compromisos = compromisos.filter(agenda__delegacion_id=delegation_id)
 		evidencias = evidencias.filter(
 			Q(
-				registro__autor__usuariodelegacion__delegacion_id=delegation_id,
-				registro__autor__usuariodelegacion__fecha_fin__isnull=True,
+				registros__autor__usuariodelegacion__delegacion_id=delegation_id,
+				registros__autor__usuariodelegacion__fecha_fin__isnull=True,
 			)
 			| Q(compromiso__agenda__delegacion_id=delegation_id)
 			| Q(
