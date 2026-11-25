@@ -32,7 +32,7 @@ urlpatterns = [
     path('items/buscar-ajax/', views.buscar_items_ajax, name='buscar_items_ajax'),
     path('items/<int:item_id>/detalle-json/', views.detalle_item_json, name='detalle_item_json'),
     path('items/<int:item_id>/editar-ajax/', views.editar_item_ajax, name='editar_item_ajax'),
-    path('items/<int:item_id>/eliminar/', views.eliminar_item, name='eliminar_item'),
+    path('items/<int:item_id>/cambiar-estado-ajax/', views.cambiar_estado_item_ajax, name='cambiar_estado_item_ajax'),
     #Gestión de Ausencias
     path('ausencias/', admin_records.ausencias, name='ausencias'),
     path('ausencias/nueva/', admin_records.ausencia_nueva, name='ausencia-nueva'),
