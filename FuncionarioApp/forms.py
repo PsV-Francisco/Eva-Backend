@@ -177,7 +177,6 @@ class RegistroForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         # Tipos y Subtipos
         _set_tipo_subtipo_choices(self, self.instance)
-        self.fields['mes'].required = False
         periods = Periodo.objects.filter(estado=Periodo.Estado.ABIERTO)
         #Periodos
         if self.instance.pk and self.instance.periodo_id:
