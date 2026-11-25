@@ -3,6 +3,7 @@ from datetime import datetime
 from io import BytesIO
 
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import transaction
 from django.db.models.deletion import ProtectedError
@@ -14,9 +15,12 @@ from django.views.decorators.http import require_GET
 from AdminApp.audit import registrar_historial
 from config.decorators import cargo_required
 from config.delegations import active_delegation
-from CoordinadorApp.models import Periodo
-from DelegadoApp.forms import CompromisoEstadoForm, CompromisoForm
-from DelegadoApp.models import Agenda, Compromiso, HistorialEstadoCompromiso, SeguimientoAcceso
+from CoordinadorApp.models import Desempeno, Periodo
+from DelegadoApp.forms import AusenciaForm, CompromisoEstadoForm, CompromisoForm
+from DelegadoApp.models import (
+    Agenda, Ausencia, Compromiso, HistorialEstadoCompromiso,
+    HistorialReasignacionCompromiso, SeguimientoAcceso,
+)
 from DelegadoApp.services import actualizar_compromiso, actualizar_estado_compromiso, detalle_actividades, marcar_compromisos_vencidos, resumen_delegacion
 
 
@@ -151,7 +155,7 @@ def home(request):
         ).select_related(
             'agenda', 'agenda__periodo', 'solicitante', 'territorio'
         ).prefetch_related(
-            'responsable', 'historial_estados'
+            'responsable', 'historial_estados', 'historial_reasignaciones__autor'
         )
         marcar_compromisos_vencidos(commitments, request.user)
 
@@ -171,7 +175,7 @@ def home(request):
                         autor=request.user,
                         nuevo_estado=new_state,
                         observaciones=state_form.cleaned_data.get('observaciones', ''),
-                        responsables=list(commitment.responsable.all()),
+                        responsables=list(compromiso.responsable.all()),
                         action='Actualizar compromiso desde Delegado',
                     ):
                         messages.success(request, 'El estado y su historial quedaron actualizados.')
@@ -294,11 +298,24 @@ def home(request):
                     'observaciones': commitment.observaciones,
                 }
             previous_state = commitment.estado if commitment else ''
+            previous_responsables = (
+                sorted(commitment.responsable.values_list('pk', flat=True))
+                if commitment else []
+            )
             commitment = form.save(commit=False)
             commitment.agenda = agenda
             with transaction.atomic():
                 commitment.save()
                 form.save_m2m()
+                new_responsables = sorted(commitment.responsable.values_list('pk', flat=True))
+                if previous_responsables != new_responsables:
+                    HistorialReasignacionCompromiso.objects.create(
+                        compromiso=commitment,
+                        responsables_anteriores=previous_responsables,
+                        responsables_nuevos=new_responsables,
+                        autor=request.user,
+                        motivo=form.cleaned_data['motivo_reasignacion'].strip(),
+                    )
                 new_snapshot = {
                     'descripcion': commitment.descripcion,
                     'fecha_compromiso': commitment.fecha_compromiso.isoformat(),
@@ -342,6 +359,59 @@ def home(request):
         'sidebar_modules': (
             {'label': 'Agenda colectiva', 'url_name': 'delegado:home'},
             {'label': 'Resumen de la delegación', 'url_name': 'delegado:resumen'},
+            {'label': 'Tubo de Cartas', 'url_name': 'funcionario:tubo_cartas'},
+            {'label': 'Ausencias justificadas', 'url_name': 'delegado:ausencias'},
+        ),
+    })
+
+
+@cargo_required('delegado', permission='manage_delegation_absences')
+def ausencias(request):
+    delegation = active_delegation(request)
+    funcionarios = get_user_model().objects.filter(
+        is_active=True,
+        usuariodelegacion__delegacion=delegation,
+        usuariodelegacion__fecha_fin__isnull=True,
+    ).distinct().order_by('email') if delegation else get_user_model().objects.none()
+    desempenos = Desempeno.objects.filter(
+        usuario__in=funcionarios,
+        periodo__estado=Periodo.Estado.ABIERTO,
+    ).select_related('usuario', 'item', 'periodo').order_by(
+        'usuario__email', 'periodo__nombre', 'item__nombre',
+    )
+    if request.method == 'POST':
+        if request.POST.get('action') == 'eliminar':
+            ausencia = get_object_or_404(
+                Ausencia.objects.filter(usuario__in=funcionarios),
+                pk=request.POST.get('ausencia_id'),
+            )
+            before = {'fecha_inicio': str(ausencia.fecha_inicio), 'fecha_fin': str(ausencia.fecha_fin), 'tipo': ausencia.tipo}
+            ausencia.delete()
+            registrar_historial(actor=request.user, action='Eliminar ausencia justificada', entity=f'Ausencia:{request.POST.get("ausencia_id")}', before=before, period=ausencia.periodo)
+            messages.success(request, 'La ausencia fue eliminada.')
+            return redirect('delegado:ausencias')
+        form = AusenciaForm(request.POST, desempenos=desempenos)
+        if form.is_valid():
+            ausencia = form.save(commit=False)
+            ausencia.usuario = ausencia.desempeno.usuario
+            ausencia.item = ausencia.desempeno.item
+            ausencia.periodo = ausencia.desempeno.periodo
+            ausencia.fecha = timezone.make_aware(datetime.combine(ausencia.fecha_inicio, datetime.min.time()))
+            ausencia.save()
+            registrar_historial(actor=request.user, action='Crear ausencia justificada', entity=f'Ausencia:{ausencia.pk}', after={'usuario_id': ausencia.usuario_id, 'tipo': ausencia.tipo, 'fecha_inicio': str(ausencia.fecha_inicio), 'fecha_fin': str(ausencia.fecha_fin)}, period=ausencia.periodo)
+            messages.success(request, 'La ausencia justificada quedó registrada.')
+            return redirect('delegado:ausencias')
+    else:
+        form = AusenciaForm(desempenos=desempenos)
+    registros = Ausencia.objects.filter(usuario__in=funcionarios).select_related('usuario', 'desempeno', 'item', 'periodo').order_by('-fecha_inicio', '-pk')
+    return render(request, 'DelegadoApp/ausencias.html', {
+        'sgr_role': 'Delegación',
+        'form': form,
+        'ausencias': registros,
+        'sidebar_modules': (
+            {'label': 'Agenda colectiva', 'url_name': 'delegado:home'},
+            {'label': 'Resumen de la delegación', 'url_name': 'delegado:resumen'},
+            {'label': 'Ausencias justificadas', 'url_name': 'delegado:ausencias'},
             {'label': 'Tubo de Cartas', 'url_name': 'funcionario:tubo_cartas'},
         ),
     })

@@ -1,5 +1,6 @@
 from decimal import Decimal, ROUND_HALF_UP
 
+from django.core.exceptions import ValidationError
 from django.db.models import OuterRef, Subquery
 from django.db import transaction
 from django.urls import reverse
@@ -16,7 +17,11 @@ from CoordinadorApp.services import (
     dias_habiles,
     umbral_delegacion,
 )
-from DelegadoApp.models import Compromiso, HistorialEstadoCompromiso
+from DelegadoApp.models import (
+    Compromiso,
+    HistorialEstadoCompromiso,
+    HistorialReasignacionCompromiso,
+)
 from FuncionarioApp.models import Registro
 
 
@@ -210,12 +215,21 @@ def detalle_actividades(*, user_ids, period):
 
 @transaction.atomic
 def actualizar_compromiso(*, compromiso, autor, nuevo_estado=None,
-                          observaciones=None, responsables=None, action='Actualizar compromiso'):
+                          observaciones=None, responsables=None, motivo=None,
+                          action='Actualizar compromiso'):
     """Update commitment fields atomically and record complete before/after values."""
     compromiso = Compromiso.objects.select_for_update().select_related(
         'agenda', 'agenda__periodo',
     ).get(pk=compromiso.pk)
     before = compromiso_snapshot(compromiso)
+    responsables_anteriores = before['responsable_ids']
+    responsables_nuevos = (
+        sorted(user.pk if hasattr(user, 'pk') else int(user) for user in responsables)
+        if responsables is not None else responsables_anteriores
+    )
+    responsables_cambiaron = responsables_nuevos != responsables_anteriores
+    if responsables_cambiaron and not (motivo or '').strip():
+        raise ValidationError({'motivo': 'El motivo de reasignación es obligatorio.'})
     previous_state = compromiso.estado
     if nuevo_estado is not None:
         compromiso.estado = nuevo_estado
@@ -233,6 +247,14 @@ def actualizar_compromiso(*, compromiso, autor, nuevo_estado=None,
             estado_anterior=previous_state,
             estado_nuevo=compromiso.estado,
             autor=autor,
+        )
+    if responsables_cambiaron:
+        HistorialReasignacionCompromiso.objects.create(
+            compromiso=compromiso,
+            responsables_anteriores=responsables_anteriores,
+            responsables_nuevos=responsables_nuevos,
+            autor=autor,
+            motivo=motivo.strip(),
         )
     registrar_historial(
         actor=autor,

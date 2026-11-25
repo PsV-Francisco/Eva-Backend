@@ -124,7 +124,17 @@ class Felicitacion(models.Model):
 
 #Modelo : Ausencia (OK)
 class Ausencia(models.Model):
+	class Tipo(models.TextChoices):
+		DIAS_LIBRES = 'dias_libres', 'Días libres'
+		VACACIONES = 'vacaciones', 'Vacaciones'
+		DIAS_ADMINISTRATIVOS = 'dias_administrativos', 'Días administrativos'
+		LICENCIAS = 'licencias', 'Licencias'
+		OTRA_JUSTIFICADA = 'otra_justificada', 'Otra ausencia justificada'
+
 	fecha = models.DateTimeField(db_column='FECHA')
+	tipo = models.CharField(max_length=32, choices=Tipo.choices, default=Tipo.OTRA_JUSTIFICADA, db_column='TIPO')
+	fecha_inicio = models.DateField(null=True, blank=True, db_column='FECHA_INICIO')
+	fecha_fin = models.DateField(null=True, blank=True, db_column='FECHA_FIN')
 	descripcion = models.CharField(max_length=800, db_column='DESCRIPCION')
 	desempeno = models.ForeignKey('CoordinadorApp.Desempeno',on_delete=models.PROTECT,db_column='DESEMPEÑO',related_name='ausencias',)
 	usuario = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,db_column='USUARIO',related_name='ausencias',)
@@ -136,6 +146,16 @@ class Ausencia(models.Model):
 		ordering = ['-fecha']
 		verbose_name = 'ausencia'
 		verbose_name_plural = 'ausencias'
+
+	def save(self, *args, **kwargs):
+		if self.fecha_inicio is None and self.fecha:
+			self.fecha_inicio = self.fecha.date()
+		if self.fecha_fin is None:
+			self.fecha_fin = self.fecha_inicio
+		if self.fecha_inicio:
+			from datetime import datetime, time
+			self.fecha = timezone.make_aware(datetime.combine(self.fecha_inicio, time.min))
+		return super().save(*args, **kwargs)
 
 #Modelo : Reclamo (OK)
 class Reclamo(models.Model):
@@ -227,6 +247,37 @@ class HistorialEstadoCompromiso(models.Model):
 		ordering = ['-fecha']
 		verbose_name = 'historial de estado de compromiso'
 		verbose_name_plural = 'historiales de estado de compromiso'
+
+
+class HistorialReasignacionCompromiso(models.Model):
+	compromiso = models.ForeignKey(Compromiso, on_delete=models.CASCADE, related_name='historial_reasignaciones')
+	responsables_anteriores = models.JSONField(default=list)
+	responsables_nuevos = models.JSONField(default=list)
+	autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='reasignaciones_compromisos')
+	fecha_hora = models.DateTimeField(auto_now_add=True)
+	motivo = models.TextField()
+
+	class Meta:
+		ordering = ['-fecha_hora']
+		verbose_name = 'historial de reasignación de compromiso'
+		verbose_name_plural = 'historiales de reasignación de compromisos'
+
+	def _responsables_display(self, value):
+		ids = value if isinstance(value, list) else []
+		users = self.autor.__class__.objects.in_bulk(ids)
+		return ', '.join(
+			users[user_id].get_full_name() or users[user_id].email
+			for user_id in ids
+			if user_id in users
+		) or 'Sin responsables'
+
+	@property
+	def responsables_anteriores_display(self):
+		return self._responsables_display(self.responsables_anteriores)
+
+	@property
+	def responsables_nuevos_display(self):
+		return self._responsables_display(self.responsables_nuevos)
 
 #
 class SeguimientoAcceso(models.Model):

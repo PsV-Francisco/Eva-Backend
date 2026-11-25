@@ -1,7 +1,7 @@
 from django import forms
 from AdminApp.models import Usuario
 from CoordinadorApp.models import Periodo
-from DelegadoApp.models import Compromiso
+from DelegadoApp.models import Ausencia, Compromiso
 from FuncionarioApp.models import Subtipo, Tipo, Vecino, Territorio
 from FuncionarioApp.forms import (TipoSubtipoFields,_assign_tipo_subtipo,_set_tipo_subtipo_choices,)
 from config.forms import BootstrapFormMixin
@@ -9,6 +9,11 @@ from SupervisorApp.models import Evidencia
 
 
 class CompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
+    motivo_reasignacion = forms.CharField(
+        required=False,
+        label='Motivo de reasignación',
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+    )
     tipo = forms.ModelChoiceField(queryset=Tipo.objects.none(),required=False,label='Tipo',empty_label='Sin tipo (predeterminado)',widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_tipo'}),)
     subtipo = forms.ModelChoiceField(queryset=Subtipo.objects.none(),required=False,label='Subtipo',empty_label='Sin subtipo (predeterminado)',widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_subtipo'}),)
     periodo = forms.ModelChoiceField(queryset=Periodo.objects.filter(estado=Periodo.Estado.ABIERTO),label='Período de agenda',widget=forms.Select(attrs={'class': 'form-select'}),)
@@ -75,6 +80,12 @@ class CompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
             cleaned_data['mes'] = fecha_comp.month
             self.cleaned_data['mes'] = fecha_comp.month
 
+        if self.instance.pk and 'responsable' in cleaned_data:
+            previous = set(self.instance.responsable.values_list('pk', flat=True))
+            current = set(cleaned_data['responsable'].values_list('pk', flat=True))
+            if previous != current and not cleaned_data.get('motivo_reasignacion', '').strip():
+                self.add_error('motivo_reasignacion', 'El motivo de reasignación es obligatorio.')
+
         return cleaned_data
 
     def save(self, commit=True):
@@ -89,3 +100,33 @@ class CompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
 class CompromisoEstadoForm(BootstrapFormMixin, forms.Form):
     estado = forms.ChoiceField(choices=Compromiso.Estado.choices, label='Actualizar estado', widget=forms.Select(attrs={'class': 'form-select'}))
     observaciones = forms.CharField(required=False, label='Avance / observaciones', widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}))
+
+
+class AusenciaForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = Ausencia
+        fields = ('desempeno', 'tipo', 'fecha_inicio', 'fecha_fin', 'descripcion')
+        labels = {
+            'desempeno': 'Funcionario y meta',
+            'tipo': 'Tipo de ausencia',
+            'fecha_inicio': 'Desde',
+            'fecha_fin': 'Hasta',
+            'descripcion': 'Descripción / respaldo',
+        }
+        widgets = {
+            'fecha_inicio': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'fecha_fin': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'descripcion': forms.Textarea(attrs={'rows': 2, 'class': 'form-control'}),
+        }
+
+    def __init__(self, *args, desempenos=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['desempeno'].queryset = desempenos if desempenos is not None else self.fields['desempeno'].queryset.none()
+
+    def clean(self):
+        cleaned = super().clean()
+        start = cleaned.get('fecha_inicio')
+        end = cleaned.get('fecha_fin')
+        if start and end and end < start:
+            self.add_error('fecha_fin', 'La fecha final no puede ser anterior a la inicial.')
+        return cleaned

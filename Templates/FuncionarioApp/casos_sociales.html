@@ -67,7 +67,8 @@
         </div>
       </div>
 
-      <div class="table-responsive mt-3">
+<p class="results-count">Mostrando {{ gestiones.start_index|default:0 }}–{{ gestiones.end_index|default:0 }} de {{ total_encontrados }} registros · <a href="{% url 'funcionario:casos_sociales' %}">Limpiar filtros</a>{% if gestiones.has_previous %} · <a href="?{{ pagination_query }}&amp;page={{ gestiones.previous_page_number }}">Anterior</a>{% endif %}{% if gestiones.has_next %} · <a href="?{{ pagination_query }}&amp;page={{ gestiones.next_page_number }}">Siguiente</a>{% endif %}</p>
+<div class="table-responsive mt-3">
         <table class="table align-middle" id="tabla-gestiones">
           <thead>
             <tr>

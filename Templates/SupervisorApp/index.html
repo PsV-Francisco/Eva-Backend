@@ -12,7 +12,15 @@
 </div>
 
 <section class="content-section">
-	<div class="section-head"><div><p class="eyebrow">BANDEJA DE VERIFICACIÓN</p><h2>Evidencias pendientes</h2></div></div>
+	<div class="section-head"><div><p class="eyebrow">BANDEJA DE VERIFICACIÓN</p><h2>Evidencias pendientes</h2></div><span class="count-pill">{{ total_encontrados }} encontradas</span></div>
+	<form method="get" class="maintainer-filters mb-3">
+	  <input class="form-control" type="search" name="q" value="{{ request.GET.q }}" placeholder="Buscar código o actividad">
+	  <input class="form-control" type="date" name="desde" value="{{ request.GET.desde }}" aria-label="Desde">
+	  <input class="form-control" type="date" name="hasta" value="{{ request.GET.hasta }}" aria-label="Hasta">
+	  <select class="form-select" name="sort"><option value="fecha"{% if sort == 'fecha' %} selected{% endif %}>Fecha</option><option value="estado"{% if sort == 'estado' %} selected{% endif %}>Estado</option></select>
+	  <button class="btn btn-primary" type="submit">Filtrar</button>
+	  <a class="btn btn-outline-secondary" href="{% url 'supervisor:home' %}">Limpiar filtros</a>
+	</form>
 	<div class="review-list">
     {% for evidencia in evidencias %}
     {% with reg=evidencia.registros.first comp=evidencia.compromisos.first aten=evidencia.atenciones_sociales.first %}
@@ -68,6 +76,13 @@
     {% empty %}
     <div class="empty-state">No hay evidencias pendientes. La bandeja se actualizará al ingresar nuevos respaldos.</div>
     {% endfor %}
+</div>
+<div class="d-flex justify-content-between align-items-center mt-3">
+  <span>Mostrando {% if evidencias %}{{ evidencias.start_index }}–{{ evidencias.end_index }}{% else %}0–0{% endif %} de {{ total_encontrados }} registros</span>
+  <div>
+    {% if evidencias.has_previous %}<a class="btn btn-sm btn-outline-secondary" href="?{{ pagination_query }}&page={{ evidencias.previous_page_number }}">Anterior</a>{% endif %}
+    {% if evidencias.has_next %}<a class="btn btn-sm btn-outline-secondary" href="?{{ pagination_query }}&page={{ evidencias.next_page_number }}">Siguiente</a>{% endif %}
+  </div>
 </div>
 </section>
 

@@ -39,6 +39,27 @@
         </div>
         <button class="btn btn-primary" type="submit">Guardar</button>
       </form>
+      {% if historial_reasignaciones %}
+      <section class="content-section mt-4">
+        <div class="section-head"><div><p class="eyebrow">TRAZABILIDAD</p><h3>Historial de reasignaciones</h3></div></div>
+        <div class="table-responsive">
+          <table class="table align-middle">
+            <thead><tr><th>Anterior</th><th>Nuevo</th><th>Autor</th><th>Fecha/hora</th><th>Motivo</th></tr></thead>
+            <tbody>
+            {% for cambio in historial_reasignaciones %}
+            <tr>
+              <td>{{ cambio.responsables_anteriores_display }}</td>
+              <td>{{ cambio.responsables_nuevos_display }}</td>
+              <td>{{ cambio.autor.get_full_name|default:cambio.autor.email }}</td>
+              <td>{{ cambio.fecha_hora|date:'d/m/Y H:i' }}</td>
+              <td>{{ cambio.motivo }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {% endif %}
     </section>
   </div>
 </div>

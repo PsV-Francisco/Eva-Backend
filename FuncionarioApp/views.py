@@ -16,6 +16,7 @@ import json
 from AdminApp.audit import registrar_historial
 from AdminApp.delegation_scope import (available_delegations, filter_by_delegation)
 from AdminApp.models import Delegacion
+from AdminApp.pagination_utils import paginate_queryset
 
 # Importaciones de la aplicación FuncionarioApp
 from FuncionarioApp.models import (Carta,CargoJv,JuntaVecino,Registro,Subtipo,Territorio,Tipo,Vecino,normalizar_telefono,validar_periodo_semanal_abierto)
@@ -28,7 +29,7 @@ from CoordinadorApp.services import clasificar_umbral, resumen_cumplimiento, umb
 from DelegadoApp.models import Agenda, Compromiso
 from DelegadoApp.services import agenda_items, actualizar_compromiso, actualizar_estado_compromiso, detalle_actividades, marcar_compromisos_vencidos
 from DelegadoApp.forms import CompromisoEstadoForm
-from SupervisorApp.models import Evidencia
+from SupervisorApp.models import Evidencia, ObservacionRegistro
 
 # Importaciones de Decoradores y Formularios de FuncionarioApp
 from config.decorators import cargo_required
@@ -185,14 +186,26 @@ def gestion_actividades(request):
     if request.method != 'POST':
         registration_id = request.GET.get('editar')
     registro = None
+    adding_observation = request.method == 'POST' and request.POST.get('action') == 'agregar_observacion'
     if registration_id:
         registro = get_object_or_404(
             Registro.objects.select_related('periodo'),
             pk=registration_id,
             autor=request.user,
-            estado=Registro.Estado.PENDIENTE,
-            periodo__estado=Periodo.Estado.ABIERTO,
+            **({} if adding_observation else {
+                'estado': Registro.Estado.PENDIENTE,
+                'periodo__estado': Periodo.Estado.ABIERTO,
+            }),
         )
+
+    if request.method == 'POST' and request.POST.get('action') == 'agregar_observacion':
+        comentario = request.POST.get('comentario', '').strip()
+        if not comentario:
+            messages.error(request, 'El comentario de la observación es obligatorio.')
+        else:
+            ObservacionRegistro.objects.create(registro=registro, evidencia=registro.evidencia, autor=request.user, comentario=comentario)
+            messages.success(request, 'La observación quedó registrada.')
+        return redirect('funcionario:gestion_actividades')
 
     if request.method == 'POST' and request.POST.get('action') == 'eliminar':
         if registro.evidencia_id:
@@ -261,7 +274,20 @@ def gestion_actividades(request):
 
     registros = Registro.objects.filter(autor=request.user).select_related(
         'item', 'periodo', 'tipo', 'subtipo', 'evidencia'
-    ).annotate(prioridad_estado=orden_estado).order_by('prioridad_estado', '-fecha')
+    ).annotate(prioridad_estado=orden_estado).prefetch_related('observaciones_cronologicas__autor')
+    filtro_texto = request.GET.get('q', '').strip()
+    if filtro_texto:
+        registros = registros.filter(Q(descripcion__icontains=filtro_texto) | Q(accion__icontains=filtro_texto) | Q(item__nombre__icontains=filtro_texto))
+    if request.GET.get('estado'):
+        registros = registros.filter(estado=request.GET['estado'])
+    if request.GET.get('desde'):
+        registros = registros.filter(fecha__gte=request.GET['desde'])
+    if request.GET.get('hasta'):
+        registros = registros.filter(fecha__lte=request.GET['hasta'])
+    registros, total_registros, pagination_query, sort, direction = paginate_queryset(
+        request, registros, default_ordering='fecha',
+        allowed_ordering={'fecha': 'fecha', 'creado': 'creado', 'estado': 'estado'},
+    )
 
     tipos = Tipo.objects.filter(estado=Tipo.Estado.ACTIVADO).order_by('nombre')
     items = Item.objects.filter(estado=Item.Estado.ACTIVO).order_by('nombre')
@@ -273,7 +299,11 @@ def gestion_actividades(request):
         'registros': registros,
         'editing_record': registro,
         'sidebar_modules': _funcionario_sidebar_modules(),
-        'registro_count': registros.count(),
+        'registro_count': total_registros,
+        'total_encontrados': total_registros,
+        'pagination_query': pagination_query,
+        'sort': sort,
+        'direction': direction,
         'tipos': tipos,
         'items': items,
         'periodos': periodos,
@@ -318,6 +348,15 @@ def detalle_registro_json(request, registro_id):
         'tipo_nombre': registro.tipo.nombre if registro.tipo else '',
         'subtipo_id': registro.subtipo_id,
         'subtipo_nombre': registro.subtipo.nombre if registro.subtipo else '',
+        'observaciones': [
+            {
+                'autor': observation.autor.get_full_name() or observation.autor.email,
+                'rol': getattr(getattr(observation.autor, 'cargo', None), 'nombre', '') or 'Usuario',
+                'fecha_hora': observation.fecha_hora.isoformat(),
+                'comentario': observation.comentario,
+            }
+            for observation in registro.observaciones_cronologicas.select_related('autor').all()
+        ],
         'evidencia_url': registro.evidencia.archivo.url if registro.evidencia and registro.evidencia.archivo else None,
         'subtipos_disponibles': subtipos,
     })
@@ -729,8 +768,21 @@ def vecinos(request):
             | Q(territorio__nombre__icontains=search_query)
             | Q(junta_vecino__nombre__icontains=search_query)
         ).distinct()
+    if request.GET.get('territorio'):
+        queryset = queryset.filter(territorio_id=request.GET['territorio'])
+    if request.GET.get('delegacion'):
+        queryset = queryset.filter(delegacion_id=request.GET['delegacion'])
+    if request.GET.get('estado'):
+        queryset = queryset.filter(estado=request.GET['estado'])
+    if request.GET.get('desde'):
+        queryset = queryset.filter(creado__date__gte=request.GET['desde'])
+    if request.GET.get('hasta'):
+        queryset = queryset.filter(creado__date__lte=request.GET['hasta'])
 
-    page_obj = Paginator(queryset.order_by('nombre', 'pk'), 20).get_page(request.GET.get('page'))
+    page_obj, total_encontrados, pagination_query, sort, direction = paginate_queryset(
+        request, queryset, default_ordering='nombre',
+        allowed_ordering={'nombre': 'nombre', 'territorio': 'territorio__nombre', 'estado': 'estado'},
+    )
     territorios = (
         Territorio.objects.filter(delegacion__in=delegaciones)
         .values_list('nombre', flat=True)
@@ -747,6 +799,10 @@ def vecinos(request):
         'delegaciones': delegaciones,
         'search_query': search_query,
         'territorios': territorios,
+        'total_encontrados': total_encontrados,
+        'pagination_query': pagination_query,
+        'sort': sort,
+        'direction': direction,
     })
 
 
@@ -1416,9 +1472,17 @@ def detalle_atencion_json(request, atencion_id):
 @cargo_required('funcionario', permission='access_social_cases')
 def casos_sociales(request):
     """Vista principal para listar las Gestiones Sociales con conteo de atenciones."""
-    gestiones = GestionAtencion.objects.annotate(
-        total_atenciones=Count('atencionsocial')
-    ).order_by('-fecha', '-id')
+    gestiones = GestionAtencion.objects.annotate(total_atenciones=Count('atencionsocial'))
+    if request.GET.get('q'):
+        gestiones = gestiones.filter(Q(nombre__icontains=request.GET['q']) | Q(codigo__icontains=request.GET['q']))
+    if request.GET.get('desde'):
+        gestiones = gestiones.filter(fecha__gte=request.GET['desde'])
+    if request.GET.get('hasta'):
+        gestiones = gestiones.filter(fecha__lte=request.GET['hasta'])
+    gestiones, total_encontrados, pagination_query, sort, direction = paginate_queryset(
+        request, gestiones, default_ordering='fecha',
+        allowed_ordering={'fecha': 'fecha', 'nombre': 'nombre'},
+    )
 
     form = GestionAtencionForm()
 
@@ -1426,7 +1490,11 @@ def casos_sociales(request):
         'sgr_role': 'Funcionario',
         'sidebar_modules': _funcionario_sidebar_modules(),
         'gestiones': gestiones,
-        'gestion_count': gestiones.count(),
+        'gestion_count': total_encontrados,
+        'total_encontrados': total_encontrados,
+        'pagination_query': pagination_query,
+        'sort': sort,
+        'direction': direction,
         'form': form,
     })
 
@@ -1592,6 +1660,14 @@ def tubo_cartas(request):
     estado_filtro = request.GET.get('estado', '').strip()
     if estado_filtro:
         cartas_qs = cartas_qs.filter(estado=estado_filtro)
+    if request.GET.get('q'):
+        cartas_qs = cartas_qs.filter(Q(numero_carta__icontains=request.GET['q']) | Q(remitente__icontains=request.GET['q']) | Q(destinatario__icontains=request.GET['q']) | Q(materia__icontains=request.GET['q']))
+    if request.GET.get('responsable'):
+        cartas_qs = cartas_qs.filter(responsable_seguimiento_id=request.GET['responsable'])
+    if request.GET.get('desde'):
+        cartas_qs = cartas_qs.filter(fecha__gte=request.GET['desde'])
+    if request.GET.get('hasta'):
+        cartas_qs = cartas_qs.filter(fecha__lte=request.GET['hasta'])
 
     if request.GET.get('export') == 'csv':
         from AdminApp.csv_utils import csv_response
@@ -1623,6 +1699,11 @@ def tubo_cartas(request):
             row_count=cartas_qs.count(),
         )
 
+    cartas_qs, total_encontrados, pagination_query, sort, direction = paginate_queryset(
+        request, cartas_qs, default_ordering='fecha',
+        allowed_ordering={'fecha': 'fecha', 'estado': 'estado', 'responsable': 'responsable_seguimiento__email'},
+    )
+
     return render(request, 'FuncionarioApp/tubo_cartas.html', {
         'sgr_role': sgr_role,
         'sidebar_modules': sidebar,
@@ -1631,6 +1712,10 @@ def tubo_cartas(request):
         'estados_choices': Carta.Estado.choices,
         'estado_filtro': estado_filtro,
         'responsables': form.fields['responsable_seguimiento'].queryset,
+        'total_encontrados': total_encontrados,
+        'pagination_query': pagination_query,
+        'sort': sort,
+        'direction': direction,
     })
 
 

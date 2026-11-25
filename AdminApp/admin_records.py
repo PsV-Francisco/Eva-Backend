@@ -45,6 +45,7 @@ from DelegadoApp.models import (
     Felicitacion,
     Hito,
     Informe,
+    HistorialReasignacionCompromiso,
     Reclamo,
 )
 from DelegadoApp.services import actualizar_estado_compromiso
@@ -1436,6 +1437,16 @@ def _compromiso_form(request, record_id=None):
                 )
             commitment.save()
             form.save_m2m()
+            previous_responsables = before_snapshot.get('responsables', []) if before_snapshot else []
+            new_responsables = list(commitment.responsable.order_by('pk').values_list('pk', flat=True))
+            if editing and previous_responsables != new_responsables:
+                HistorialReasignacionCompromiso.objects.create(
+                    compromiso=commitment,
+                    responsables_anteriores=previous_responsables,
+                    responsables_nuevos=new_responsables,
+                    autor=request.user,
+                    motivo=form.cleaned_data['motivo_reasignacion'].strip(),
+                )
             if desired_state != previous_state:
                 actualizar_estado_compromiso(
                     compromiso=commitment,
@@ -1478,6 +1489,10 @@ def _compromiso_form(request, record_id=None):
             list_name='compromisos',
             editing=editing,
             delegation_required=(not editing and delegation is None),
+            historial_reasignaciones=(
+                editing.historial_reasignaciones.select_related('autor').all()
+                if editing else []
+            ),
         ),
     )
 

@@ -11,8 +11,9 @@ from config.decorators import cargo_required
 from config.delegations import active_delegation
 from FuncionarioApp.models import Registro
 from SupervisorApp.forms import RevisionEvidenciaForm
-from SupervisorApp.models import Evidencia, RevisionEvidencia
+from SupervisorApp.models import Evidencia, ObservacionRegistro, RevisionEvidencia
 from DelegadoApp.services import actividad_reciente
+from AdminApp.pagination_utils import paginate_queryset
 
 
 def _evidencias_visibles(request):
@@ -83,6 +84,13 @@ def home(request):
                 revision.evidencia = evidencia
                 revision.verificador = request.user
                 revision.save()
+                if revision.observaciones.strip() and registro:
+                    ObservacionRegistro.objects.create(
+                        registro=registro,
+                        evidencia=evidencia,
+                        autor=request.user,
+                        comentario=revision.observaciones.strip(),
+                    )
 
                 previous = {
                     'estado': evidencia.estado,
@@ -148,7 +156,19 @@ def home(request):
         Q(compromisos__isnull=True)
         | Q(compromisos__agenda__periodo__estado__iexact=Periodo.Estado.ABIERTO)
     ).distinct()
+    if request.GET.get('estado'):
+        evidencias = evidencias.filter(estado=request.GET['estado'])
+    if request.GET.get('desde'):
+        evidencias = evidencias.filter(fecha__date__gte=request.GET['desde'])
+    if request.GET.get('hasta'):
+        evidencias = evidencias.filter(fecha__date__lte=request.GET['hasta'])
+    if request.GET.get('q'):
+        evidencias = evidencias.filter(Q(codigo__icontains=request.GET['q']) | Q(registros__descripcion__icontains=request.GET['q'])).distinct()
 
+    evidencias, total_encontrados, pagination_query, sort, direction = paginate_queryset(
+        request, evidencias, default_ordering='fecha',
+        allowed_ordering={'fecha': 'fecha', 'estado': 'estado'},
+    )
     periods = Periodo.objects.order_by('-fecha_inicio')
     period_id = request.GET.get('periodo', '')
     period = periods.filter(pk=int(period_id)).first() if period_id.isdecimal() else periods.filter(
@@ -179,7 +199,11 @@ def home(request):
     return render(request, 'SupervisorApp/index.html', {
         'sgr_role': 'Verificación',
         'evidencias': evidencias,
-        'pending_count': evidencias.count(),
+        'pending_count': total_encontrados,
+        'total_encontrados': total_encontrados,
+        'pagination_query': pagination_query,
+        'sort': sort,
+        'direction': direction,
         'review_form': RevisionEvidenciaForm(),
         'revisiones': revisiones,
         'periodos': periods,

@@ -6,6 +6,7 @@ app_name = 'delegado'
 urlpatterns = [
     path('', views.home, name='home'),
     path('resumen/', views.resumen, name='resumen'),
+    path('ausencias/', views.ausencias, name='ausencias'),
     # Ruta pública accesible por solicitantes externos
     path('seguimiento/<str:token>/', views.seguimiento_publico, name='seguimiento_publico'),
 ]

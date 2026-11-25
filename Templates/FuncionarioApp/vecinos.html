@@ -86,7 +86,8 @@
         </div>
       </div>
 
-      <div class="table-responsive">
+<p class="results-count">Mostrando {{ page_obj.start_index|default:0 }}–{{ page_obj.end_index|default:0 }} de {{ total_encontrados }} registros · <a href="{% url 'funcionario:vecinos' %}">Limpiar filtros</a>{% if page_obj.has_previous %} · <a href="?{{ pagination_query }}&amp;page={{ page_obj.previous_page_number }}">Anterior</a>{% endif %}{% if page_obj.has_next %} · <a href="?{{ pagination_query }}&amp;page={{ page_obj.next_page_number }}">Siguiente</a>{% endif %}</p>
+<div class="table-responsive">
         <table class="table align-middle" id="tabla-vecinos">
           <thead>
             <tr>

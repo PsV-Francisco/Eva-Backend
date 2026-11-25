@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Ausencias justificadas | SGR{% endblock %}
+{% block page_title %}Ausencias justificadas{% endblock %}
+{% block content %}
+<div class="dashboard-layout">
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+    <section class="content-section">
+      <h2>Registrar ausencia</h2>
+      <form method="post" class="row g-3">
+        {% csrf_token %}
+        {% for field in form %}<div class="col-md-6"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}
+        <div class="col-12"><button class="btn btn-primary" type="submit">Guardar ausencia</button></div>
+      </form>
+    </section>
+    <section class="content-section">
+      <h2>Ausencias registradas</h2>
+      <p class="results-count">{{ ausencias|length }} registros visibles</p>
+      <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Funcionario</th><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Descripción</th><th></th></tr></thead><tbody>
+      {% for ausencia in ausencias %}<tr><td>{{ ausencia.usuario.get_full_name|default:ausencia.usuario.email }}</td><td>{{ ausencia.get_tipo_display }}</td><td>{{ ausencia.fecha_inicio|date:'d/m/Y' }}</td><td>{{ ausencia.fecha_fin|date:'d/m/Y' }}</td><td>{{ ausencia.descripcion }}</td><td><form method="post">{% csrf_token %}<input type="hidden" name="action" value="eliminar"><input type="hidden" name="ausencia_id" value="{{ ausencia.pk }}"><button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button></form></td></tr>{% empty %}<tr><td colspan="6">No hay ausencias registradas.</td></tr>{% endfor %}
+      </tbody></table></div>
+    </section>
+  </div>
+</div>
+{% endblock %}

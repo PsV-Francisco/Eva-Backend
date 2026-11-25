@@ -2,6 +2,7 @@
 from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
+from django.core.exceptions import ValidationError
 from django.db.models import Count, Q
 from django.utils import timezone
 from AdminApp.audit import registrar_historial
@@ -15,6 +16,7 @@ from DelegadoApp.models import Ausencia, Licencia
 
 ZERO = Decimal('0.00')
 HUNDRED = Decimal('100')
+DEFAULT_TOPE_CUMPLIMIENTO = Decimal('120')
 META_SCOPE = 'metas'
 
 def max_dias_autorizacion():
@@ -120,24 +122,25 @@ def _dias_no_trabajados(periodo, usuario, inicio, termino):
     if termino < inicio:
         return 0
 
-    licencia_days = 0
+    no_trabajados = set()
     for licencia in Licencia.objects.filter(usuario=usuario):
-        licencia_inicio = licencia.fecha_inicio.date()
-        licencia_fin = licencia.fecha_fin.date()
-        licencia_inicio = max(licencia_inicio, inicio)
-        licencia_fin = min(licencia_fin, termino)
-        licencia_days += dias_habiles(licencia_inicio, licencia_fin)
+        current = max(licencia.fecha_inicio.date(), inicio)
+        end = min(licencia.fecha_fin.date(), termino)
+        while current <= end:
+            if current.weekday() < 5:
+                no_trabajados.add(current)
+            current += timedelta(days=1)
 
-    ausencia_days = set(
-        ausencia.fecha.date()
-        for ausencia in Ausencia.objects.filter(
-            usuario=usuario,
-            fecha__date__range=(inicio, termino),
-        )
-        if inicio <= ausencia.fecha.date() <= termino
-        and ausencia.fecha.weekday() < 5
-    )
-    return licencia_days + len(ausencia_days)
+    for ausencia in Ausencia.objects.filter(usuario=usuario):
+        absence_start = ausencia.fecha_inicio or ausencia.fecha.date()
+        absence_end = ausencia.fecha_fin or absence_start
+        current = max(absence_start, inicio)
+        end = min(absence_end, termino)
+        while current <= end:
+            if current.weekday() < 5:
+                no_trabajados.add(current)
+            current += timedelta(days=1)
+    return len(no_trabajados)
 
 
 def porcentaje_esperado(periodo, fecha_corte=None, usuario=None, *, hoy=None):
@@ -222,7 +225,10 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
             {row.usuario_id for row in desempenos},
             {row.periodo_id for row in desempenos},
         )
-    cap = Decimal(cap if cap is not None else ParametroSistema.obtener(ParametroSistema.Clave.TOPE_CUMPLIMIENTO))
+    cap = Decimal(cap if cap is not None else (
+        ParametroSistema.obtener(ParametroSistema.Clave.TOPE_CUMPLIMIENTO)
+        or DEFAULT_TOPE_CUMPLIMIENTO
+    ))
 
     items = []
     total_avance = ZERO

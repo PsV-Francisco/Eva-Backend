@@ -111,6 +111,7 @@
         </div>
       </div>
 
+      <p class="results-count">Mostrando {{ registros.start_index|default:0 }}–{{ registros.end_index|default:0 }} de {{ total_encontrados }} registros · <a href="{% url 'funcionario:gestion_actividades' %}">Limpiar filtros</a>{% if registros.has_previous %} · <a href="?{{ pagination_query }}&amp;page={{ registros.previous_page_number }}">Anterior</a>{% endif %}{% if registros.has_next %} · <a href="?{{ pagination_query }}&amp;page={{ registros.next_page_number }}">Siguiente</a>{% endif %}</p>
       <div class="table-responsive">
         <table class="table align-middle" id="tabla-registros">
           <thead>
@@ -155,6 +156,12 @@
                 <button class="btn btn-sm btn-outline-primary btn-editar-registro" data-id="{{ reg.pk }}">
                   Editar
                 </button>
+                <form method="post" class="mt-2 text-start">
+                  {% csrf_token %}<input type="hidden" name="action" value="agregar_observacion"><input type="hidden" name="registro_id" value="{{ reg.pk }}">
+                  <input class="form-control form-control-sm" name="comentario" required placeholder="Agregar observación">
+                  <button class="btn btn-sm btn-outline-secondary mt-1" type="submit">Guardar observación</button>
+                </form>
+                {% for observation in reg.observaciones_cronologicas.all %}<div class="small text-muted mt-1">{{ observation.autor.get_full_name|default:observation.autor.email }} · {{ observation.fecha_hora|date:'d/m/Y H:i' }}: {{ observation.comentario }}</div>{% endfor %}
               </td>
             </tr>
             {% empty %}

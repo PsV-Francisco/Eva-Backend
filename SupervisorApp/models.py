@@ -57,3 +57,16 @@ class RevisionEvidencia(models.Model):
 
 	def __str__(self):
 		return f'{self.get_decision_display()} - {self.evidencia.codigo}'
+
+
+class ObservacionRegistro(models.Model):
+	registro = models.ForeignKey('FuncionarioApp.Registro', on_delete=models.CASCADE, related_name='observaciones_cronologicas')
+	evidencia = models.ForeignKey(Evidencia, on_delete=models.CASCADE, null=True, blank=True, related_name='observaciones_cronologicas')
+	autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='observaciones_registros')
+	fecha_hora = models.DateTimeField(auto_now_add=True)
+	comentario = models.TextField()
+
+	class Meta:
+		ordering = ['fecha_hora', 'pk']
+		verbose_name = 'observación de registro'
+		verbose_name_plural = 'observaciones de registros'

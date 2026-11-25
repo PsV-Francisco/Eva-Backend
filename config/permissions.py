@@ -137,6 +137,7 @@ PERMISSION_CATALOG = (
     
     PermissionDefinition('Supervisor / Verificador', 'review_evidence', 'Revisar y validar evidencias', 'supervisor:home', ('supervisor', 'verificador')),
     PermissionDefinition('Delegado', 'manage_commitments', 'Administrar compromisos', 'delegado:home', ('delegado',)),
+    PermissionDefinition('Delegado', 'manage_delegation_absences', 'Registrar ausencias justificadas', 'delegado:ausencias', ('delegado',)),
     PermissionDefinition('Delegado', 'view_delegation_summary', 'Consultar resumen de delegación', 'delegado:resumen', ('delegado',)),
     PermissionDefinition('Coordinador', 'manage_periods', 'Administrar períodos e indicadores', 'coordinador:home', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'view_coordinator_personal', 'Consultar desempeño personal de Coordinación', 'coordinador:personal', ('coordinador', 'admin', 'administrador')),
@@ -231,6 +232,7 @@ PERMISSION_DESCRIPTIONS = {
     'upload_commitment_evidence': 'Cargar evidencia para compromisos propios.',
     'review_evidence': 'Revisar y validar evidencias de actividades.',
     'manage_commitments': 'Administrar compromisos de la delegación.',
+    'manage_delegation_absences': 'Registrar y consultar ausencias justificadas de la propia delegación.',
     'view_delegation_summary': 'Consultar el resumen de la delegación.',
     'manage_periods': 'Administrar períodos e indicadores.',
     'view_public_reports': 'Consultar los paneles de información disponibles.',

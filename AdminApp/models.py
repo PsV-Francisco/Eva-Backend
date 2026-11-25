@@ -737,7 +737,7 @@ class ParametroSistema(models.Model):
     @classmethod
     def obtener(cls, clave):
         defaults = {
-            cls.Clave.TOPE_CUMPLIMIENTO: 150,
+            cls.Clave.TOPE_CUMPLIMIENTO: 120,
             cls.Clave.UMBRAL_DELEGACION: 80,
             cls.Clave.MAX_DIAS_AUTORIZACION: 7,
         }
