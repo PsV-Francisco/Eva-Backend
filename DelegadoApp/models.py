@@ -75,6 +75,12 @@ class Compromiso(models.Model):
 	@property
 	def codigo_publico(self):
 		return f'COM-{self.pk:06d}'
+	
+	@property
+	def esta_vencido(self):
+		if self.estado == self.Estado.REALIZADO or not self.fecha_compromiso:
+			return False
+		return self.fecha_compromiso < timezone.now()
 
 	def generar_token_seguimiento(self):
 		if self.seguimiento_token and self.seguimiento_activo:

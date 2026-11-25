@@ -10,8 +10,11 @@
         {% endif %}
 
         <section class="content-section">
-            <div class="section-head">
+            <div class="section-head d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <h2>{% if periodo_seleccionado %}{{ periodo_seleccionado.nombre }}{% else %}Sin período abierto{% endif %}</h2>
+                {% if delegation_assigned %}
+                <a href="{% url 'funcionario:compromiso_nuevo' %}" class="btn btn-primary">+ Nuevo compromiso</a>
+                {% endif %}
             </div>
             
             <!-- NUEVO FORMULARIO HU-29: Búsqueda y Filtros combinados -->
@@ -92,18 +95,43 @@
                     <tbody>
                         <!-- ITERAMOS SOBRE page_obj EN VEZ DE compromisos -->
                         {% for compromiso in page_obj %}
-                        <tr>
-                            <td>{{ compromiso.fecha|date:'d/m/Y' }}</td>
-                            <td>{{ compromiso.descripcion }}</td>
+                        <tr class="{% if compromiso.esta_vencido %}table-danger{% endif %}">
+                            <td>
+                                <strong>{{ compromiso.fecha_compromiso|date:'d/m/Y' }}</strong>
+                                <div class="text-muted small">Ingreso: {{ compromiso.fecha_solicitud|date:'d/m/Y' }}</div>
+                            </td>
+                            <td>
+                                <div class="fw-bold text-primary small">{{ compromiso.codigo_publico }}</div>
+                                <div>{{ compromiso.descripcion }}</div>
+                                {% if compromiso.solicitante %}
+                                    <div class="text-muted small">
+                                        Vecino: {{ compromiso.solicitante.nombre }} {{ compromiso.solicitante.apellido|default:'' }}
+                                        {% if compromiso.solicitante.rut %}({{ compromiso.solicitante.rut }}){% endif %}
+                                        {% if compromiso.solicitante.telefono %} · Tel: {{ compromiso.solicitante.telefono }}{% endif %}
+                                    </div>
+                                {% endif %}
+                                {% if compromiso.territorio or compromiso.area_apoyo %}
+                                    <div class="text-muted small">
+                                        {% if compromiso.territorio %}Territorio: {{ compromiso.territorio.nombre }}{% endif %}
+                                        {% if compromiso.territorio and compromiso.area_apoyo %} · {% endif %}
+                                        {% if compromiso.area_apoyo %}Apoyo: {{ compromiso.area_apoyo }}{% endif %}
+                                    </div>
+                                {% endif %}
+                            </td>
                             <td>
                                 {% for responsable in compromiso.responsable.all %}
                                     {{ responsable.get_full_name|default:responsable.email }}{% if not forloop.last %}, {% endif %}
                                 {% empty %}—{% endfor %}
                             </td>
                             <td>
-                                <span class="badge {% if compromiso.estado == 'realizado' %}bg-success{% elif compromiso.estado == 'en_proceso' %}bg-primary{% else %}bg-secondary{% endif %}">
-                                    {{ compromiso.get_estado_display }}
-                                </span>
+                                {% if compromiso.esta_vencido %}
+                                    <span class="badge bg-danger">Vencido</span>
+                                    <div class="text-muted small mt-1">Estado: {{ compromiso.get_estado_display }}</div>
+                                {% else %}
+                                    <span class="badge {% if compromiso.estado == 'realizado' %}bg-success{% elif compromiso.estado == 'en_proceso' %}bg-primary{% else %}bg-secondary{% endif %}">
+                                        {{ compromiso.get_estado_display }}
+                                    </span>
+                                {% endif %}
                             </td>
                             <td>
                                 {% if request.user in compromiso.responsable.all and compromiso.agenda.periodo.estado == 'abierto' %}

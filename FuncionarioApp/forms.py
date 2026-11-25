@@ -127,8 +127,16 @@ class FuncionarioCompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.Mod
 
     def clean(self):
         cleaned_data = super().clean()
+        fecha_sol = cleaned_data.get('fecha_solicitud')
         fecha_comp = cleaned_data.get('fecha_compromiso')
         mes = cleaned_data.get('mes')
+
+        if fecha_sol and fecha_comp and fecha_comp < fecha_sol:
+            self.add_error(
+                'fecha_compromiso',
+                'La fecha de compromiso no puede ser anterior a la fecha de ingreso/solicitud.'
+            )
+
         if fecha_comp and not mes:
             cleaned_data['mes'] = fecha_comp.month
             self.cleaned_data['mes'] = fecha_comp.month
