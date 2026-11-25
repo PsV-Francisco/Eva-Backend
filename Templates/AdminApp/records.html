@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ title }} | SGR{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="dashboard-layout">
+  {% include 'includes/role_sidebar.html' %}
+  <main class="dashboard-main">
+    <section class="content-section">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">ADMINISTRACIÓN</p>
+          <h2>{{ title }}</h2>
+        </div>
+        {% if spec.create_route %}
+          <a class="btn btn-primary" href="{% url spec.create_route %}?delegacion={{ selected_delegation }}">
+            Nuevo registro
+          </a>
+        {% endif %}
+      </div>
+
+      <form method="get" class="maintainer-filters mb-3">
+        {% if is_administrator %}
+          <label class="form-label" for="records-delegacion">Delegación</label>
+          <select id="records-delegacion" class="form-select" name="delegacion">
+            <option value="todas"{% if selected_delegation == 'todas' %} selected{% endif %}>Todas las delegaciones</option>
+            {% for delegacion in delegaciones %}
+              <option value="{{ delegacion.pk }}"{% if selected_delegation == delegacion.pk|stringformat:'s' %} selected{% endif %}>{{ delegacion.nombre }}</option>
+            {% endfor %}
+          </select>
+        {% endif %}
+        <label class="form-label" for="records-query">Buscar</label>
+        <input id="records-query" class="form-control" type="search" name="q" value="{{ query }}" placeholder="Buscar...">
+        <button class="btn btn-outline-primary" type="submit">Filtrar</button>
+        {% if query or selected_delegation %}
+          <a class="btn btn-outline-secondary" href="{{ request.path }}">Limpiar</a>
+        {% endif %}
+      </form>
+
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              {% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}
+              {% if spec.edit_route %}<th scope="col">Acciones</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                {% for value in row.values %}<td>{{ value|default:'—' }}</td>{% endfor %}
+                {% if spec.edit_route %}
+                  <td>
+                    <a class="btn btn-sm btn-outline-primary" href="{% url spec.edit_route row.object.pk %}?delegacion={{ selected_delegation }}">Editar</a>
+                  </td>
+                {% endif %}
+              </tr>
+            {% empty %}
+              <tr><td colspan="{{ columns|length|add:1 }}">No hay registros para mostrar.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if page_obj.paginator.num_pages > 1 %}
+        <nav aria-label="Paginación">
+          <ul class="pagination">
+            {% if page_obj.has_previous %}
+              <li class="page-item"><a class="page-link" href="?{{ pagination_query }}{% if pagination_query %}&{% endif %}page={{ page_obj.previous_page_number }}">Anterior</a></li>
+            {% endif %}
+            <li class="page-item active"><span class="page-link">{{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span></li>
+            {% if page_obj.has_next %}
+              <li class="page-item"><a class="page-link" href="?{{ pagination_query }}{% if pagination_query %}&{% endif %}page={{ page_obj.next_page_number }}">Siguiente</a></li>
+            {% endif %}
+          </ul>
+        </nav>
+      {% endif %}
+    </section>
+  </main>
+</div>
+{% endblock %}
