@@ -37,7 +37,6 @@ PERMISSION_CATALOG = (
     PermissionDefinition('Administración', 'access_admin_functions', 'Administrar funciones', 'administracion:funciones', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_position_functions', 'Administrar cargos por función', 'administracion:cargos-funciones', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_roles', 'Administrar roles y permisos', 'administracion:roles', ('admin', 'administrador')),
-    PermissionDefinition('Administración', 'access_admin_items', 'Administrar ítems', 'administracion:items', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_attention_types', 'Administrar tipos de atención', 'administracion:tipos-atencion', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_subattentions', 'Administrar subatenciones', 'administracion:subatenciones', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_goals', 'Administrar metas', 'administracion:metas', ('coordinador', 'admin', 'administrador')),
@@ -142,6 +141,12 @@ PERMISSION_CATALOG = (
     PermissionDefinition('Coordinador', 'manage_periods', 'Administrar períodos e indicadores', 'coordinador:home', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'view_coordinator_personal', 'Consultar desempeño personal de Coordinación', 'coordinador:personal', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Consulta', 'view_public_reports', 'Consultar información', 'vistaf:home', ('vistaf', 'consulta', 'usuario de consulta')),
+    #Permisos Administrador/Coordinador a la gestión de Items
+    PermissionDefinition(view_name='administracion:items',codename='access_admin_items',label='Administrar y crear ítems',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),),
+    PermissionDefinition(view_name='administracion:buscar_items_ajax',codename='access_admin_items',label='Buscar ítems vía AJAX',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),),
+    PermissionDefinition(view_name='administracion:detalle_item_json',codename='view_admin_items_detail',label='Ver detalle JSON de ítems',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),),
+    PermissionDefinition(view_name='administracion:editar_item_ajax',codename='edit_admin_items_ajax',label='Editar ítems vía AJAX',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),),
+    PermissionDefinition(view_name='administracion:cambiar_estado_item_ajax',codename='toggle_admin_items_status',label='Activar o desactivar ítems',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),),
 )
 
 PERMISSION_DESCRIPTIONS = {
@@ -156,7 +161,6 @@ PERMISSION_DESCRIPTIONS = {
     'access_admin_functions': 'Crear, editar y administrar funciones.',
     'access_admin_position_functions': 'Asociar cargos con funciones.',
     'access_admin_roles': 'Crear roles y administrar sus permisos.',
-    'access_admin_items': 'Crear, editar y administrar ítems.',
     'access_admin_attention_types': 'Administrar tipos de atención.',
     'access_admin_subattentions': 'Administrar subatenciones.',
     'access_admin_goals': 'Crear y administrar metas.',
@@ -236,6 +240,10 @@ PERMISSION_DESCRIPTIONS = {
     'view_delegation_summary': 'Consultar el resumen de la delegación.',
     'manage_periods': 'Administrar períodos e indicadores.',
     'view_public_reports': 'Consultar los paneles de información disponibles.',
+    'access_admin_items': 'Permite acceder al mantenedor de ítems, listar y registrar nuevos ítems.',
+    'view_admin_items_detail': 'Permite consultar el detalle de un ítem para su edición.',
+    'edit_admin_items_ajax': 'Permite modificar el nombre, descripción y estado de los ítems.',
+    'toggle_admin_items_status': 'Permite activar o desactivar ítems mediante eliminado lógico.',
 }
 
 PERMISSION_DESCRIPTIONS['manage_coordinator_periods'] = 'Crear, editar, cerrar y reabrir períodos desde Coordinación.'

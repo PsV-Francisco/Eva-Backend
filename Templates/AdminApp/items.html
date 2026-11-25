@@ -1,0 +1,586 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Gestión de Ítems - {{ sgr_role }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <!-- Encabezado -->
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+    <div>
+      <h2 class="h4 mb-1 fw-bold text-dark">Administración de Ítems</h2>
+      <p class="text-muted small mb-0">
+        Crea, busca y administra los ítems utilizados en la evaluación de desempeño institucional.
+      </p>
+    </div>
+    <a href="{% url 'administracion:dashboard' %}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i> Volver al panel
+    </a>
+  </div>
+
+  <!-- BLOQUE 1: Formulario de Creación -->
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 border-bottom">
+      <h5 class="card-title mb-0 fw-semibold text-primary">
+        <i class="bi bi-plus-circle me-2"></i>Registrar Nuevo Ítem
+      </h5>
+    </div>
+    <div class="card-body">
+      <form id="formCrearItem" method="post" action="{% url 'administracion:items' %}" novalidate>
+        {% csrf_token %}
+        <div class="row g-3">
+          <div class="col-md-5">
+            <label for="id_nombre" class="form-label fw-semibold">
+              Nombre del Ítem <span class="text-danger">*</span>
+            </label>
+            <input
+              type="text"
+              name="nombre"
+              id="id_nombre"
+              class="form-control"
+              maxlength="120"
+              placeholder="Ej: Atención presencial en terreno"
+              value="{{ form.nombre.value|default_if_none:'' }}"
+              required
+            >
+            <div class="form-text">El código identificador (ej. ITEM-0001) se genera automáticamente.</div>
+          </div>
+
+          <div class="col-md-4">
+            <label for="id_descripcion" class="form-label fw-semibold">Descripción</label>
+            <input
+              type="text"
+              name="descripcion"
+              id="id_descripcion"
+              class="form-control"
+              placeholder="Detalle breve del alcance del ítem (opcional)"
+              value="{{ form.descripcion.value|default_if_none:'' }}"
+            >
+          </div>
+
+          <div class="col-md-3">
+            <label for="id_estado" class="form-label fw-semibold">
+              Estado <span class="text-danger">*</span>
+            </label>
+            <select name="estado" id="id_estado" class="form-select" required>
+              <option value="activo" {% if form.estado.value == 'activo' or not form.estado.value %}selected{% endif %}>Activo</option>
+              <option value="inactivo" {% if form.estado.value == 'inactivo' %}selected{% endif %}>Inactivo</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-end mt-3 pt-2 border-top">
+          <button type="reset" class="btn btn-light me-2">Limpiar</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save me-1"></i> Guardar Ítem
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- BLOQUE 2: Buscador AJAX (keyup) y Listado en Tabla -->
+  <div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3 border-bottom">
+      <div class="row g-2 align-items-center justify-content-between">
+        <div class="col-md-4">
+          <h5 class="card-title mb-0 fw-semibold">
+            <i class="bi bi-list-ul me-2"></i>Listado de Ítems
+          </h5>
+        </div>
+        <div class="col-md-8">
+          <div class="row g-2 justify-content-md-end">
+            <div class="col-sm-7 col-md-6">
+              <div class="input-group">
+                <span class="input-group-text bg-light border-end-0">
+                  <i class="bi bi-search text-muted"></i>
+                </span>
+                <input
+                  type="text"
+                  id="buscadorItemsInput"
+                  class="form-control border-start-0"
+                  placeholder="Buscar por código, nombre o descripción..."
+                  value="{{ search_query }}"
+                  autocomplete="off"
+                >
+              </div>
+            </div>
+            <div class="col-sm-5 col-md-3">
+              <select id="filtroEstadoItems" class="form-select">
+                <option value="">Todos los estados</option>
+                <option value="activo" {% if estado_filtro == 'activo' %}selected{% endif %}>Activo</option>
+                <option value="inactivo" {% if estado_filtro == 'inactivo' %}selected{% endif %}>Inactivo</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" id="tablaItems">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3" style="width: 130px;">Código</th>
+              <th>Nombre</th>
+              <th>Descripción</th>
+              <th style="width: 120px;">Estado</th>
+              <th class="text-end pe-3" style="width: 170px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyItems">
+            {% for item in page_obj %}
+            <tr>
+              <td class="ps-3 fw-semibold text-primary">{{ item.codigo|default:"S/C" }}</td>
+              <td class="fw-medium">{{ item.nombre }}</td>
+              <td class="text-muted small">{{ item.descripcion|default:"Sin descripción" }}</td>
+              <td>
+                {% if item.estado == 'activo' %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle">Activado</span>
+                {% else %}
+                  <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Desactivado</span>
+                {% endif %}
+              </td>
+              <td class="text-end pe-3">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary btn-editar-item"
+                  data-id="{{ item.pk }}"
+                  title="Editar ítem"
+                >
+                  <i class="bi bi-pencil-square"></i> Editar
+                </button>
+                {% if item.estado == 'activo' %}
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-warning btn-toggle-estado-item"
+                    data-id="{{ item.pk }}"
+                    data-nombre="{{ item.nombre }}"
+                    data-estado="activo"
+                    title="Desactivar ítem"
+                  >
+                    <i class="bi bi-slash-circle"></i> Desactivar
+                  </button>
+                {% else %}
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-success btn-toggle-estado-item"
+                    data-id="{{ item.pk }}"
+                    data-nombre="{{ item.nombre }}"
+                    data-estado="inactivo"
+                    title="Activar ítem"
+                  >
+                    <i class="bi bi-check-circle"></i> Activar
+                  </button>
+                {% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="5" class="text-center py-4 text-muted">
+                No se encontraron ítems registrados.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Paginación inicial -->
+    {% if page_obj.has_other_pages %}
+    <div class="card-footer bg-white py-3" id="paginacionItems">
+      <nav aria-label="Paginación de ítems">
+        <ul class="pagination pagination-sm justify-content-end mb-0">
+          {% if page_obj.has_previous %}
+            <li class="page-item">
+              <a class="page-link" href="?page={{ page_obj.previous_page_number }}&q={{ search_query }}&estado={{ estado_filtro }}">Anterior</a>
+            </li>
+          {% endif %}
+          <li class="page-item disabled">
+            <span class="page-link">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+          </li>
+          {% if page_obj.has_next %}
+            <li class="page-item">
+              <a class="page-link" href="?page={{ page_obj.next_page_number }}&q={{ search_query }}&estado={{ estado_filtro }}">Siguiente</a>
+            </li>
+          {% endif %}
+        </ul>
+      </nav>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- BLOQUE 3: Modal de Edición -->
+<div class="modal fade" id="modalEditarItem" tabindex="-1" aria-labelledby="modalEditarItemLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="modalEditarItemLabel">
+          <i class="bi bi-pencil-square me-2"></i>Editar Ítem
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <form id="formEditarItem" novalidate>
+        <div class="modal-body">
+          <input type="hidden" id="edit_item_id">
+
+          <div class="mb-3">
+            <label for="edit_codigo" class="form-label fw-semibold">Código</label>
+            <input type="text" id="edit_codigo" class="form-control bg-light" readonly disabled>
+        </div>
+
+        <div class="mb-3">
+            <label for="edit_nombre" class="form-label fw-semibold">
+            Nombre del Ítem <span class="text-danger">*</span>
+            </label>
+            <input type="text" id="edit_nombre" class="form-control" maxlength="120" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="edit_descripcion" class="form-label fw-semibold">Descripción</label>
+            <textarea id="edit_descripcion" class="form-control" rows="3" placeholder="Detalle del ítem (opcional)"></textarea>
+        </div>
+
+        <div class="mb-2">
+            <label for="edit_estado" class="form-label fw-semibold">
+            Estado <span class="text-danger">*</span>
+            </label>
+            <select id="edit_estado" class="form-select" required>
+            <option value="activo">Activo</option>
+            <option value="inactivo">Inactivo</option>
+            </select>
+        </div>
+        </div>
+        <div class="modal-footer bg-light">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btnGuardarEdicionItem">
+            <i class="bi bi-check-lg me-1"></i> Guardar Cambios
+            </button>
+        </div>
+        </form>
+    </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    const buscarUrl = "{% url 'administracion:buscar_items_ajax' %}";
+
+  // 0. Mostrar mensajes de Django (creación / eliminación) con SweetAlert2
+  {% if messages %}
+    {% for message in messages %}
+      Swal.fire({
+        icon: "{% if 'error' in message.tags %}error{% elif 'warning' in message.tags %}warning{% else %}success{% endif %}",
+        title: "{% if 'error' in message.tags %}Atención{% elif 'warning' in message.tags %}Advertencia{% else %}Operación exitosa{% endif %}",
+        text: "{{ message|escapejs }}",
+        confirmButtonColor: "#0d6efd"
+      });
+    {% endfor %}
+  {% endif %}
+
+  // 1. Validación SweetAlert2 al CREAR Ítem
+    const formCrear = document.getElementById('formCrearItem');
+    formCrear.addEventListener('submit', function (e) {
+    const nombre = document.getElementById('id_nombre').value.trim();
+    const estado = document.getElementById('id_estado').value;
+
+    if (!nombre) {
+        e.preventDefault();
+        Swal.fire({
+        icon: 'warning',
+        title: 'Campo obligatorio faltante',
+        text: 'Debes ingresar el nombre del ítem antes de guardar.',
+        confirmButtonColor: '#0d6efd'
+        });
+        return;
+    }
+
+    if (nombre.length > 120) {
+        e.preventDefault();
+        Swal.fire({
+        icon: 'warning',
+        title: 'Longitud excedida',
+        text: 'El nombre del ítem no puede superar los 120 caracteres.',
+        confirmButtonColor: '#0d6efd'
+    });
+    return;
+    }
+
+    if (!['activo', 'inactivo'].includes(estado)) {
+        e.preventDefault();
+        Swal.fire({
+        icon: 'error',
+        title: 'Estado inválido',
+        text: 'Selecciona un estado válido (Activo o Inactivo).',
+        confirmButtonColor: '#0d6efd'
+        });
+    }
+    });
+
+  // 2. Buscador AJAX con keyup + filtro de estado
+  const inputBuscador = document.getElementById('buscadorItemsInput');
+  const selectEstado = document.getElementById('filtroEstadoItems');
+  const tbodyItems = document.getElementById('tbodyItems');
+  const paginacionDiv = document.getElementById('paginacionItems');
+  let debounceTimer = null;
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+  }
+
+  function ejecutarBusquedaAjax() {
+    const q = inputBuscador.value.trim();
+    const estado = selectEstado.value;
+    const url = `${buscarUrl}?q=${encodeURIComponent(q)}&estado=${encodeURIComponent(estado)}`;
+
+    fetch(url, {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.success) return;
+
+        if (paginacionDiv) {
+          paginacionDiv.style.display = (q || estado) ? 'none' : '';
+        }
+
+        if (data.items.length === 0) {
+          tbodyItems.innerHTML = `
+            <tr>
+              <td colspan="5" class="text-center py-4 text-muted">
+                No se encontraron ítems que coincidan con los criterios de búsqueda.
+              </td>
+            </tr>`;
+          return;
+        }
+
+        tbodyItems.innerHTML = data.items.map(item => {
+          const esActivo = item.estado === 'activo';
+          const badgeHtml = esActivo
+            ? '<span class="badge bg-success-subtle text-success border border-success-subtle">Activado</span>'
+            : '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Desactivado</span>';
+
+          const toggleBtnHtml = esActivo
+            ? `<button type="button" class="btn btn-sm btn-outline-warning btn-toggle-estado-item" data-id="${item.id}" data-nombre="${escapeHtml(item.nombre)}" data-estado="activo" title="Desactivar ítem">
+                 <i class="bi bi-slash-circle"></i> Desactivar
+               </button>`
+            : `<button type="button" class="btn btn-sm btn-outline-success btn-toggle-estado-item" data-id="${item.id}" data-nombre="${escapeHtml(item.nombre)}" data-estado="inactivo" title="Activar ítem">
+                 <i class="bi bi-check-circle"></i> Activar
+               </button>`;
+
+          return `
+            <tr>
+              <td class="ps-3 fw-semibold text-primary">${escapeHtml(item.codigo)}</td>
+              <td class="fw-medium">${escapeHtml(item.nombre)}</td>
+              <td class="text-muted small">${escapeHtml(item.descripcion || 'Sin descripción')}</td>
+              <td>${badgeHtml}</td>
+              <td class="text-end pe-3">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary btn-editar-item"
+                  data-id="${item.id}"
+                  title="Editar ítem"
+                >
+                  <i class="bi bi-pencil-square"></i> Editar
+                </button>
+                ${toggleBtnHtml}
+              </td>
+            </tr>`;
+        }).join('');
+      })
+      .catch(() => {
+        Swal.fire({
+          icon: 'error',
+          title: 'Error de conexión',
+          text: 'No se pudo realizar la búsqueda en tiempo real.',
+          confirmButtonColor: '#0d6efd'
+        });
+      });
+  }
+
+  inputBuscador.addEventListener('keyup', function () {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(ejecutarBusquedaAjax, 250);
+  });
+
+  selectEstado.addEventListener('change', ejecutarBusquedaAjax);
+
+  // 3. Delegación de eventos en tabla: Abrir Modal de Edición y Confirmar Eliminación
+  const modalElement = document.getElementById('modalEditarItem');
+  const modalEditar = new bootstrap.Modal(modalElement);
+
+  tbodyItems.addEventListener('click', function (e) {
+    // Botón Editar
+    const btnEditar = e.target.closest('.btn-editar-item');
+    if (btnEditar) {
+      const itemId = btnEditar.dataset.id;
+      fetch(`/administracion/items/${itemId}/detalle-json/`, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+        .then(res => {
+          if (!res.ok) throw new Error('No se pudo cargar el detalle del ítem.');
+          return res.json();
+        })
+        .then(data => {
+          document.getElementById('edit_item_id').value = data.id;
+          document.getElementById('edit_codigo').value = data.codigo || 'S/C';
+          document.getElementById('edit_nombre').value = data.nombre;
+          document.getElementById('edit_descripcion').value = data.descripcion || '';
+          document.getElementById('edit_estado').value = data.estado;
+          modalEditar.show();
+        })
+        .catch(err => {
+          Swal.fire({
+            icon: 'error',
+            title: 'Error al cargar datos',
+            text: err.message,
+            confirmButtonColor: '#0d6efd'
+          });
+        });
+      return;
+    }
+
+    // Botón Activar / Desactivar (Eliminado lógico)
+    const btnToggle = e.target.closest('.btn-toggle-estado-item');
+    if (btnToggle) {
+      const itemId = btnToggle.dataset.id;
+      const nombreItem = btnToggle.dataset.nombre;
+      const esActivo = btnToggle.dataset.estado === 'activo';
+      const accionTexto = esActivo ? 'desactivar' : 'activar';
+
+      Swal.fire({
+        icon: 'question',
+        title: `¿Deseas ${accionTexto} este ítem?`,
+        text: `El ítem "${nombreItem}" cambiará su estado a ${esActivo ? 'DESACTIVADO' : 'ACTIVADO'}.`,
+        showCancelButton: true,
+        confirmButtonColor: esActivo ? '#ffc107' : '#198754',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: `Sí, ${accionTexto}`,
+        cancelButtonText: 'Cancelar'
+      }).then(result => {
+        if (!result.isConfirmed) return;
+
+        fetch(`/administracion/items/${itemId}/cambiar-estado-ajax/`, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        })
+          .then(res => res.json().then(body => ({ status: res.status, body })))
+          .then(({ status, body }) => {
+            if (status >= 200 && status < 300 && body.success) {
+              Swal.fire({
+                icon: 'success',
+                title: 'Estado actualizado',
+                text: body.message,
+                confirmButtonColor: '#0d6efd'
+              }).then(() => {
+                ejecutarBusquedaAjax();
+              });
+            } else {
+              Swal.fire({
+                icon: 'error',
+                title: 'No se pudo actualizar',
+                text: body.message || 'Ocurrió un error al cambiar el estado.',
+                confirmButtonColor: '#0d6efd'
+              });
+            }
+          })
+          .catch(() => {
+            Swal.fire({
+              icon: 'error',
+              title: 'Error de conexión',
+              text: 'No se pudo comunicar con el servidor para cambiar el estado del ítem.',
+              confirmButtonColor: '#0d6efd'
+            });
+          });
+      });
+    }
+
+
+  // 4. Guardar Edición vía AJAX con validación SweetAlert2 y Auditoría
+  const formEditar = document.getElementById('formEditarItem');
+  formEditar.addEventListener('submit', function (e) {
+    e.preventDefault();
+
+    const itemId = document.getElementById('edit_item_id').value;
+    const nombre = document.getElementById('edit_nombre').value.trim();
+    const descripcion = document.getElementById('edit_descripcion').value.trim();
+    const estado = document.getElementById('edit_estado').value;
+
+    if (!nombre) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Nombre obligatorio',
+        text: 'El nombre del ítem no puede quedar vacío.',
+        confirmButtonColor: '#0d6efd'
+      });
+      return;
+    }
+
+    if (nombre.length > 120) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Longitud excedida',
+        text: 'El nombre del ítem no puede superar los 120 caracteres.',
+        confirmButtonColor: '#0d6efd'
+      });
+      return;
+    }
+
+    fetch(`/administracion/items/${itemId}/editar-ajax/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken,
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify({
+        nombre: nombre,
+        descripcion: descripcion,
+        estado: estado
+      })
+    })
+      .then(res => res.json().then(body => ({ status: res.status, body })))
+      .then(({ status, body }) => {
+        if (status >= 200 && status < 300 && body.success) {
+          modalEditar.hide();
+          Swal.fire({
+            icon: 'success',
+            title: 'Ítem actualizado',
+            text: body.message,
+            confirmButtonColor: '#0d6efd'
+          }).then(() => {
+            ejecutarBusquedaAjax();
+          });
+        } else {
+          Swal.fire({
+            icon: 'error',
+            title: 'Error de validación',
+            text: body.message || 'No se pudieron guardar los cambios.',
+            confirmButtonColor: '#0d6efd'
+          });
+        }
+      })
+      .catch(() => {
+        Swal.fire({
+          icon: 'error',
+          title: 'Error inesperado',
+          text: 'Ocurrió un problema de comunicación con el servidor al editar el ítem.',
+          confirmButtonColor: '#0d6efd'
+        });
+      });
+  });
+});
+})
+</script>
+{% endblock %}
