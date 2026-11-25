@@ -623,11 +623,14 @@ def editar_compromiso(request, compromiso_id):
     if request.method == 'POST' and form.is_valid():
         before = _compromiso_snapshot(commitment)
         with transaction.atomic():
+            period = form.cleaned_data['periodo']
+            agenda, _ = Agenda.objects.get_or_create(
+                delegacion=delegation,
+                periodo=period,
+            )
             commitment = form.save(commit=False)
-            commitment.save(update_fields=[
-                'descripcion', 'solicitante', 'territorio', 'fecha',
-                'observaciones', 'tipo', 'subtipo', 'actualizado',
-            ])
+            commitment.agenda = agenda
+            commitment.save()
             registrar_historial(
                 actor=request.user,
                 action='Modificar compromiso como Funcionario',

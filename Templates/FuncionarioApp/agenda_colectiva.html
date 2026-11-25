@@ -33,7 +33,7 @@
                 </div>
                 <div class="col-md-3">
                     <label for="estado_filtro" class="form-label fw-bold">Filtrar Estado</label>
-                    <select id="estado_filtro" name="estado_filtro" class="form-select">
+                    <select id="estado_filtro" name="estado_filtro" class="form-select" onchange="this.form.submit()">
                         <option value="">Todos los estados</option>
                         <option value="ingresado" {% if estado_filtro == 'ingresado' %}selected{% endif %}>Ingresado</option>
                         <option value="pendiente" {% if estado_filtro == 'pendiente' %}selected{% endif %}>Pendiente</option>
