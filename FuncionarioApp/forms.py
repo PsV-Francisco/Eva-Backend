@@ -113,8 +113,14 @@ class FuncionarioCompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.Mod
         ]
         widgets = {
             'descripcion': forms.TextInput(attrs={'class': 'form-control'}),
-            'fecha_solicitud': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
-            'fecha_compromiso': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+            'fecha_solicitud': forms.DateTimeInput(
+                format='%Y-%m-%dT%H:%M',
+                attrs={'class': 'form-control', 'type': 'datetime-local'},
+            ),
+            'fecha_compromiso': forms.DateTimeInput(
+                format='%Y-%m-%dT%H:%M',
+                attrs={'class': 'form-control', 'type': 'datetime-local'},
+            ),
             'ambito': forms.Select(attrs={'class': 'form-select'}),
             'area_apoyo': forms.TextInput(attrs={'class': 'form-control'}),
             'mes': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 12}),
@@ -125,6 +131,8 @@ class FuncionarioCompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.Mod
         super().__init__(*args, **kwargs)
         _set_tipo_subtipo_choices(self, self.instance)
         self.fields['mes'].required = False
+        if self.instance and self.instance.pk and getattr(self.instance, 'agenda_id', None):
+            self.initial.setdefault('periodo', self.instance.agenda.periodo_id)
 
     def clean(self):
         cleaned_data = super().clean()
