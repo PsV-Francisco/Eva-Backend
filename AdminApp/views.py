@@ -1,3 +1,4 @@
+#Importaciones Django
 import json
 from datetime import timedelta
 from django.contrib import messages
@@ -10,24 +11,30 @@ from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
-from FuncionarioApp.models import Vecino
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse
-from AdminApp.audit import registrar_historial
-from AdminApp.forms import (HistorialFilterForm,ParametroSistemaForm,PasswordResetAuditFilterForm,UsuarioCreationForm,UsuarioUpdateForm,)
+from django.contrib import messages
+from django.shortcuts import get_object_or_404, redirect, render
+
+#Importaciones de Modelos
+from FuncionarioApp.models import Vecino,Registro
 from AdminApp.models import (Cargo,Delegacion,Historial,ParametroSistema,PasswordResetAuditEvent,Usuario)
+from CoordinadorApp.models import Periodo, SolicitudAutorizacionPeriodo,Item
+
+#Importaciones de Formularios
+from AdminApp.forms import ItemForm
+from CoordinadorApp.authorization_forms import AuthorizationDecisionForm, AuthorizationRevokeForm
+from AdminApp.forms import (HistorialFilterForm,ParametroSistemaForm,PasswordResetAuditFilterForm,UsuarioCreationForm,UsuarioUpdateForm)
+from AdminApp.forms import DelegacionForm
+
+#Otras Importaciones
+from AdminApp.audit import registrar_historial
 from AdminApp.maintainers import excel_response, maintainer
 from config.decorators import cargo_required
 from config.permissions import PERMISSION_BY_VIEW, can_access_permission
-from CoordinadorApp.authorization_forms import AuthorizationDecisionForm, AuthorizationRevokeForm
-from CoordinadorApp.models import Periodo, SolicitudAutorizacionPeriodo
 from CoordinadorApp.services import _authorization_snapshot, expire_authorizations
-from FuncionarioApp.models import Registro
-from AdminApp.forms import DelegacionForm
-from AdminApp.models import Delegacion
-from django.contrib import messages
-from django.shortcuts import get_object_or_404, redirect, render
 from config.decorators import cargo_required
+
 
 
 ADMIN_DASHBOARD_LINK_GROUPS = (
@@ -621,10 +628,198 @@ def cargos_funciones(request):
 def roles(request):
     return maintainer(request, 'roles')
 
+##
+## FUNCIONES DE LOS ÍTEMS
+##
+
+def _item_snapshot(item):
+    return {
+        'codigo': item.codigo or '',
+        'nombre': item.nombre,
+        'descripcion': item.descripcion or '',
+        'estado': item.estado,
+    }
+
 
 @cargo_required('coordinador', 'admin', 'administrador', permission='access_admin_items')
 def items(request):
-    return maintainer(request, 'items')
+    """Vista principal para listar, buscar y crear ítems en el panel de administración."""
+    query = request.GET.get('q', '').strip()
+    estado_filtro = request.GET.get('estado', '').lower()
+
+    queryset = Item.objects.all().order_by('nombre')
+
+    if query:
+        queryset = queryset.filter(
+            Q(codigo__icontains=query)
+            | Q(nombre__icontains=query)
+            | Q(descripcion__icontains=query)
+        )
+
+    if estado_filtro:
+        if estado_filtro not in {'activo', 'inactivo'}:
+            return HttpResponseBadRequest('Filtro de estado no válido.')
+        queryset = queryset.filter(estado=estado_filtro)
+
+    form = ItemForm(request.POST or None)
+
+    if request.method == 'POST':
+        if form.is_valid():
+            with transaction.atomic():
+                item = form.save()
+                registrar_historial(
+                    actor=request.user,
+                    action='Crear ítem',
+                    entity=f'Item:{item.pk}',
+                    after=_item_snapshot(item),
+                )
+            messages.success(request, f'Ítem "{item.nombre}" ({item.codigo}) creado correctamente.')
+            return redirect('administracion:items')
+        else:
+            errores = '; '.join(
+                f"{campo}: {', '.join(msgs)}" for campo, msgs in form.errors.items()
+            )
+            messages.error(request, f'Error al registrar el ítem: {errores}')
+
+    page_obj = Paginator(queryset, 20).get_page(request.GET.get('page'))
+
+    return render(request, 'AdminApp/items.html', {
+        'sgr_role': 'Administración',
+        'sidebar_modules': _admin_dashboard_modules(request.user),
+        'form': form,
+        'page_obj': page_obj,
+        'search_query': query,
+        'estado_filtro': estado_filtro,
+    })
+
+
+@cargo_required('coordinador', 'admin', 'administrador', permission='access_admin_items')
+@require_GET
+def buscar_items_ajax(request):
+    """Endpoint AJAX (keyup) para filtrar ítems dinámicamente sin recargar la página."""
+    query = request.GET.get('q', '').strip()
+    estado_filtro = request.GET.get('estado', '').lower()
+
+    queryset = Item.objects.all().order_by('nombre')
+
+    if query:
+        queryset = queryset.filter(
+            Q(codigo__icontains=query)
+            | Q(nombre__icontains=query)
+            | Q(descripcion__icontains=query)
+        )
+
+    if estado_filtro in {'activo', 'inactivo'}:
+        queryset = queryset.filter(estado=estado_filtro)
+
+    resultados = [
+        {
+            'id': item.pk,
+            'codigo': item.codigo or 'S/C',
+            'nombre': item.nombre,
+            'descripcion': item.descripcion or '',
+            'estado': item.estado,
+            'estado_display': item.get_estado_display(),
+        }
+        for item in queryset[:50]
+    ]
+    return JsonResponse({'success': True, 'items': resultados})
+
+
+@cargo_required('coordinador', 'admin', 'administrador', permission='view_admin_items_detail')
+@require_GET
+def detalle_item_json(request, item_id):
+    """Devuelve los datos del ítem en formato JSON para precargar el modal de edición."""
+    item = get_object_or_404(Item, pk=item_id)
+    return JsonResponse({
+        'id': item.pk,
+        'codigo': item.codigo or '',
+        'nombre': item.nombre,
+        'descripcion': item.descripcion or '',
+        'estado': item.estado,
+    })
+
+
+@cargo_required('coordinador', 'admin', 'administrador', permission='edit_admin_items_ajax')
+@require_POST
+def editar_item_ajax(request, item_id):
+    """Procesa la actualización del ítem mediante AJAX y registra el cambio en Historial."""
+    item = get_object_or_404(Item, pk=item_id)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': 'Payload JSON inválido.'}, status=400)
+
+    nombre = data.get('nombre', '').strip()
+    descripcion = data.get('descripcion', '').strip()
+    estado = data.get('estado', 'activo').lower()
+
+    if not nombre:
+        return JsonResponse({'success': False, 'message': 'El nombre del ítem es obligatorio.'}, status=400)
+
+    if len(nombre) > 120:
+        return JsonResponse({'success': False, 'message': 'El nombre no puede superar los 120 caracteres.'}, status=400)
+
+    if estado not in {'activo', 'inactivo'}:
+        return JsonResponse({'success': False, 'message': 'Estado no válido. Debe ser Activo o Inactivo.'}, status=400)
+
+    if Item.objects.filter(nombre__iexact=nombre).exclude(pk=item.pk).exists():
+        return JsonResponse({'success': False, 'message': f'Ya existe otro ítem registrado con el nombre "{nombre}".'}, status=400)
+
+    before = _item_snapshot(item)
+    try:
+        with transaction.atomic():
+            item.nombre = nombre
+            item.descripcion = descripcion
+            item.estado = estado
+            item.save()
+
+            registrar_historial(
+                actor=request.user,
+                action='Editar ítem',
+                entity=f'Item:{item.pk}',
+                before=before,
+                after=_item_snapshot(item),
+            )
+        return JsonResponse({'success': True, 'message': 'El ítem fue actualizado correctamente y registrado en auditoría.'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Error interno al actualizar el ítem: {str(e)}'}, status=500)
+
+
+@cargo_required('coordinador', 'admin', 'administrador', permission='toggle_admin_items_status')
+@require_POST
+def cambiar_estado_item_ajax(request, item_id):
+    """Alterna el estado lógico del ítem (activo <-> inactivo) vía AJAX y registra en Historial."""
+    item = get_object_or_404(Item, pk=item_id)
+    before = _item_snapshot(item)
+
+    nuevo_estado = (Item.Estado.INACTIVO if item.estado == Item.Estado.ACTIVO else Item.Estado.ACTIVO)
+    accion_texto = 'Desactivar ítem' if nuevo_estado == Item.Estado.INACTIVO else 'Activar ítem'
+
+    try:
+        with transaction.atomic():
+            item.estado = nuevo_estado
+            item.save(update_fields=['estado'])
+
+            registrar_historial(
+                actor=request.user,
+                action=accion_texto,
+                entity=f'Item:{item.pk}',
+                before=before,
+                after=_item_snapshot(item),
+            )
+        estado_etiqueta = 'Activado' if nuevo_estado == Item.Estado.ACTIVO else 'Desactivado'
+        return JsonResponse({
+            'success': True,
+            'estado': nuevo_estado,
+            'message': f'El ítem "{item.nombre}" pasó a estado {estado_etiqueta} y se registró en auditoría.',
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error al cambiar el estado del ítem: {str(e)}',
+        }, status=500)
+
 
 
 @cargo_required('admin', 'administrador', permission='access_admin_attention_types')

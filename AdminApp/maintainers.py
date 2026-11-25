@@ -1,6 +1,4 @@
-from dataclasses import dataclass
-from io import BytesIO
-
+#Importaciones Django
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db import transaction
@@ -9,41 +7,23 @@ from django.db.models.deletion import ProtectedError
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 
-from AdminApp.audit import registrar_historial
-from AdminApp.forms import (
-    CargoForm,
-    CargoFuncionForm,
-    DelegacionForm,
-    DesempenoForm,
-    FuncionForm,
-    ItemForm,
-    RolForm,
-    SubtipoForm,
-    TipoForm,
-)
-from AdminApp.models import (
-    Cargo,
-    Delegacion,
-    Rol,
-    UsuarioCargo,
-    UsuarioDelegacion,
-    UsuarioRol,
-    is_critical_cargo_name,
-)
-from AdminApp.roles import (
-    ensure_role_group,
-    is_system_administrator,
-    permission_codenames_for,
-    role_group_name,
-)
-from CoordinadorApp.models import AtencionSocial, CargoFuncion, Desempeno, Funcion, Item
+#Importaciones de Modelos
+from CoordinadorApp.models import AtencionSocial, CargoFuncion, Desempeno, Funcion
+from DelegadoApp.models import Compromiso
+from FuncionarioApp.models import Registro, Subtipo, Tipo, Vecino
+from AdminApp.models import (Cargo,Delegacion,Rol,UsuarioCargo,UsuarioDelegacion,UsuarioRol,is_critical_cargo_name)
+
+#Importaciones de Formularios
+from FuncionarioApp.forms import VecinoForm
+from AdminApp.forms import (CargoForm,CargoFuncionForm,DelegacionForm,DesempenoForm,FuncionForm,RolForm,SubtipoForm,TipoForm)
+# Otras Importaciones
+from dataclasses import dataclass
+from io import BytesIO
 from CoordinadorApp.services import authorization_for, record_authorization_use
 from config.delegations import active_delegation
-from DelegadoApp.models import Compromiso
-from FuncionarioApp.models import Registro, Subtipo, Tipo
+from AdminApp.audit import registrar_historial
+from AdminApp.roles import (ensure_role_group,is_system_administrator,permission_codenames_for)
 
-from FuncionarioApp.forms import VecinoForm
-from FuncionarioApp.models import Registro, Subtipo, Tipo, Vecino
 
 @dataclass(frozen=True)
 class MaintainerSpec:
@@ -278,32 +258,6 @@ SPECS = {
         ordering=('nombre',),
         active_value=Rol.Estado.ACTIVO,
         inactive_value=Rol.Estado.INACTIVO,
-    ),
-    'items': MaintainerSpec(
-        key='items',
-        title='Ítems y metas',
-        model=Item,
-        form_class=ItemForm,
-        search_fields=('codigo', 'nombre', 'descripcion'),
-        display_fields=(
-            ('Código', 'codigo'),
-            ('Ítem', 'nombre'),
-            ('Descripción', 'descripcion'),
-            ('Ponderación (%)', 'ponderacion'),
-            ('Metas asignadas', 'metas_asignadas'),
-            ('Estado', 'estado'),
-        ),
-        export_fields=(
-            ('Código', 'codigo'),
-            ('Ítem', 'nombre'),
-            ('Descripción', 'descripcion'),
-            ('Ponderación (%)', 'ponderacion'),
-            ('Metas asignadas', 'metas_asignadas'),
-            ('Estado', 'estado'),
-        ),
-        ordering=('nombre',),
-        active_value=Item.Estado.ACTIVO,
-        inactive_value=Item.Estado.INACTIVO,
     ),
     'tipos-atencion': MaintainerSpec(
         key='tipos-atencion',
@@ -551,10 +505,6 @@ def _queryset_for(spec, request, *, global_scope=False):
 
 
 def _authorized_queryset(spec, request, *, global_scope=False):
-    if spec.key == 'items':
-        return Item.objects.annotate(
-            metas_asignadas=Count('desempenos'),
-        )
     if spec.key == 'vecinos':
         return Vecino.objects.select_related('territorio', 'delegacion', 'junta_vecino')
     if spec.key == 'metas':
@@ -693,7 +643,6 @@ def _maintainer_context(
         'has_filters': bool(query or status),
         'base_count': base_count,
         'has_status': spec.status_field is not None,
-        'is_item_maintainer': spec.key == 'items',
         'route_name': route_name or f'administracion:{spec.key}',
         'is_meta_maintainer': spec.key == 'metas',
         'is_role_maintainer': spec.key == 'roles',
