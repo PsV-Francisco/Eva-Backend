@@ -1,137 +1,670 @@
 {% extends 'base.html' %}
-{% block title %}Usuarios | SGR{% endblock %}
-{% block page_title %}Administración de usuarios{% endblock %}
+{% load static %}
+
+{% block title %}Gestión de Ítems - {{ sgr_role }}{% endblock %}
 
 {% block content %}
-<div class="dashboard-layout">
-  {% include 'includes/role_sidebar.html' %}
-  <div class="dashboard-main">
-    <div class="metric-grid">
-      <article class="metric"><span>Usuarios</span><strong>{{ user_count }}</strong></article>
-      <article class="metric"><span>Delegaciones</span><strong>{{ delegation_count }}</strong></article>
-      <article class="metric"><span>Cargos</span><strong>{{ position_count }}</strong></article>
+<style>
+  /* Identidad visual Institucional - Municipalidad de La Serena */
+  :root {
+    --muni-rojo: #B71C1C;
+    --muni-rojo-hover: #8E0000;
+    --muni-rojo-suave: #FFEBEE;
+    --muni-rojo-borde: #EF9A9A;
+  }
+
+  .text-muni {
+    color: var(--muni-rojo) !important;
+  }
+
+  .bg-muni {
+    background-color: var(--muni-rojo) !important;
+    color: #ffffff !important;
+  }
+
+  .btn-muni {
+    background-color: var(--muni-rojo);
+    border-color: var(--muni-rojo);
+    color: #ffffff;
+  }
+
+  .btn-muni:hover,
+  .btn-muni:focus {
+    background-color: var(--muni-rojo-hover);
+    border-color: var(--muni-rojo-hover);
+    color: #ffffff;
+  }
+
+  .btn-outline-muni {
+    color: var(--muni-rojo);
+    border-color: var(--muni-rojo);
+    background-color: transparent;
+  }
+
+  .btn-outline-muni:hover,
+  .btn-outline-muni:focus {
+    background-color: var(--muni-rojo);
+    border-color: var(--muni-rojo);
+    color: #ffffff;
+  }
+
+  .card-muni-top {
+    border-top: 3px solid var(--muni-rojo) !important;
+  }
+
+  .form-control:focus,
+  .form-select:focus {
+    border-color: var(--muni-rojo-borde);
+    box-shadow: 0 0 0 0.2rem rgba(183, 28, 28, 0.18);
+  }
+
+  .page-link.muni-page {
+    color: var(--muni-rojo);
+  }
+
+  .page-link.muni-page:hover {
+    background-color: var(--muni-rojo-suave);
+    color: var(--muni-rojo-hover);
+  }
+</style>
+
+<div class="container-fluid py-4">
+  <!-- Encabezado sin botón volver -->
+  <div class="mb-4">
+    <h2 class="h4 mb-1 fw-bold text-dark">
+      <i class="bi bi-sliders text-muni me-2"></i>Administración de Ítems
+    </h2>
+    <p class="text-muted small mb-0">
+      Registra, consulta y administra los ítems utilizados en la evaluación de desempeño institucional.
+    </p>
+  </div>
+
+  <!-- BLOQUE 1: Formulario de Creación -->
+  <div class="card shadow-sm border-0 card-muni-top mb-4">
+    <div class="card-header bg-white py-3 border-bottom">
+      <h5 class="card-title mb-0 fw-semibold text-muni">
+        <i class="bi bi-plus-circle me-2"></i>Registrar Nuevo Ítem
+      </h5>
+    </div>
+    <div class="card-body">
+      <form id="formCrearItem" method="post" action="{% url 'administracion:items' %}" novalidate>
+        {% csrf_token %}
+        <div class="row g-3">
+          <div class="col-md-5">
+            <label for="id_nombre" class="form-label fw-semibold">
+              Nombre del Ítem <span class="text-danger">*</span>
+            </label>
+            <input
+              type="text"
+              name="nombre"
+              id="id_nombre"
+              class="form-control"
+              maxlength="120"
+              placeholder="Ej: Atención presencial en terreno"
+              value="{{ form.nombre.value|default_if_none:'' }}"
+              required
+            >
+            <div class="form-text">El código identificador (ej. ITEM-0001) se genera automáticamente.</div>
+          </div>
+
+          <div class="col-md-4">
+            <label for="id_descripcion" class="form-label fw-semibold">Descripción</label>
+            <input
+              type="text"
+              name="descripcion"
+              id="id_descripcion"
+              class="form-control"
+              placeholder="Detalle breve del alcance del ítem (opcional)"
+              value="{{ form.descripcion.value|default_if_none:'' }}"
+            >
+          </div>
+
+          <div class="col-md-3">
+            <label for="id_estado" class="form-label fw-semibold">
+              Estado <span class="text-danger">*</span>
+            </label>
+            <select name="estado" id="id_estado" class="form-select" required>
+              <option value="activo" {% if form.estado.value == 'activo' or not form.estado.value %}selected{% endif %}>Activado</option>
+              <option value="inactivo" {% if form.estado.value == 'inactivo' %}selected{% endif %}>Desactivado</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-end mt-3 pt-2 border-top">
+          <button type="reset" class="btn btn-light me-2">Limpiar</button>
+          <button type="submit" class="btn btn-muni">
+            <i class="bi bi-save me-1"></i> Guardar Ítem
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- BLOQUE 2: Buscador AJAX (keyup) y Listado en Tabla -->
+  <div class="card shadow-sm border-0 card-muni-top">
+    <div class="card-header bg-white py-3 border-bottom">
+      <div class="row g-2 align-items-center justify-content-between">
+        <div class="col-md-4">
+          <h5 class="card-title mb-0 fw-semibold text-dark">
+            <i class="bi bi-list-ul text-muni me-2"></i>Listado de Ítems
+          </h5>
+        </div>
+        <div class="col-md-8">
+          <div class="row g-2 justify-content-md-end">
+            <div class="col-sm-7 col-md-6">
+              <div class="input-group">
+                <span class="input-group-text bg-light border-end-0">
+                  <i class="bi bi-search text-muni"></i>
+                </span>
+                <input
+                  type="text"
+                  id="buscadorItemsInput"
+                  class="form-control border-start-0"
+                  placeholder="Buscar por código, nombre o descripción..."
+                  value="{{ search_query }}"
+                  autocomplete="off"
+                >
+              </div>
+            </div>
+            <div class="col-sm-5 col-md-3">
+              <select id="filtroEstadoItems" class="form-select">
+                <option value="">Todos los estados</option>
+                <option value="activo" {% if estado_filtro == 'activo' %}selected{% endif %}>Activado</option>
+                <option value="inactivo" {% if estado_filtro == 'inactivo' %}selected{% endif %}>Desactivado</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <section class="content-section split-layout">
-      <div>
-        <p class="eyebrow">{% if editing_user %}EDICIÓN DE CUENTA{% else %}NUEVA CUENTA{% endif %}</p>
-        <h2>{% if editing_user %}Actualizar usuario{% else %}Crear usuario{% endif %}</h2>
-        {% if editing_user.pk == last_active_admin_id %}<div class="alert alert-warning">Esta es la última cuenta Administrador activa. Su cargo y estado están protegidos.</div>{% endif %}
-        <p class="section-note">La contraseña se guarda mediante el mecanismo seguro de Django. Asigna solo las delegaciones autorizadas para esta cuenta.</p>
-        <form method="post" data-loading data-loading-title="Guardando" novalidate>
-          {% csrf_token %}
-          {% if editing_user %}<input type="hidden" name="usuario_id" value="{{ editing_user.pk }}">{% endif %}
-          {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
-          <div class="form-grid">
-            {% for field in form %}
-            <div class="mb-3 {% if field.name == 'roles' or field.name == 'delegaciones_autorizadas' %}field-wide{% endif %}{% if field.name == 'is_active' %}form-check{% endif %}">
-              {% if field.name == 'is_active' %}
-              {{ field }} <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-              {% else %}
-              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="required-mark" aria-hidden="true">*</span>{% endif %}</label>
-              {{ field }}
-              {% endif %}
-              {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
-              {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
-            </div>
-            {% endfor %}
-          </div>
-          <button class="btn btn-primary" type="submit">{% if editing_user %}Guardar cambios{% else %}Crear usuario{% endif %}</button>
-          {% if editing_user %}<a class="btn btn-outline-secondary" href="{% url 'administracion:home' %}{% if pagination_query %}?{{ pagination_query }}{% endif %}">Cancelar</a>{% endif %}
-        </form>
-      </div>
-      <aside class="side-note">
-        <span class="side-note-mark">i</span>
-        <h3>Acceso por cargo y delegación</h3>
-        <p>Los módulos se autorizan en el servidor. El usuario puede cambiar su contexto solo entre las delegaciones asignadas.</p>
-      </aside>
-    </section>
-
-    <section class="content-section">
-      <div class="section-head">
-        <div><p class="eyebrow">DIRECTORIO</p><h2>Usuarios</h2></div>
-        <a class="btn btn-outline-primary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}export=excel">Exportar a Excel</a>
-      </div>
-      <form method="get" class="maintainer-filters" data-loading data-loading-title="Buscando">
-        <label class="visually-hidden" for="user-search">Buscar usuarios</label>
-        <input id="user-search" class="form-control" type="search" name="q" value="{{ query }}" placeholder="Buscar por nombre, correo, rol o delegación">
-        <label class="visually-hidden" for="user-status">Filtrar por estado</label>
-        <select id="user-status" class="form-select" name="estado">
-          <option value="">Todos los estados</option>
-          <option value="pendiente_activacion"{% if status == 'pendiente_activacion' %} selected{% endif %}>Pendiente de activación</option>
-          <option value="activo"{% if status == 'activo' %} selected{% endif %}>Activo</option>
-          <option value="inactivo"{% if status == 'inactivo' %} selected{% endif %}>Inactivo</option>
-        </select>
-        <label class="visually-hidden" for="user-delegation">Filtrar por delegación</label>
-        <select id="user-delegation" class="form-select" name="delegacion">
-          <option value="">Todas las delegaciones</option>
-          {% for delegation in delegations %}<option value="{{ delegation.pk }}"{% if delegation_id == delegation.pk|stringformat:'s' %} selected{% endif %}>{{ delegation.nombre }}</option>{% endfor %}
-        </select>
-        <button class="btn btn-primary" type="submit">Buscar</button>
-        {% if has_filters %}<a class="btn btn-outline-secondary" href="{% url 'administracion:home' %}">Limpiar</a>{% endif %}
-      </form>
-      <p class="results-count">{% if page_obj.paginator.count %}Mostrando {{ page_obj.start_index }} a {{ page_obj.end_index }} de {{ page_obj.paginator.count }}{% else %}Mostrando 0 a 0 de 0{% endif %}</p>
+    <div class="card-body p-0">
       <div class="table-responsive">
-        <table class="table align-middle">
-          <thead><tr><th>Usuario</th><th>Delegación principal</th><th>Delegaciones autorizadas</th><th>Cargo</th><th>Roles</th><th>Estado</th><th>Acciones</th></tr></thead>
-          <tbody>
-            {% for user in users %}
+        <table class="table table-hover align-middle mb-0" id="tablaItems">
+          <thead class="table-light">
             <tr>
+              <th class="ps-3" style="width: 130px;">Código</th>
+              <th>Nombre</th>
+              <th>Descripción</th>
+              <th style="width: 130px;">Estado</th>
+              <th class="text-end pe-3" style="width: 210px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyItems">
+            {% for item in page_obj %}
+            <tr>
+              <td class="ps-3 fw-semibold text-muni">{{ item.codigo|default:"S/C" }}</td>
+              <td class="fw-medium">{{ item.nombre }}</td>
+              <td class="text-muted small">{{ item.descripcion|default:"Sin descripción" }}</td>
               <td>
-                <strong>{{ user.get_full_name|default:user.nombre|default:user.email }}</strong>
-                <small class="d-block text-muted">{{ user.email }}{% if user.rut %} · RUT {{ user.rut }}{% endif %}</small>
-              </td>
-              <td>{{ user.delegacion|default:'—' }}</td>
-              <td>{% for delegation in user.delegaciones_autorizadas.all %}<span class="tag">{{ delegation.nombre }}</span>{% empty %}<span class="text-muted">Ninguna</span>{% endfor %}</td>
-              <td>{{ user.cargo|default:'—' }}</td>
-              <td>{% for role in user.roles.all %}<span class="tag">{{ role.nombre }}</span>{% empty %}<span class="text-muted">Sin rol</span>{% endfor %}</td>
-              <td>
-                {% if user.estado == 'pendiente_activacion' %}
-                <span class="badge text-bg-warning">Pendiente de activación</span>
-                {% elif user.is_active %}
-                <span class="status-dot">Activo</span>
+                {% if item.estado == 'activo' %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle">Activado</span>
                 {% else %}
-                <span class="status-dot status-off">Inactivo</span>
+                  <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Desactivado</span>
                 {% endif %}
               </td>
-              <td>
-                <div class="d-flex flex-wrap gap-1">
-                  <a class="btn btn-sm btn-outline-primary" href="?editar={{ user.pk }}{% if pagination_query %}&amp;{{ pagination_query }}{% endif %}">Editar</a>
-                  {% if user.estado == 'pendiente_activacion' %}
-                  <form method="post">
-                    {% csrf_token %}<input type="hidden" name="action" value="reenviar_activacion"><input type="hidden" name="usuario_id" value="{{ user.pk }}">
-                    <button class="btn btn-sm btn-outline-warning" type="submit">Reenviar activación</button>
-                  </form>
-                  {% endif %}
-                  {% if user.pk == last_active_admin_id %}
-                  <span class="badge text-bg-warning align-self-center">Último Administrador activo protegido</span>
-                  {% elif user.pk != request.user.pk and not user.is_superuser %}
-                  <form method="post" data-confirm="¿Cambiar el estado de esta cuenta?">
-                    {% csrf_token %}<input type="hidden" name="action" value="cambiar_estado"><input type="hidden" name="usuario_id" value="{{ user.pk }}">
-                    <button class="btn btn-sm btn-outline-secondary" type="submit">{% if user.is_active %}Desactivar{% else %}Activar{% endif %}</button>
-                  </form>
-                  <form method="post" data-confirm="¿Eliminar esta cuenta? Solo se podrá eliminar si no tiene información asociada.">
-                    {% csrf_token %}<input type="hidden" name="action" value="eliminar"><input type="hidden" name="usuario_id" value="{{ user.pk }}">
-                    <button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button>
-                  </form>
-                  {% endif %}
-                </div>
+              <td class="text-end pe-3">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-muni btn-editar-item"
+                  data-id="{{ item.pk }}"
+                  title="Editar ítem"
+                >
+                  <i class="bi bi-pencil-square"></i> Editar
+                </button>
+                {% if item.estado == 'activo' %}
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary btn-toggle-estado-item"
+                    data-id="{{ item.pk }}"
+                    data-nombre="{{ item.nombre }}"
+                    data-estado="activo"
+                    title="Desactivar ítem"
+                  >
+                    <i class="bi bi-slash-circle"></i> Desactivar
+                  </button>
+                {% else %}
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-success btn-toggle-estado-item"
+                    data-id="{{ item.pk }}"
+                    data-nombre="{{ item.nombre }}"
+                    data-estado="inactivo"
+                    title="Activar ítem"
+                  >
+                    <i class="bi bi-check-circle"></i> Activar
+                  </button>
+                {% endif %}
               </td>
             </tr>
             {% empty %}
-            <tr><td colspan="7" class="empty-state">{% if has_filters and base_user_count %}No hay coincidencias para los filtros aplicados.{% else %}Todavía no hay usuarios registrados.{% endif %}</td></tr>
+            <tr>
+              <td colspan="5" class="text-center py-4 text-muted">
+                No se encontraron ítems registrados.
+              </td>
+            </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
-      {% if page_obj.paginator.num_pages > 1 %}
-      <nav class="maintainer-pagination" aria-label="Paginación de usuarios">
-        {% if page_obj.has_previous %}<a class="btn btn-sm btn-outline-secondary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Anterior</a>{% endif %}
-        <span>Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
-        {% if page_obj.has_next %}<a class="btn btn-sm btn-outline-secondary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Siguiente</a>{% endif %}
+    </div>
+
+    <!-- Paginación inicial -->
+    {% if page_obj.has_other_pages %}
+    <div class="card-footer bg-white py-3" id="paginacionItems">
+      <nav aria-label="Paginación de ítems">
+        <ul class="pagination pagination-sm justify-content-end mb-0">
+          {% if page_obj.has_previous %}
+            <li class="page-item">
+              <a class="page-link muni-page" href="?page={{ page_obj.previous_page_number }}&q={{ search_query }}&estado={{ estado_filtro }}">Anterior</a>
+            </li>
+          {% endif %}
+          <li class="page-item disabled">
+            <span class="page-link">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+          </li>
+          {% if page_obj.has_next %}
+            <li class="page-item">
+              <a class="page-link muni-page" href="?page={{ page_obj.next_page_number }}&q={{ search_query }}&estado={{ estado_filtro }}">Siguiente</a>
+            </li>
+          {% endif %}
+        </ul>
       </nav>
-      {% endif %}
-    </section>
+    </div>
+    {% endif %}
   </div>
 </div>
+
+<!-- BLOQUE 3: Modal de Edición -->
+<div class="modal fade" id="modalEditarItem" tabindex="-1" aria-labelledby="modalEditarItemLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header bg-muni">
+        <h5 class="modal-title" id="modalEditarItemLabel">
+          <i class="bi bi-pencil-square me-2"></i>Editar Ítem
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <form id="formEditarItem" novalidate>
+        <div class="modal-body">
+          <input type="hidden" id="edit_item_id">
+
+          <div class="mb-3">
+            <label for="edit_codigo" class="form-label fw-semibold">Código</label>
+            <input type="text" id="edit_codigo" class="form-control bg-light" readonly disabled>
+          </div>
+
+          <div class="mb-3">
+            <label for="edit_nombre" class="form-label fw-semibold">
+              Nombre del Ítem <span class="text-danger">*</span>
+            </label>
+            <input type="text" id="edit_nombre" class="form-control" maxlength="120" required>
+          </div>
+
+          <div class="mb-3">
+            <label for="edit_descripcion" class="form-label fw-semibold">Descripción</label>
+            <textarea id="edit_descripcion" class="form-control" rows="3" placeholder="Detalle del ítem (opcional)"></textarea>
+          </div>
+
+          <div class="mb-2">
+            <label for="edit_estado" class="form-label fw-semibold">
+              Estado <span class="text-danger">*</span>
+            </label>
+            <select id="edit_estado" class="form-select" required>
+              <option value="activo">Activado</option>
+              <option value="inactivo">Desactivado</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer bg-light">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-muni" id="btnGuardarEdicionItem">
+            <i class="bi bi-check-lg me-1"></i> Guardar Cambios
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+  // URLs resueltas dinámicamente desde Django (evita errores de prefijo de ruta)
+  const buscarUrl = "{% url 'administracion:buscar_items_ajax' %}";
+  const detalleUrlTemplate = "{% url 'administracion:detalle_item_json' 0 %}";
+  const editarUrlTemplate = "{% url 'administracion:editar_item_ajax' 0 %}";
+  const toggleEstadoUrlTemplate = "{% url 'administracion:cambiar_estado_item_ajax' 0 %}";
+
+  function buildItemUrl(template, itemId) {
+    return template.replace('/0/', `/${itemId}/`);
+  }
+
+  // Helper para parsear respuestas AJAX de forma segura (incluso si llega HTML 403/500)
+  async function fetchJsonSafe(url, options = {}) {
+    const response = await fetch(url, options);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      if (response.status === 403) {
+        throw new Error('No tienes permisos suficientes para realizar esta acción (HTTP 403).');
+      }
+      throw new Error(`El servidor devolvió una respuesta inesperada (HTTP ${response.status}).`);
+    }
+    const body = await response.json();
+    return { status: response.status, ok: response.ok, body };
+  }
+
+  // 0. Mostrar mensajes de Django con SweetAlert2
+  {% if messages %}
+    {% for message in messages %}
+      Swal.fire({
+        icon: "{% if 'error' in message.tags %}error{% elif 'warning' in message.tags %}warning{% else %}success{% endif %}",
+        title: "{% if 'error' in message.tags %}Atención{% elif 'warning' in message.tags %}Advertencia{% else %}Operación exitosa{% endif %}",
+        text: "{{ message|escapejs }}",
+        confirmButtonColor: "#B71C1C"
+      });
+    {% endfor %}
+  {% endif %}
+
+  // 1. Validación SweetAlert2 al CREAR Ítem
+  const formCrear = document.getElementById('formCrearItem');
+  formCrear.addEventListener('submit', function (e) {
+    const nombre = document.getElementById('id_nombre').value.trim();
+    const estado = document.getElementById('id_estado').value;
+
+    if (!nombre) {
+      e.preventDefault();
+      Swal.fire({
+        icon: 'warning',
+        title: 'Campo obligatorio faltante',
+        text: 'Debes ingresar el nombre del ítem antes de guardar.',
+        confirmButtonColor: '#B71C1C'
+      });
+      return;
+    }
+
+    if (nombre.length > 120) {
+      e.preventDefault();
+      Swal.fire({
+        icon: 'warning',
+        title: 'Longitud excedida',
+        text: 'El nombre del ítem no puede superar los 120 caracteres.',
+        confirmButtonColor: '#B71C1C'
+      });
+      return;
+    }
+
+    if (!['activo', 'inactivo'].includes(estado)) {
+      e.preventDefault();
+      Swal.fire({
+        icon: 'error',
+        title: 'Estado inválido',
+        text: 'Selecciona un estado válido (Activado o Desactivado).',
+        confirmButtonColor: '#B71C1C'
+      });
+    }
+  });
+
+  // 2. Buscador AJAX con keyup + filtro de estado
+  const inputBuscador = document.getElementById('buscadorItemsInput');
+  const selectEstado = document.getElementById('filtroEstadoItems');
+  const tbodyItems = document.getElementById('tbodyItems');
+  const paginacionDiv = document.getElementById('paginacionItems');
+  let debounceTimer = null;
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+  }
+
+  function ejecutarBusquedaAjax() {
+    const q = inputBuscador.value.trim();
+    const estado = selectEstado.value;
+    const url = `${buscarUrl}?q=${encodeURIComponent(q)}&estado=${encodeURIComponent(estado)}`;
+
+    fetchJsonSafe(url, {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+      .then(({ ok, body }) => {
+        if (!ok || !body.success) return;
+
+        if (paginacionDiv) {
+          paginacionDiv.style.display = (q || estado) ? 'none' : '';
+        }
+
+        if (body.items.length === 0) {
+          tbodyItems.innerHTML = `
+            <tr>
+              <td colspan="5" class="text-center py-4 text-muted">
+                No se encontraron ítems que coincidan con los criterios de búsqueda.
+              </td>
+            </tr>`;
+          return;
+        }
+
+        tbodyItems.innerHTML = body.items.map(item => {
+          const esActivo = item.estado === 'activo';
+          const badgeHtml = esActivo
+            ? '<span class="badge bg-success-subtle text-success border border-success-subtle">Activado</span>'
+            : '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">Desactivado</span>';
+
+          const toggleBtnHtml = esActivo
+            ? `<button type="button" class="btn btn-sm btn-outline-secondary btn-toggle-estado-item" data-id="${item.id}" data-nombre="${escapeHtml(item.nombre)}" data-estado="activo" title="Desactivar ítem">
+                 <i class="bi bi-slash-circle"></i> Desactivar
+               </button>`
+            : `<button type="button" class="btn btn-sm btn-outline-success btn-toggle-estado-item" data-id="${item.id}" data-nombre="${escapeHtml(item.nombre)}" data-estado="inactivo" title="Activar ítem">
+                 <i class="bi bi-check-circle"></i> Activar
+               </button>`;
+
+          return `
+            <tr>
+              <td class="ps-3 fw-semibold text-muni">${escapeHtml(item.codigo)}</td>
+              <td class="fw-medium">${escapeHtml(item.nombre)}</td>
+              <td class="text-muted small">${escapeHtml(item.descripcion || 'Sin descripción')}</td>
+              <td>${badgeHtml}</td>
+              <td class="text-end pe-3">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-muni btn-editar-item"
+                  data-id="${item.id}"
+                  title="Editar ítem"
+                >
+                  <i class="bi bi-pencil-square"></i> Editar
+                </button>
+                ${toggleBtnHtml}
+              </td>
+            </tr>`;
+        }).join('');
+      })
+      .catch(err => {
+        Swal.fire({
+          icon: 'error',
+          title: 'Error de búsqueda',
+          text: err.message || 'No se pudo realizar la búsqueda en tiempo real.',
+          confirmButtonColor: '#B71C1C'
+        });
+      });
+  }
+
+  inputBuscador.addEventListener('keyup', function () {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(ejecutarBusquedaAjax, 250);
+  });
+
+  selectEstado.addEventListener('change', ejecutarBusquedaAjax);
+
+  // 3. Delegación de eventos en tabla: Modal de Edición y Eliminado Lógico
+  const modalElement = document.getElementById('modalEditarItem');
+  const modalEditar = new bootstrap.Modal(modalElement);
+
+  tbodyItems.addEventListener('click', function (e) {
+    // Botón Editar
+    const btnEditar = e.target.closest('.btn-editar-item');
+    if (btnEditar) {
+      const itemId = btnEditar.dataset.id;
+      const urlDetalle = buildItemUrl(detalleUrlTemplate, itemId);
+
+      fetchJsonSafe(urlDetalle, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+        .then(({ ok, body }) => {
+          if (!ok) {
+            throw new Error(body.message || 'No se pudo cargar el detalle del ítem.');
+          }
+          document.getElementById('edit_item_id').value = body.id;
+          document.getElementById('edit_codigo').value = body.codigo || 'S/C';
+          document.getElementById('edit_nombre').value = body.nombre;
+          document.getElementById('edit_descripcion').value = body.descripcion || '';
+          document.getElementById('edit_estado').value = body.estado;
+          modalEditar.show();
+        })
+        .catch(err => {
+          Swal.fire({
+            icon: 'error',
+            title: 'Error al cargar datos',
+            text: err.message,
+            confirmButtonColor: '#B71C1C'
+          });
+        });
+      return;
+    }
+
+    // Botón Activar / Desactivar (Eliminado lógico)
+    const btnToggle = e.target.closest('.btn-toggle-estado-item');
+    if (btnToggle) {
+      const itemId = btnToggle.dataset.id;
+      const nombreItem = btnToggle.dataset.nombre;
+      const esActivo = btnToggle.dataset.estado === 'activo';
+      const accionTexto = esActivo ? 'desactivar' : 'activar';
+      const urlToggle = buildItemUrl(toggleEstadoUrlTemplate, itemId);
+
+      Swal.fire({
+        icon: 'question',
+        title: `¿Deseas ${accionTexto} este ítem?`,
+        text: `El ítem "${nombreItem}" cambiará su estado a ${esActivo ? 'DESACTIVADO' : 'ACTIVADO'}.`,
+        showCancelButton: true,
+        confirmButtonColor: esActivo ? '#B71C1C' : '#198754',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: `Sí, ${accionTexto}`,
+        cancelButtonText: 'Cancelar'
+      }).then(result => {
+        if (!result.isConfirmed) return;
+
+        fetchJsonSafe(urlToggle, {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        })
+          .then(({ ok, body }) => {
+            if (ok && body.success) {
+              Swal.fire({
+                icon: 'success',
+                title: 'Estado actualizado',
+                text: body.message,
+                confirmButtonColor: '#B71C1C'
+              }).then(() => {
+                ejecutarBusquedaAjax();
+              });
+            } else {
+              Swal.fire({
+                icon: 'error',
+                title: 'No se pudo actualizar',
+                text: body.message || 'Ocurrió un error al cambiar el estado.',
+                confirmButtonColor: '#B71C1C'
+              });
+            }
+          })
+          .catch(err => {
+            Swal.fire({
+              icon: 'error',
+              title: 'Error de conexión',
+              text: err.message || 'No se pudo comunicar con el servidor para cambiar el estado del ítem.',
+              confirmButtonColor: '#B71C1C'
+            });
+          });
+      });
+    }
+  });
+
+  // 4. Guardar Edición vía AJAX con validación SweetAlert2 y Auditoría
+  const formEditar = document.getElementById('formEditarItem');
+  formEditar.addEventListener('submit', function (e) {
+    e.preventDefault();
+
+    const itemId = document.getElementById('edit_item_id').value;
+    const nombre = document.getElementById('edit_nombre').value.trim();
+    const descripcion = document.getElementById('edit_descripcion').value.trim();
+    const estado = document.getElementById('edit_estado').value;
+
+    if (!nombre) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Nombre obligatorio',
+        text: 'El nombre del ítem no puede quedar vacío.',
+        confirmButtonColor: '#B71C1C'
+      });
+      return;
+    }
+
+    if (nombre.length > 120) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Longitud excedida',
+        text: 'El nombre del ítem no puede superar los 120 caracteres.',
+        confirmButtonColor: '#B71C1C'
+      });
+      return;
+    }
+
+    const urlEditar = buildItemUrl(editarUrlTemplate, itemId);
+
+    fetchJsonSafe(urlEditar, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken,
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify({
+        nombre: nombre,
+        descripcion: descripcion,
+        estado: estado
+      })
+    })
+      .then(({ ok, body }) => {
+        if (ok && body.success) {
+          modalEditar.hide();
+          Swal.fire({
+            icon: 'success',
+            title: 'Ítem actualizado',
+            text: body.message,
+            confirmButtonColor: '#B71C1C'
+          }).then(() => {
+            ejecutarBusquedaAjax();
+          });
+        } else {
+          Swal.fire({
+            icon: 'error',
+            title: 'Error de validación',
+            text: body.message || 'No se pudieron guardar los cambios.',
+            confirmButtonColor: '#B71C1C'
+          });
+        }
+      })
+      .catch(err => {
+        Swal.fire({
+          icon: 'error',
+          title: 'Error al guardar',
+          text: err.message || 'Ocurrió un problema de comunicación con el servidor al editar el ítem.',
+          confirmButtonColor: '#B71C1C'
+        });
+      });
+  });
+});
+</script>
 {% endblock %}
