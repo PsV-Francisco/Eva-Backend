@@ -2,6 +2,7 @@
 from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -27,7 +28,7 @@ def max_dias_autorizacion():
 def _authorization_snapshot(request):
     return {
         'periodo': request.periodo_id,
-        'solicitante': request.solicitante_id,
+        'vecino': request.vecino_id,
         'funcionarios': list(request.funcionarios.values_list('pk', flat=True)),
         'alcances': request.alcances,
         'estado': request.estado,
@@ -40,13 +41,18 @@ def expire_authorizations():
     now = timezone.now()
     queryset = SolicitudAutorizacionPeriodo.objects.filter(
         estado=SolicitudAutorizacionPeriodo.Estado.APROBADA,
-        vence_en__lte=now).select_related('periodo').prefetch_related('funcionarios')
+        vence_en__lte=now).select_related('periodo', 'vecino', 'aprobador').prefetch_related('funcionarios')
     for authorization in queryset:
         before = _authorization_snapshot(authorization)
         authorization.estado = SolicitudAutorizacionPeriodo.Estado.VENCIDA
         authorization.save(update_fields=['estado'])
         registrar_historial(
-            actor=authorization.aprobador or authorization.solicitante,
+            actor=(
+                authorization.aprobador
+                or get_user_model().objects.filter(
+                    email__iexact=authorization.vecino.email,
+                ).first()
+            ),
             action='Vencer autorización de período',
             entity=f'SolicitudAutorizacionPeriodo:{authorization.pk}',
             before=before,
@@ -58,7 +64,7 @@ def expire_authorizations():
 def authorization_for(actor, period, scope=META_SCOPE, funcionario=None):
     expire_authorizations()
     now = timezone.now()
-    candidates = SolicitudAutorizacionPeriodo.objects.filter(solicitante=actor,periodo=period,estado=SolicitudAutorizacionPeriodo.Estado.APROBADA,vence_en__gt=now).prefetch_related('funcionarios')
+    candidates = SolicitudAutorizacionPeriodo.objects.filter(vecino__email__iexact=actor.email,periodo=period,estado=SolicitudAutorizacionPeriodo.Estado.APROBADA,vence_en__gt=now).prefetch_related('funcionarios')
     for authorization in candidates:
         if scope not in (authorization.alcances or []):
             continue

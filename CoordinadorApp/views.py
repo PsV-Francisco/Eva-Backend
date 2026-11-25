@@ -27,7 +27,7 @@ from CoordinadorApp.services import _authorization_snapshot
 from CoordinadorApp.services import (clasificar_umbral,consolidar_cumplimientos,resumen_cumplimiento,tendencias_cumplimiento,umbral_delegacion,parametros_periodo,ZERO)
 #Importaciones de Modelos Necesarios
 from DelegadoApp.models import Agenda
-from FuncionarioApp.models import Registro
+from FuncionarioApp.models import Registro, Vecino
 from SupervisorApp.models import Evidencia
 
 
@@ -317,7 +317,7 @@ def solicitudes_autorizacion(request):
     """
     if request.method == 'POST':
         if request.POST.get('action') == 'cancelar':
-            solicitud = get_object_or_404(SolicitudAutorizacionPeriodo,pk=request.POST.get('solicitud_id'),solicitante=request.user,estado=SolicitudAutorizacionPeriodo.Estado.PENDIENTE)
+            solicitud = get_object_or_404(SolicitudAutorizacionPeriodo,pk=request.POST.get('solicitud_id'),vecino__email__iexact=request.user.email,estado=SolicitudAutorizacionPeriodo.Estado.PENDIENTE)
             before = _authorization_snapshot(solicitud)
             solicitud.estado = SolicitudAutorizacionPeriodo.Estado.CANCELADA
             solicitud.decidida_en = timezone.now()
@@ -327,17 +327,26 @@ def solicitudes_autorizacion(request):
             return redirect('coordinador:solicitudes_autorizacion')
         form = AuthorizationRequestForm(request.POST)
         if form.is_valid():
-            solicitud = form.save(commit=False)
-            solicitud.solicitante = request.user
-            solicitud.alcances = ['metas']
-            solicitud.save()
-            form.save_m2m()
-            registrar_historial(actor=request.user,action='Solicitar autorización de período',entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}',after=_authorization_snapshot(solicitud),period=solicitud.periodo)
-            messages.success(request, 'La solicitud quedó pendiente de revisión.')
-            return redirect('coordinador:solicitudes_autorizacion')
+            vecino = Vecino.objects.filter(
+                email__iexact=request.user.email,
+            ).first()
+            if vecino is None:
+                form.add_error(
+                    None,
+                    'No existe un vecino asociado al correo del usuario autenticado.',
+                )
+            else:
+                solicitud = form.save(commit=False)
+                solicitud.vecino = vecino
+                solicitud.alcances = ['metas']
+                solicitud.save()
+                form.save_m2m()
+                registrar_historial(actor=request.user,action='Solicitar autorización de período',entity=f'SolicitudAutorizacionPeriodo:{solicitud.pk}',after=_authorization_snapshot(solicitud),period=solicitud.periodo)
+                messages.success(request, 'La solicitud quedó pendiente de revisión.')
+                return redirect('coordinador:solicitudes_autorizacion')
     else:
         form = AuthorizationRequestForm()
-    solicitudes = SolicitudAutorizacionPeriodo.objects.filter(solicitante=request.user).select_related('periodo').prefetch_related('funcionarios')
+    solicitudes = SolicitudAutorizacionPeriodo.objects.filter(vecino__email__iexact=request.user.email).select_related('periodo', 'vecino').prefetch_related('funcionarios')
     return render(request, 'CoordinadorApp/solicitudes_autorizacion.html', {
         'sgr_role': 'Coordinación',
         'form': form,
