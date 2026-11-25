@@ -788,9 +788,9 @@ def password_reset_audit(request):
     if not form.is_valid():
         page_obj = Paginator(PasswordResetAuditEvent.objects.none(), 25).get_page(request.GET.get('page'))
         return render(request, 'AdminApp/audit_viewer.html', {
-            'sgr_role': 'AdministraciÃ³n',
-            'page_title': 'AuditorÃ­a de recuperaciÃ³n de contraseÃ±a',
-            'columns': ('Fecha', 'Evento', 'Usuario', 'DirecciÃ³n IP', 'LÃ­mite aplicado'),
+            'sgr_role': 'Administración',
+            'page_title': 'Auditoría de recuperación de contraseña',
+            'columns': ('Fecha', 'Evento', 'Usuario', 'Dirección IP', 'Límite aplicado'),
             'rows': [],
             'filter_form': form,
             'page_obj': page_obj,

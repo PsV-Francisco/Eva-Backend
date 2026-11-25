@@ -36,10 +36,10 @@ def home(request):
 				registros__autor__usuariodelegacion__delegacion_id=delegation_id,
 				registros__autor__usuariodelegacion__fecha_fin__isnull=True,
 			)
-			| Q(compromiso__agenda__delegacion_id=delegation_id)
+			| Q(compromisos__agenda__delegacion_id=delegation_id)
 			| Q(
-				gestion_atencion__atencionsocial__autor__usuariodelegacion__delegacion_id=delegation_id,
-				gestion_atencion__atencionsocial__autor__usuariodelegacion__fecha_fin__isnull=True,
+				atenciones_sociales__autor__usuariodelegacion__delegacion_id=delegation_id,
+				atenciones_sociales__autor__usuariodelegacion__fecha_fin__isnull=True,
 			)
 		).distinct()
 		desempenos = desempenos.filter(
