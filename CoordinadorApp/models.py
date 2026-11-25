@@ -161,6 +161,11 @@ class Periodo(models.Model):
 	fecha_inicio = models.DateField()
 	fecha_fin = models.DateField()
 	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.ABIERTO)
+	# Snapshot de las reglas que regían al cerrar el período.
+	semaforo_rojo = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+	semaforo_ambar = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+	umbral_delegacion = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+	tope_cumplimiento = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
 
 	class Meta:
 		ordering = ['-fecha_inicio']
@@ -173,6 +178,18 @@ class Periodo(models.Model):
 				name='periodo_fecha_fin_despues_inicio',
 			),
 		]
+
+	def save(self, *args, **kwargs):
+		if self.estado == self.Estado.CERRADO and any(
+			getattr(self, field, None) is None
+			for field in ('semaforo_rojo', 'semaforo_ambar', 'umbral_delegacion', 'tope_cumplimiento')
+		):
+			from AdminApp.models import ParametroSistema
+			self.semaforo_rojo = ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_ROJO)
+			self.semaforo_ambar = ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_AMBAR)
+			self.umbral_delegacion = ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_DELEGACION)
+			self.tope_cumplimiento = ParametroSistema.obtener(ParametroSistema.Clave.TOPE_CUMPLIMIENTO)
+		return super().save(*args, **kwargs)
 
 	def __str__(self):
 		return self.nombre

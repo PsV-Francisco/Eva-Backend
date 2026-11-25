@@ -378,6 +378,21 @@ class ParametroSistemaForm(BootstrapFormMixin, forms.Form):
         decimal_places=2,
         max_digits=6,
     )
+    umbral_rojo = forms.DecimalField(
+        label='Umbral mÃ­nimo rojo (%)', min_value=Decimal('0'),
+        max_value=Decimal('100'), decimal_places=2, max_digits=6,
+        required=False,
+    )
+    umbral_ambar = forms.DecimalField(
+        label='Umbral mÃ­nimo Ã¡mbar (%)', min_value=Decimal('0'),
+        max_value=Decimal('100'), decimal_places=2, max_digits=6,
+        required=False,
+    )
+    vigente_desde = forms.DateField(
+        label='Vigente desde', required=False,
+        widget=forms.DateInput(attrs={'type': 'date'}),
+        help_text='Los cambios se aplican a perÃ­odos abiertos; los cerrados conservan su snapshot.',
+    )
 
     def __init__(self, *args, **kwargs):
         initial = kwargs.pop('initial', {})
@@ -393,12 +408,41 @@ class ParametroSistemaForm(BootstrapFormMixin, forms.Form):
             'max_dias_autorizacion',
             ParametroSistema.obtener(ParametroSistema.Clave.MAX_DIAS_AUTORIZACION),
         )
+        initial.setdefault('umbral_rojo', ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_ROJO))
+        initial.setdefault('umbral_ambar', ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_AMBAR))
+        initial.setdefault('vigente_desde', timezone.localdate())
         super().__init__(*args, initial=initial, **kwargs)
 
     def clean_max_dias_autorizacion(self):
         return self.cleaned_data.get('max_dias_autorizacion') or ParametroSistema.obtener(
             ParametroSistema.Clave.MAX_DIAS_AUTORIZACION,
         )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        rojo = cleaned_data.get('umbral_rojo')
+        ambar = cleaned_data.get('umbral_ambar')
+        if rojo is None:
+            rojo = ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_ROJO)
+            cleaned_data['umbral_rojo'] = rojo
+        if ambar is None:
+            ambar = ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_AMBAR)
+            cleaned_data['umbral_ambar'] = ambar
+        if rojo is not None and ambar is not None and rojo >= ambar:
+            self.add_error('umbral_rojo', 'El umbral rojo debe ser menor que el umbral ámbar.')
+        if not cleaned_data.get('vigente_desde'):
+            cleaned_data['vigente_desde'] = timezone.localdate()
+        vigencia = cleaned_data.get('vigente_desde')
+        if vigencia and Periodo.objects.filter(
+            estado=Periodo.Estado.CERRADO,
+            fecha_inicio__lte=vigencia,
+            fecha_fin__gte=vigencia,
+        ).exists():
+            self.add_error(
+                'vigente_desde',
+                'La vigencia no puede comenzar dentro de un período cerrado.',
+            )
+        return cleaned_data
 
 
 class DelegacionForm(BootstrapFormMixin, forms.ModelForm):

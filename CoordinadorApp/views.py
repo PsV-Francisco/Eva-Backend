@@ -24,7 +24,7 @@ from CoordinadorApp.models import Desempeno, Periodo, SolicitudAutorizacionPerio
 from CoordinadorApp.reporting import consolidated_report_csv_rows
 from CoordinadorApp.authorization_forms import AuthorizationRequestForm
 from CoordinadorApp.services import _authorization_snapshot
-from CoordinadorApp.services import (clasificar_umbral,consolidar_cumplimientos,resumen_cumplimiento,tendencias_cumplimiento,umbral_delegacion,ZERO)
+from CoordinadorApp.services import (clasificar_umbral,consolidar_cumplimientos,resumen_cumplimiento,tendencias_cumplimiento,umbral_delegacion,parametros_periodo,ZERO)
 #Importaciones de Modelos Necesarios
 from DelegadoApp.models import Agenda
 from FuncionarioApp.models import Registro
@@ -37,7 +37,7 @@ def _period_snapshot(periodo):
     Serializa los atributos clave de un objeto Periodo
     (nombre, fechas en formato ISO y estado) en un diccionario para registrar auditorías de cambios.
     """
-    return {'nombre': periodo.nombre,'fecha_inicio': periodo.fecha_inicio.isoformat(),'fecha_fin': periodo.fecha_fin.isoformat(), 'estado': periodo.estado}
+    return {'nombre': periodo.nombre,'fecha_inicio': periodo.fecha_inicio.isoformat(),'fecha_fin': periodo.fecha_fin.isoformat(), 'estado': periodo.estado, 'semaforo_rojo': str(periodo.semaforo_rojo) if periodo.semaforo_rojo is not None else None, 'semaforo_ambar': str(periodo.semaforo_ambar) if periodo.semaforo_ambar is not None else None, 'umbral_delegacion': str(periodo.umbral_delegacion) if periodo.umbral_delegacion is not None else None, 'tope_cumplimiento': str(periodo.tope_cumplimiento) if periodo.tope_cumplimiento is not None else None}
 
 
 def _has_associated_records(periodo):
@@ -89,8 +89,13 @@ def _periods_view(request):
                     messages.info(request, 'El período ya está cerrado.')
                 else:
                     with transaction.atomic():
+                        rules = parametros_periodo(periodo)
                         periodo.estado = Periodo.Estado.CERRADO
-                        periodo.save(update_fields=['estado'])
+                        periodo.semaforo_rojo = rules['rojo']
+                        periodo.semaforo_ambar = rules['ambar']
+                        periodo.umbral_delegacion = rules['delegacion']
+                        periodo.tope_cumplimiento = rules['tope']
+                        periodo.save(update_fields=['estado', 'semaforo_rojo', 'semaforo_ambar', 'umbral_delegacion', 'tope_cumplimiento'])
                         registrar_historial(
                             actor=request.user,
                             action='Cerrar período',
@@ -296,9 +301,10 @@ def personal(request):
         'ultima_actualizacion': timezone.localtime(),
         'summary': summary,
         'item_count': len(summary['items']),
-        'umbral_delegacion': umbral_delegacion(),
+        'umbral_delegacion': umbral_delegacion(period),
         'clasificacion_umbral': clasificar_umbral(
             summary['avance_real'], tiene_items=has_items,
+            umbral=umbral_delegacion(period),
         ),
     })
 
@@ -443,8 +449,9 @@ def consolidated_report_rows(request):
     distribución semafórica a nivel individual y agregado por delegación.
     """
     periods, period, period_id, delegation_id, cargo_id, user_id = _report_filters(request)
-    cap = ParametroSistema.obtener(ParametroSistema.Clave.TOPE_CUMPLIMIENTO)
-    threshold = ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_DELEGACION)
+    rules = parametros_periodo(period)
+    cap = rules['tope']
+    threshold = rules['delegacion']
     users = get_user_model().objects.filter(
         is_active=True,
     ).order_by('last_name', 'first_name', 'email')
@@ -677,9 +684,8 @@ def tendencias(request):
         users = users.filter(pk=parsed_filters['funcionario'])
     users = list(users) if not filter_message else []
 
-    cap = ParametroSistema.obtener(ParametroSistema.Clave.TOPE_CUMPLIMIENTO)
-    threshold = umbral_delegacion()
-    series = tendencias_cumplimiento(users,selected_periods,cap=cap,umbral=threshold)
+    threshold = umbral_delegacion(selected_periods[0] if selected_periods else None)
+    series = tendencias_cumplimiento(users,selected_periods,cap=None,umbral=threshold)
     chart_points, chart_ticks, chart_max, threshold_y = _trend_chart(series,threshold)
 
     if filter_message:

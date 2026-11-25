@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import Q
 from django.db.models.deletion import ProtectedError
+from django.utils import timezone
 import uuid
 
 # from config.permissions import PERMISSION_CATALOG
@@ -711,10 +712,13 @@ class ParametroSistema(models.Model):
     class Clave(models.TextChoices):
         TOPE_CUMPLIMIENTO = 'tope_cumplimiento', 'Tope de cumplimiento (%)'
         UMBRAL_DELEGACION = 'umbral_delegacion', 'Umbral de delegación (%)'
+        UMBRAL_ROJO = 'umbral_rojo', 'Umbral mínimo rojo (%)'
+        UMBRAL_AMBAR = 'umbral_ambar', 'Umbral mínimo ámbar (%)'
         MAX_DIAS_AUTORIZACION = ('max_dias_autorizacion','Días máximos de autorización de período')
 
     clave = models.CharField(max_length=40, choices=Clave.choices, unique=True)
     valor = models.DecimalField(max_digits=6, decimal_places=2)
+    vigente_desde = models.DateField(default=timezone.localdate)
 
     class Meta:
         db_table = 'parametro_sistema'
@@ -726,6 +730,8 @@ class ParametroSistema(models.Model):
                 condition=(
                     models.Q(clave='tope_cumplimiento', valor__gte=100)
                     | models.Q(clave='umbral_delegacion', valor__gte=0, valor__lte=100)
+                    | models.Q(clave__in=['umbral_rojo', 'umbral_ambar'], valor__gte=0, valor__lte=100)
+                    | models.Q(clave='max_dias_autorizacion', valor__gte=1)
                 ),
                 name='parametro_sistema_valor_en_rango',
             ),
@@ -739,9 +745,14 @@ class ParametroSistema(models.Model):
         defaults = {
             cls.Clave.TOPE_CUMPLIMIENTO: 120,
             cls.Clave.UMBRAL_DELEGACION: 80,
+            cls.Clave.UMBRAL_ROJO: 60,
+            cls.Clave.UMBRAL_AMBAR: 80,
             cls.Clave.MAX_DIAS_AUTORIZACION: 7,
         }
-        value = cls.objects.filter(clave=clave).values_list('valor', flat=True).first()
+        value = cls.objects.filter(
+            clave=clave,
+            vigente_desde__lte=timezone.localdate(),
+        ).values_list('valor', flat=True).first()
         return value if value is not None else defaults[clave]
 
 #Modelo Alerta (OK)

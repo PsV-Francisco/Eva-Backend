@@ -426,6 +426,8 @@ def parametros(request):
     keys = {
         'tope_cumplimiento': ParametroSistema.Clave.TOPE_CUMPLIMIENTO,
         'umbral_delegacion': ParametroSistema.Clave.UMBRAL_DELEGACION,
+        'umbral_rojo': ParametroSistema.Clave.UMBRAL_ROJO,
+        'umbral_ambar': ParametroSistema.Clave.UMBRAL_AMBAR,
         'max_dias_autorizacion': ParametroSistema.Clave.MAX_DIAS_AUTORIZACION,
     }
     form = ParametroSistemaForm(request.POST or None)
@@ -435,12 +437,17 @@ def parametros(request):
                 previous = ParametroSistema.obtener(key)
                 parameter, _ = ParametroSistema.objects.get_or_create(
                     clave=key,
-                    defaults={'valor': form.cleaned_data[field]},
+                    defaults={
+                        'valor': form.cleaned_data[field],
+                        'vigente_desde': form.cleaned_data['vigente_desde'],
+                    },
                 )
                 new_value = form.cleaned_data[field]
-                if previous != new_value:
+                new_date = form.cleaned_data['vigente_desde']
+                if previous != new_value or parameter.vigente_desde != new_date:
                     parameter.valor = new_value
-                    parameter.save(update_fields=['valor'])
+                    parameter.vigente_desde = new_date
+                    parameter.save(update_fields=['valor', 'vigente_desde'])
                     registrar_historial(
                         actor=request.user,
                         action='Cambiar parámetro del sistema',

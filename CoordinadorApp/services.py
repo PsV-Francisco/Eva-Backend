@@ -17,6 +17,8 @@ from DelegadoApp.models import Ausencia, Licencia
 ZERO = Decimal('0.00')
 HUNDRED = Decimal('100')
 DEFAULT_TOPE_CUMPLIMIENTO = Decimal('120')
+DEFAULT_UMBRAL_ROJO = Decimal('60')
+DEFAULT_UMBRAL_AMBAR = Decimal('80')
 META_SCOPE = 'metas'
 
 def max_dias_autorizacion():
@@ -91,8 +93,28 @@ def validate_authorization_expiry(vence_en):
     return ''
 
 
-def umbral_delegacion():
-    return ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_DELEGACION)
+def parametros_periodo(periodo=None):
+    """Use live rules for open periods and frozen rules for closed periods."""
+    if periodo is not None and periodo.estado == 'cerrado' and all(
+        getattr(periodo, field, None) is not None
+        for field in ('semaforo_rojo', 'semaforo_ambar', 'tope_cumplimiento')
+    ):
+        return {
+            'rojo': Decimal(periodo.semaforo_rojo),
+            'ambar': Decimal(periodo.semaforo_ambar),
+            'tope': Decimal(periodo.tope_cumplimiento),
+            'delegacion': Decimal(periodo.umbral_delegacion),
+        }
+    return {
+        'rojo': Decimal(ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_ROJO) or DEFAULT_UMBRAL_ROJO),
+        'ambar': Decimal(ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_AMBAR) or DEFAULT_UMBRAL_AMBAR),
+        'tope': Decimal(ParametroSistema.obtener(ParametroSistema.Clave.TOPE_CUMPLIMIENTO) or DEFAULT_TOPE_CUMPLIMIENTO),
+        'delegacion': Decimal(ParametroSistema.obtener(ParametroSistema.Clave.UMBRAL_DELEGACION)),
+    }
+
+
+def umbral_delegacion(periodo=None):
+    return parametros_periodo(periodo)['delegacion']
 
 
 def clasificar_umbral(cumplimiento, *, tiene_items=True, umbral=None):
@@ -165,7 +187,13 @@ def porcentaje_esperado(periodo, fecha_corte=None, usuario=None, *, hoy=None):
     return (Decimal(transcurridos) * HUNDRED / Decimal(total)).quantize(Decimal('0.01'),rounding=ROUND_HALF_UP)
 
 
-def _semaforo(cumplimiento, esperado):
+def _semaforo(cumplimiento, esperado, *, umbral_rojo=None, umbral_ambar=None):
+    if umbral_rojo is not None and umbral_ambar is not None:
+        if cumplimiento >= esperado * Decimal(umbral_ambar) / HUNDRED:
+            return 'verde'
+        if cumplimiento >= esperado * Decimal(umbral_rojo) / HUNDRED:
+            return 'ambar'
+        return 'rojo'
     if cumplimiento >= esperado:
         return 'verde'
     if cumplimiento >= esperado * Decimal('0.60'):
@@ -225,10 +253,9 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
             {row.usuario_id for row in desempenos},
             {row.periodo_id for row in desempenos},
         )
-    cap = Decimal(cap if cap is not None else (
-        ParametroSistema.obtener(ParametroSistema.Clave.TOPE_CUMPLIMIENTO)
-        or DEFAULT_TOPE_CUMPLIMIENTO
-    ))
+    periodo = getattr(desempenos[0], 'periodo', None)
+    rules = parametros_periodo(periodo)
+    cap = Decimal(cap if cap is not None else rules['tope'])
 
     items = []
     total_avance = ZERO
@@ -245,7 +272,7 @@ def resumen_cumplimiento(desempenos, *, hoy=None, counts=None, cap=None):
         aporte = ((Decimal(ponderacion) * cumplimiento / HUNDRED).quantize(Decimal('0.01'),rounding=ROUND_HALF_UP)
             if ponderacion is not None else None)
         expected_amount = meta * esperado / HUNDRED
-        items.append({'desempeno': desempenho,'avance': avance,'meta': meta,'cumplimiento': cumplimiento,'esperado': esperado,'ponderacion': ponderacion,'aporte': aporte,'semaforo': _semaforo(cumplimiento, esperado),})
+        items.append({'desempeno': desempenho,'avance': avance,'meta': meta,'cumplimiento': cumplimiento,'esperado': esperado,'ponderacion': ponderacion,'aporte': aporte,'semaforo': _semaforo(cumplimiento, esperado, umbral_rojo=rules['rojo'], umbral_ambar=rules['ambar']),})
         total_avance += avance
         total_meta += meta
         total_esperado += expected_amount
@@ -296,7 +323,14 @@ def consolidar_cumplimientos(summaries, *, threshold=None):
         if not summary['items']:
             counts['sin_items'] += 1
             continue
-        state = _semaforo(summary['avance_real'], summary['avance_esperado'])
+        period = summary['items'][0]['desempeno'].periodo
+        rules = parametros_periodo(period)
+        state = _semaforo(
+            summary['avance_real'],
+            summary['avance_esperado'],
+            umbral_rojo=rules['rojo'],
+            umbral_ambar=rules['ambar'],
+        )
         counts[state] += 1
     total = Decimal(len(summaries))
     distribution = {
@@ -317,7 +351,8 @@ def _resumen_desde_items(items):
     total_meta = sum((item['meta'] for item in items), ZERO)
     total_esperado = sum((item['meta'] * item['esperado'] / HUNDRED for item in items),ZERO)
     total_aporte = sum((item['aporte'] for item in items if item['aporte'] is not None),ZERO)
-    cap = Decimal(ParametroSistema.obtener(ParametroSistema.Clave.TOPE_CUMPLIMIENTO))
+    periodo = items[0]['desempeno'].periodo if items else None
+    cap = parametros_periodo(periodo)['tope']
     avance_real = min(total_avance * HUNDRED / total_meta, cap) if total_meta else ZERO
     avance_esperado = total_esperado * HUNDRED / total_meta if total_meta else ZERO
     return {
@@ -352,7 +387,8 @@ def tendencias_cumplimiento(usuarios, periodos, *, cap, umbral):
         considerados = 0
         sobre_umbral = 0
         for usuario in usuarios:
-            summary = resumen_cumplimiento(performances_by_user_period.get((usuario.pk, periodo.pk), ()),counts=counts,cap=cap)
+            rules = parametros_periodo(periodo)
+            summary = resumen_cumplimiento(performances_by_user_period.get((usuario.pk, periodo.pk), ()),counts=counts,cap=(rules['tope'] if cap is None else cap))
             if not summary['items']:
                 continue
             considerados += 1

@@ -15,6 +15,7 @@ from CoordinadorApp.services import (
     consolidar_cumplimientos,
     cumplimiento_por_usuario,
     dias_habiles,
+    parametros_periodo,
     umbral_delegacion,
 )
 from DelegadoApp.models import (
@@ -89,7 +90,8 @@ def actividad_reciente(users, period):
 
 
 def resumen_delegacion(*, delegation=None, period=None, all_delegations=False, funcionario_id=None):
-    threshold = umbral_delegacion()
+    rules = parametros_periodo(period)
+    threshold = rules['delegacion']
     # El parámetro del sistema tiene 80 como valor por defecto. Mantener esta
     # salvaguarda también cubre configuraciones antiguas que pudieran devolver
     # un valor nulo sin cambiar ningún modelo ni generar migraciones.
@@ -158,10 +160,8 @@ def resumen_delegacion(*, delegation=None, period=None, all_delegations=False, f
             'cumplimiento': summary['avance_real'],
             'esperado': summary['avance_esperado'],
             'semaforo': (
-                'verde' if summary['avance_real'] >= summary['avance_esperado']
-                else 'ambar'
-                if summary['avance_real'] >= summary['avance_esperado'] * Decimal('0.60')
-                else 'rojo'
+                'verde' if summary['avance_real'] >= summary['avance_esperado'] * rules['ambar'] / Decimal('100')
+                else 'ambar' if summary['avance_real'] >= summary['avance_esperado'] * rules['rojo'] / Decimal('100') else 'rojo'
             ),
             'umbral': threshold,
             'clasificacion_umbral': clasificar_umbral(
@@ -193,7 +193,7 @@ def resumen_delegacion(*, delegation=None, period=None, all_delegations=False, f
             ),
             'estado_alerta': (
                 'rojo'
-                if item['cumplimiento'] < threshold * Decimal('0.60')
+                if item['cumplimiento'] < item['esperado'] * rules['rojo'] / Decimal('100')
                 else 'ambar'
             ),
         }
@@ -213,7 +213,7 @@ def resumen_delegacion(*, delegation=None, period=None, all_delegations=False, f
         )
         row['estado_alerta'] = (
             'rojo'
-            if row['cumplimiento'] < threshold * Decimal('0.60')
+            if row['cumplimiento'] < row['esperado'] * rules['rojo'] / Decimal('100')
             else 'ambar'
         )
     below_threshold.sort(key=lambda row: (
