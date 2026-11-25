@@ -48,6 +48,7 @@ urlpatterns = [
     path('agenda_colectiva/buscar-ajax/', views.buscar_compromisos_ajax, name='buscar_compromisos_ajax'),
     path('agenda_colectiva/<int:compromiso_id>/detalle-json/', views.detalle_compromiso_json, name='detalle_compromiso_json'),
     path('agenda_colectiva/<int:compromiso_id>/editar-ajax/', views.editar_compromiso_ajax, name='editar_compromiso_ajax'),
+    path('agenda_colectiva/busqueda-json/', views.agenda_busqueda_json, name='agenda_busqueda_json'),
     # URLS de Tubo de Cartas (HU-38)
     path('tubo-cartas/', views.tubo_cartas, name='tubo_cartas'),
     path('tubo-cartas/<int:carta_id>/detalle-json/', views.detalle_carta_json, name='detalle_carta_json'),

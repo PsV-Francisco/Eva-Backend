@@ -651,6 +651,26 @@ def detalle_compromiso_json(request, compromiso_id):
         'subtipos_disponibles': subtipos,
     })
 
+@cargo_required('funcionario', permission='search_collective_agenda')
+@require_GET
+def agenda_busqueda_json(request):
+    delegation = active_delegation(request)
+    periods = Periodo.objects.filter(estado=Periodo.Estado.ABIERTO).order_by('-fecha_inicio')
+    period_id = request.GET.get('periodo', '')
+    period = periods.filter(pk=int(period_id)).first() if period_id.isdecimal() else periods.first()
+    if not delegation or not period:
+        return JsonResponse({'results': []})
+    marcar_compromisos_vencidos(
+        Compromiso.objects.filter(agenda__delegacion_id=delegation.pk, agenda__periodo=period),
+        request.user,
+    )
+    return JsonResponse({'results': agenda_items(
+        delegation_id=delegation.pk,
+        period=period,
+        query=request.GET.get('q', '').strip(),
+        actor=request.user,
+    )})
+
 
 @cargo_required('funcionario', permission='manage_collective_agenda')
 @require_POST
