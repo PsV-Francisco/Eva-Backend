@@ -90,6 +90,10 @@ def actividad_reciente(users, period):
 
 def resumen_delegacion(*, delegation=None, period=None, all_delegations=False, funcionario_id=None):
     threshold = umbral_delegacion()
+    # El parámetro del sistema tiene 80 como valor por defecto. Mantener esta
+    # salvaguarda también cubre configuraciones antiguas que pudieran devolver
+    # un valor nulo sin cambiar ningún modelo ni generar migraciones.
+    threshold = Decimal('80.00') if threshold is None else Decimal(threshold)
     empty_result = {
         'funcionarios': [],
         'below_threshold': [],
@@ -103,6 +107,8 @@ def resumen_delegacion(*, delegation=None, period=None, all_delegations=False, f
             for state in ('verde', 'ambar', 'rojo', 'sin_items')
         },
         'cantidad_bajo_umbral': 0,
+        'cantidad_bajo_umbral_items': 0,
+        'cantidad_alertas_bajo_cumplimiento': 0,
         'has_delegation': delegation is not None or all_delegations,
     }
     if delegation is None and not all_delegations:
@@ -182,19 +188,48 @@ def resumen_delegacion(*, delegation=None, period=None, all_delegations=False, f
             'item': item['desempeno'].item,
             'cumplimiento': item['cumplimiento'],
             'esperado': item['esperado'],
+            'brecha': (threshold - item['cumplimiento']).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP,
+            ),
+            'estado_alerta': (
+                'rojo'
+                if item['cumplimiento'] < threshold * Decimal('0.60')
+                else 'ambar'
+            ),
         }
         for row, summary in zip(rows, summary_values)
         for item in summary['items']
         if item['cumplimiento'] < threshold
     ]
+    below_threshold_items.sort(key=lambda item: (item['cumplimiento'], item['item'].nombre))
+    below_threshold = [
+        row for row in rows
+        if row['clasificacion_umbral'] is not None
+        and row['cumplimiento'] < threshold
+    ]
+    for row in below_threshold:
+        row['brecha'] = (threshold - row['cumplimiento']).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP,
+        )
+        row['estado_alerta'] = (
+            'rojo'
+            if row['cumplimiento'] < threshold * Decimal('0.60')
+            else 'ambar'
+        )
+    below_threshold.sort(key=lambda row: (
+        row['cumplimiento'],
+        row['usuario'].last_name,
+        row['usuario'].first_name,
+        row['usuario'].email,
+    ))
     empty_result.update({
         'funcionarios': rows,
-        'below_threshold': [
-            row for row in rows
-            if row['clasificacion_umbral'] is not None
-            and row['cumplimiento'] < threshold
-        ],
+        'below_threshold': below_threshold,
         'below_threshold_items': below_threshold_items,
+        'cantidad_bajo_umbral_items': len(below_threshold_items),
+        'cantidad_alertas_bajo_cumplimiento': (
+            len(below_threshold) + len(below_threshold_items)
+        ),
         **collective,
         'avance_esperado_colectivo': expected_collective,
     })
