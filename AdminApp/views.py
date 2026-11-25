@@ -693,7 +693,7 @@ def items(request):
     })
 
 
-@cargo_required('coordinador', 'admin', 'administrador', permission='access_admin_items')
+@cargo_required('coordinador', 'admin', 'administrador', permission='search_admin_items_ajax')
 @require_GET
 def buscar_items_ajax(request):
     """Endpoint AJAX (keyup) para filtrar ítems dinámicamente sin recargar la página."""

@@ -143,10 +143,10 @@ PERMISSION_CATALOG = (
     PermissionDefinition('Consulta', 'view_public_reports', 'Consultar información', 'vistaf:home', ('vistaf', 'consulta', 'usuario de consulta')),
     #Permisos Administrador/Coordinador a la gestión de Items
     PermissionDefinition(view_name='administracion:items',codename='access_admin_items',label='Administrar y crear ítems',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),),
-    PermissionDefinition(view_name='administracion:buscar_items_ajax',codename='access_admin_items',label='Buscar ítems vía AJAX',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),),
-    PermissionDefinition(view_name='administracion:detalle_item_json',codename='view_admin_items_detail',label='Ver detalle JSON de ítems',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),),
-    PermissionDefinition(view_name='administracion:editar_item_ajax',codename='edit_admin_items_ajax',label='Editar ítems vía AJAX',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),),
-    PermissionDefinition(view_name='administracion:cambiar_estado_item_ajax',codename='toggle_admin_items_status',label='Activar o desactivar ítems',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),),
+    PermissionDefinition(view_name='administracion:buscar_items_ajax',codename='search_admin_items_ajax',label='Buscar ítems vía AJAX',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),),
+    PermissionDefinition(view_name='administracion:detalle_item_json',codename='view_admin_items_detail',label='Ver detalle JSON de ítems',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),route_kwargs=(('item_id', 1),),show_in_menu=False),
+    PermissionDefinition(view_name='administracion:editar_item_ajax',codename='edit_admin_items_ajax',label='Editar ítems vía AJAX',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),route_kwargs=(('item_id', 1),),show_in_menu=False),
+    PermissionDefinition(view_name='administracion:cambiar_estado_item_ajax',codename='toggle_admin_items_status',label='Activar o desactivar ítems',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),route_kwargs=(('item_id', 1),),show_in_menu=False),
 )
 
 PERMISSION_DESCRIPTIONS = {
