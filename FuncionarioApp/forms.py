@@ -71,39 +71,11 @@ class TipoSubtipoFields:
 
 
 class FuncionarioCompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
-    solicitante = forms.ModelChoiceField(
-        queryset=Vecino.objects.filter(activo=True).order_by('nombre', 'apellido'),
-        required=False,
-        label='Solicitante (Vecino)',
-        empty_label='Seleccione un vecino',
-        widget=forms.Select(attrs={'class': 'form-select'}),
-    )
-    territorio = forms.ModelChoiceField(
-        queryset=Territorio.objects.all().order_by('nombre'),
-        required=False,
-        label='Territorio',
-        empty_label='Seleccione un territorio',
-        widget=forms.Select(attrs={'class': 'form-select'}),
-    )
-    tipo = forms.ModelChoiceField(
-        queryset=Tipo.objects.filter(estado=Tipo.Estado.ACTIVADO).order_by('nombre'),
-        required=False,
-        label='Tipo',
-        empty_label='Seleccione un tipo',
-        widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_tipo'}),
-    )
-    subtipo = forms.ModelChoiceField(
-        queryset=Subtipo.objects.none(),
-        required=False,
-        label='Subtipo',
-        empty_label='Seleccione un subtipo',
-        widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_subtipo'}),
-    )
-    periodo = forms.ModelChoiceField(
-        queryset=Periodo.objects.filter(estado=Periodo.Estado.ABIERTO),
-        label='Período de agenda',
-        widget=forms.Select(attrs={'class': 'form-select'}),
-    )
+    solicitante = forms.ModelChoiceField(queryset=Vecino.objects.filter(activo=True).order_by('nombre', 'apellido'),required=False,label='Solicitante (Vecino)',empty_label='Seleccione un vecino (opcional)',widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_solicitante'}))
+    territorio = forms.ModelChoiceField(queryset=Territorio.objects.none(),required=False,label='Territorio',empty_label='Seleccione un territorio (opcional)',widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_territorio'}))
+    tipo = forms.ModelChoiceField(queryset=Tipo.objects.filter(estado=Tipo.Estado.ACTIVADO).order_by('nombre'),required=False,label='Tipo',empty_label='Seleccione un tipo',widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_tipo'}))
+    subtipo = forms.ModelChoiceField(queryset=Subtipo.objects.none(),required=False,label='Subtipo',empty_label='Seleccione un subtipo',widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_subtipo'}))
+    periodo = forms.ModelChoiceField(queryset=Periodo.objects.filter(estado=Periodo.Estado.ABIERTO).order_by('-fecha_inicio'),label='Período de agenda',widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_periodo'}))
 
     class Meta:
         model = Compromiso
@@ -112,25 +84,28 @@ class FuncionarioCompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.Mod
             'solicitante', 'territorio', 'area_apoyo', 'mes', 'tipo', 'subtipo', 'observaciones'
         ]
         widgets = {
-            'descripcion': forms.TextInput(attrs={'class': 'form-control'}),
-            'fecha_solicitud': forms.DateTimeInput(
-                format='%Y-%m-%dT%H:%M',
-                attrs={'class': 'form-control', 'type': 'datetime-local'},
+            'descripcion': forms.TextInput(attrs={'class': 'form-control', 'id': 'id_descripcion', 'placeholder': 'Describe el compromiso acordado...'}),
+            'fecha_solicitud': forms.DateTimeInput(format='%Y-%m-%dT%H:%M',attrs={'class': 'form-control', 'type': 'datetime-local', 'id': 'id_fecha_solicitud'},
             ),
-            'fecha_compromiso': forms.DateTimeInput(
-                format='%Y-%m-%dT%H:%M',
-                attrs={'class': 'form-control', 'type': 'datetime-local'},
+            'fecha_compromiso': forms.DateTimeInput(format='%Y-%m-%dT%H:%M',attrs={'class': 'form-control', 'type': 'datetime-local', 'id': 'id_fecha_compromiso'},
             ),
-            'ambito': forms.Select(attrs={'class': 'form-select'}),
-            'area_apoyo': forms.TextInput(attrs={'class': 'form-control'}),
-            'mes': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 12}),
-            'observaciones': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'ambito': forms.Select(attrs={'class': 'form-select', 'id': 'id_ambito'}),
+            'area_apoyo': forms.TextInput(attrs={'class': 'form-control', 'id': 'id_area_apoyo', 'placeholder': 'Ej: DIDECO, Operaciones...'}),
+            'mes': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 12, 'id': 'id_mes'}),
+            'observaciones': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'id': 'id_observaciones', 'placeholder': 'Observaciones adicionales (opcional)'}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, delegation=None, **kwargs):
         super().__init__(*args, **kwargs)
         _set_tipo_subtipo_choices(self, self.instance)
         self.fields['mes'].required = False
+        self.fields['solicitante'].label_from_instance = lambda obj: f"{obj.nombre} {obj.apellido or ''}".strip()
+
+        if delegation is not None:
+            self.fields['territorio'].queryset = Territorio.objects.filter(delegacion=delegation).order_by('nombre')
+        else:
+            self.fields['territorio'].queryset = Territorio.objects.all().order_by('nombre')
+
         if self.instance and self.instance.pk and getattr(self.instance, 'agenda_id', None):
             self.initial.setdefault('periodo', self.instance.agenda.periodo_id)
 
@@ -141,15 +116,20 @@ class FuncionarioCompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.Mod
         mes = cleaned_data.get('mes')
 
         if fecha_sol and fecha_comp and fecha_comp < fecha_sol:
-            self.add_error(
-                'fecha_compromiso',
-                'La fecha de compromiso no puede ser anterior a la fecha de ingreso/solicitud.'
-            )
+            self.add_error('fecha_compromiso','La fecha de compromiso no puede ser anterior a la fecha de solicitud.')
 
         if fecha_comp and not mes:
             cleaned_data['mes'] = fecha_comp.month
             self.cleaned_data['mes'] = fecha_comp.month
         return cleaned_data
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        _assign_tipo_subtipo(self, instance)
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
 
 
 class RegistroForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
