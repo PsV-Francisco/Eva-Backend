@@ -124,6 +124,7 @@ class FuncionarioCompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.Mod
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _set_tipo_subtipo_choices(self, self.instance)
+        self.fields['mes'].required = False
 
     def clean(self):
         cleaned_data = super().clean()
