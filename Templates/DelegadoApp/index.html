@@ -3,92 +3,175 @@
 {% block page_title %}Agenda colectiva{% endblock %}
 {% block content %}
 <style>
-  .commitments-table-wrap {
-    overflow-x: auto;
+  .dashboard-main {
+    box-sizing: border-box;
+    max-width: 1440px;
+    width: 96%;
+    margin: 0 auto;
   }
 
-  .commitments-table {
-    min-width: 1180px;
-  }
-
-  .commitments-table th,
-  .commitments-table td {
-    vertical-align: top;
-  }
-
-  .commitments-table td:nth-child(4) > .tag {
-    white-space: nowrap;
-  }
-
-  .commitments-table td:nth-child(5) {
-    min-width: 190px;
-  }
-
-  .commitments-table td:nth-child(5) > .d-flex {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px !important;
-  }
-
-  .commitments-table td:nth-child(5) > .d-flex > a,
-  .commitments-table td:nth-child(5) > .d-flex > button,
-  .commitments-table td:nth-child(5) > .d-flex > form {
-    min-width: 0;
-  }
-
-  .commitments-table td:nth-child(5) > .d-flex > form:last-child {
-    grid-column: 1 / -1;
-    display: grid !important;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 4px !important;
-  }
-
-  .commitments-table td:nth-child(5) > .d-flex > form:last-child .form-label {
-    margin-bottom: 0 !important;
-  }
-
-  .commitments-table td:nth-child(5) > .d-flex > form:last-child .btn,
-  .commitments-table td:nth-child(5) > .d-flex > form:last-child .form-control {
-    min-width: 0;
-  }
-
-  .commitments-table td:nth-child(6) {
-    min-width: 190px;
-  }
-
-  .commitments-table td:nth-child(6) > form {
-    display: flex !important;
-    flex-direction: column;
-    gap: 6px !important;
-  }
-
-  .commitments-table td:nth-child(6) > form select,
-  .commitments-table td:nth-child(6) > form textarea {
-    width: 100%;
-  }
-
-  .commitments-table td:nth-child(6) > form button {
-    width: 100%;
-    white-space: nowrap;
-  }
-
-  .commitments-table td:nth-child(7) {
-    min-width: 120px;
-  }
-
-  .commitments-table td:nth-child(7) > div {
+  .commitment-cards {
     display: flex;
     flex-direction: column;
-    gap: 6px !important;
+    gap: 16px;
   }
 
-  .commitments-table td:nth-child(7) > div > a,
-  .commitments-table td:nth-child(7) > div > form,
-  .commitments-table td:nth-child(7) > div > form button {
+  .commitment-card {
+    display: grid;
+    grid-template-columns: minmax(0, 45%) minmax(0, 55%);
+    gap: 20px;
+    padding: 20px;
+    border: 1px solid var(--border-color, #dfe3e8);
+    border-radius: 12px;
+    background: var(--surface, #fff);
+    box-sizing: border-box;
+  }
+
+  .commitment-info,
+  .commitment-controls,
+  .commitment-panel {
+    min-width: 0;
+  }
+
+  .commitment-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .commitment-title {
+    overflow-wrap: anywhere;
+  }
+
+  .commitment-meta {
+    color: #6c757d;
+    font-size: .9rem;
+  }
+
+  .commitment-responsibles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .commitment-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .commitment-status .tag {
+    white-space: nowrap;
+  }
+
+  .commitment-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(120px, .7fr);
+    gap: 12px;
+    align-items: start;
+  }
+
+  .commitment-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .commitment-panel h3 {
+    margin: 0;
+    font-size: .85rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+
+  .tracking-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+
+  .tracking-actions > a,
+  .tracking-actions > button,
+  .tracking-actions > form,
+  .tracking-actions > form button {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .tracking-expiration {
+    display: grid;
+    grid-template-columns: auto minmax(135px, 1fr);
+    gap: 4px;
+    align-items: center;
+  }
+
+  .tracking-expiration .form-label {
+    margin: 0;
+  }
+
+  .tracking-expiration input[type="date"] {
+    min-width: 135px;
+    width: 100%;
+  }
+
+  .tracking-expiration button {
+    grid-column: 1 / -1;
     width: 100%;
     white-space: nowrap;
   }
+
+  .commitment-update-form {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .commitment-update-form select,
+  .commitment-update-form textarea,
+  .commitment-update-form button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .commitment-update-form button,
+  .commitment-actions a,
+  .commitment-actions button {
+    white-space: nowrap;
+  }
+
+  .commitment-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .commitment-actions a,
+  .commitment-actions form,
+  .commitment-actions button {
+    width: 100%;
+  }
+
+  @media (max-width: 1100px) {
+    .commitment-card {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 700px) {
+    .dashboard-main {
+      width: 100%;
+    }
+
+    .commitment-card {
+      padding: 14px;
+    }
+
+    .commitment-controls {
+      grid-template-columns: 1fr;
+    }
+  }
+
 </style>
 <div class="dashboard-layout">
 {% include 'includes/role_sidebar.html' %}
@@ -102,6 +185,7 @@
 {% if editing_commitment %}<details class="mt-3"><summary>Historial de reasignaciones</summary><div class="table-responsive mt-2"><table class="table table-sm"><thead><tr><th>Anterior</th><th>Nuevo</th><th>Autor</th><th>Fecha/hora</th><th>Motivo</th></tr></thead><tbody>{% for cambio in editing_commitment.historial_reasignaciones.all %}<tr><td>{{ cambio.responsables_anteriores_display }}</td><td>{{ cambio.responsables_nuevos_display }}</td><td>{{ cambio.autor.get_full_name|default:cambio.autor.email }}</td><td>{{ cambio.fecha_hora|date:'d/m/Y H:i' }}</td><td>{{ cambio.motivo }}</td></tr>{% empty %}<tr><td colspan="5">Sin reasignaciones.</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
 </div><aside class="side-note"><span class="side-note-mark">i</span><h3>Seguimiento compartido</h3><p>Los compromisos se muestran solo dentro de tu delegación. El estado puede actualizarse desde esta misma vista.</p></aside></section>
 {% endif %}
+{% comment %}Legacy horizontal commitments table replaced by the responsive card layout below.
 <section class="content-section"><div class="section-head"><div><p class="eyebrow">SEGUIMIENTO</p><h2>Compromisos</h2></div><span class="count-pill">{{ commitment_count }} en agenda</span></div>
 	<div class="table-responsive commitments-table-wrap"><table class="table align-middle commitments-table"><thead><tr><th>Fecha</th><th>Compromiso</th><th>Responsables</th><th>Estado</th><th>Seguimiento</th><th>Actualizar</th><th>Acciones</th></tr></thead><tbody>
 		{% for compromiso in commitments %}<tr><td>{{ compromiso.fecha|date:'d/m/Y' }}</td><td><strong>{{ compromiso.descripcion }}</strong><small class="d-block text-muted">{{ compromiso.solicitante|default:'Sin solicitante' }} · {{ compromiso.territorio|default:'Sin territorio' }}</small></td><td>{% for responsable in compromiso.responsable.all %}<span class="tag">{{ responsable.get_full_name|default:responsable.email }}</span>{% empty %}—{% endfor %}</td><td><span class="tag">{{ compromiso.get_estado_display }}</span><details class="small mt-1"><summary>Historial ({{ compromiso.historial_estados.count }})</summary>{% for cambio in compromiso.historial_estados.all %}<div>{{ cambio.estado_anterior|default:'—' }} → {{ cambio.get_estado_nuevo_display }} · {{ cambio.autor.email }} · {{ cambio.fecha|date:'d/m/Y H:i' }}</div>{% empty %}<div>Sin cambios.</div>{% endfor %}</details></td><td>
@@ -118,6 +202,52 @@
 			{% endif %}
 		</td><td>{% if compromiso.periodo_abierto %}<form method="post" class="d-flex gap-2" data-confirm="¿Actualizar el estado de este compromiso?">{% csrf_token %}<input type="hidden" name="action" value="estado"><input type="hidden" name="compromiso_id" value="{{ compromiso.pk }}"><select class="form-select form-select-sm" name="estado" aria-label="Nuevo estado"><option value="ingresado" {% if compromiso.estado == 'ingresado' %}selected{% endif %}>Ingresado</option><option value="pendiente" {% if compromiso.estado == 'pendiente' %}selected{% endif %}>Pendiente</option><option value="en_proceso" {% if compromiso.estado == 'en_proceso' %}selected{% endif %}>En proceso</option><option value="realizado" {% if compromiso.estado == 'realizado' %}selected{% endif %}>Realizado</option></select><button class="btn btn-sm btn-primary" type="submit">Guardar</button></form>{% else %}<span class="text-muted small">Período cerrado</span>{% endif %}</td><td>{% if compromiso.periodo_abierto and not compromiso.evidencia %}<div class="d-flex flex-wrap gap-1"><a class="btn btn-sm btn-outline-primary" href="{% url 'delegado:home' %}?editar={{ compromiso.pk }}">Editar</a><form method="post" data-confirm="¿Eliminar este compromiso? La acción no se puede deshacer.">{% csrf_token %}<input type="hidden" name="action" value="eliminar"><input type="hidden" name="compromiso_id" value="{{ compromiso.pk }}"><button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button></form></div>{% else %}<span class="text-muted small">Solo lectura</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="7" class="empty-state">No hay compromisos registrados para esta delegación.</td></tr>{% endfor %}
 	</tbody></table></div>
+</section>
+{% endcomment %}
+<section class="content-section">
+  <div class="section-head"><div><p class="eyebrow">SEGUIMIENTO</p><h2>Compromisos</h2></div><span class="count-pill">{{ commitment_count }} en agenda</span></div>
+  <div class="commitment-cards">
+    {% for compromiso in commitments %}
+      <article class="commitment-card">
+        <div class="commitment-info">
+          <div class="commitment-meta">{{ compromiso.fecha|date:'d/m/Y' }}</div>
+          <strong class="commitment-title">{{ compromiso.descripcion }}</strong>
+          <div class="commitment-meta">{{ compromiso.solicitante|default:'Sin solicitante' }} · {{ compromiso.territorio|default:'Sin territorio' }}</div>
+          <div class="commitment-responsibles">
+            {% for responsable in compromiso.responsable.all %}<span class="tag">{{ responsable.get_full_name|default:responsable.email }}</span>{% empty %}<span class="text-muted">Sin responsable</span>{% endfor %}
+          </div>
+          <div class="commitment-status">
+            <span class="tag">{{ compromiso.get_estado_display }}</span>
+            <details class="small"><summary>Historial ({{ compromiso.historial_estados.count }})</summary>{% for cambio in compromiso.historial_estados.all %}<div>{{ cambio.estado_anterior|default:'—' }} → {{ cambio.get_estado_nuevo_display }} · {{ cambio.autor.email }} · {{ cambio.fecha|date:'d/m/Y H:i' }}</div>{% empty %}<div>Sin cambios.</div>{% endfor %}</details>
+          </div>
+        </div>
+        <div class="commitment-controls">
+          <section class="commitment-panel">
+            <h3>Seguimiento</h3>
+            {% if compromiso.seguimiento_token %}
+              <div class="tracking-actions">
+                <a class="btn btn-sm btn-outline-primary" href="{% url 'delegado:seguimiento_publico' token=compromiso.seguimiento_token %}" target="_blank" rel="noopener noreferrer">Ver enlace</a>
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-copy-link="{% url 'delegado:seguimiento_publico' token=compromiso.seguimiento_token %}">Copiar</button>
+                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="seguimiento_regenerar"><input type="hidden" name="compromiso_id" value="{{ compromiso.pk }}"><button class="btn btn-sm btn-outline-warning" type="submit">Regenerar</button></form>
+                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="seguimiento_toggle"><input type="hidden" name="compromiso_id" value="{{ compromiso.pk }}"><input type="hidden" name="seguimiento_activo" value="{% if compromiso.seguimiento_activo %}0{% else %}1{% endif %}"><button class="btn btn-sm {% if compromiso.seguimiento_activo %}btn-outline-danger{% else %}btn-outline-success{% endif %}" type="submit">{% if compromiso.seguimiento_activo %}Desactivar{% else %}Activar{% endif %}</button></form>
+              </div>
+              <form method="post" class="tracking-expiration">{% csrf_token %}<input type="hidden" name="action" value="seguimiento_expiracion"><input type="hidden" name="compromiso_id" value="{{ compromiso.pk }}"><label class="form-label small">Vence</label><input class="form-control form-control-sm" type="date" name="seguimiento_expira" value="{% if compromiso.seguimiento_expira %}{{ compromiso.seguimiento_expira|date:'Y-m-d' }}{% endif %}"><button class="btn btn-sm btn-outline-secondary" type="submit">Guardar vencimiento</button></form>
+            {% else %}
+              <form method="post">{% csrf_token %}<input type="hidden" name="action" value="seguimiento_regenerar"><input type="hidden" name="compromiso_id" value="{{ compromiso.pk }}"><button class="btn btn-sm btn-primary" type="submit">Generar enlace</button></form>
+            {% endif %}
+          </section>
+          <section class="commitment-panel">
+            <h3>Actualizar</h3>
+            {% if compromiso.periodo_abierto %}<form method="post" class="commitment-update-form" data-confirm="¿Actualizar el estado de este compromiso?">{% csrf_token %}<input type="hidden" name="action" value="estado"><input type="hidden" name="compromiso_id" value="{{ compromiso.pk }}"><select class="form-select form-select-sm" name="estado" aria-label="Nuevo estado"><option value="ingresado" {% if compromiso.estado == 'ingresado' %}selected{% endif %}>Ingresado</option><option value="pendiente" {% if compromiso.estado == 'pendiente' %}selected{% endif %}>Pendiente</option><option value="en_proceso" {% if compromiso.estado == 'en_proceso' %}selected{% endif %}>En proceso</option><option value="realizado" {% if compromiso.estado == 'realizado' %}selected{% endif %}>Realizado</option></select><textarea name="observaciones" class="form-control form-control-sm" rows="2" placeholder="Avance / observaciones"></textarea><button class="btn btn-sm btn-primary" type="submit">Guardar</button></form>{% else %}<span class="text-muted small">Período cerrado</span>{% endif %}
+          </section>
+          <section class="commitment-panel">
+            <h3>Acciones</h3>
+            {% if compromiso.periodo_abierto and not compromiso.evidencia %}<div class="commitment-actions"><a class="btn btn-sm btn-outline-primary" href="{% url 'delegado:home' %}?editar={{ compromiso.pk }}">Editar</a><form method="post" data-confirm="¿Eliminar este compromiso? La acción no se puede deshacer.">{% csrf_token %}<input type="hidden" name="action" value="eliminar"><input type="hidden" name="compromiso_id" value="{{ compromiso.pk }}"><button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button></form></div>{% else %}<span class="text-muted small">Solo lectura</span>{% endif %}
+          </section>
+        </div>
+      </article>
+    {% empty %}<div class="empty-state">No hay compromisos registrados para esta delegación.</div>{% endfor %}
+  </div>
 </section>
 </div>
 </div>
