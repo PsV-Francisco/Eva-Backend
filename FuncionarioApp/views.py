@@ -423,52 +423,62 @@ def editar_registro_ajax(request, registro_id):
 
 @cargo_required('funcionario', permission='manage_collective_agenda')
 def agenda_colectiva(request):
+    """Vista unificada de Agenda Colectiva: creación de compromisos, listado con búsqueda AJAX y edición en modal."""
     delegation = active_delegation(request)
     delegation_id = delegation.pk if delegation else None
-    if request.method == 'POST' and request.POST.get('action') == 'estado_compromiso':
-        if not delegation_id:
-            messages.error(request, 'Tu cuenta no tiene una delegación asignada.')
-            return redirect('funcionario:agenda_colectiva')
-        commitment = get_object_or_404(
-            Compromiso.objects.select_related('agenda', 'agenda__periodo').filter(
-                agenda__delegacion_id=delegation_id,
-                responsable=request.user,
-            ),
-            pk=request.POST.get('compromiso_id'),
-        )
-        if commitment.agenda.periodo.estado != Periodo.Estado.ABIERTO:
-            messages.error(request, 'Los compromisos de un período cerrado son de solo lectura.')
-        else:
-            state_form = CompromisoEstadoForm(request.POST)
-            if state_form.is_valid():
-                if actualizar_compromiso(
-                    compromiso=commitment,
-                    autor=request.user,
-                    nuevo_estado=state_form.cleaned_data['estado'],
-                    observaciones=state_form.cleaned_data.get('observaciones', ''),
-                    responsables=list(commitment.responsable.all()),
-                    action='Actualizar compromiso desde Funcionario',
-                ):
-                    messages.success(request, 'El estado y su historial quedaron actualizados.')
-                else:
-                    messages.info(request, 'El compromiso ya tenía ese estado.')
-            else:
-                messages.error(request, 'Selecciona un estado válido.')
-        period_id = request.POST.get('periodo')
-        if period_id and period_id.isdecimal():
-            return redirect(f"/funcionario/agenda_colectiva/?periodo={int(period_id)}")
-        return redirect('funcionario:agenda_colectiva')
 
     periods = Periodo.objects.filter(estado=Periodo.Estado.ABIERTO).order_by('-fecha_inicio')
     period_id = request.GET.get('periodo', '')
-    selected_period = (
-        periods.filter(pk=int(period_id)).first()
+    selected_period = (periods.filter(pk=int(period_id)).first()
         if period_id.isdecimal()
         else periods.first()
     )
+
+    initial_data = {}
+    if selected_period:
+        initial_data['periodo'] = selected_period.pk
+    now_local = timezone.localtime()
+    initial_data['fecha_solicitud'] = now_local.strftime('%Y-%m-%dT%H:%M')
+    initial_data['fecha_compromiso'] = now_local.strftime('%Y-%m-%dT%H:%M')
+    initial_data['mes'] = now_local.month
+
+    form = FuncionarioCompromisoForm(request.POST or None,delegation=delegation,initial=initial_data)
+
+    # Creación directa desde el formulario superior
+    if request.method == 'POST' and request.POST.get('action', 'crear_compromiso') == 'crear_compromiso':
+        if not delegation:
+            messages.error(request, 'Tu cuenta no tiene una delegación activa asignada.')
+            return redirect('funcionario:agenda_colectiva')
+
+        if form.is_valid():
+            period = form.cleaned_data['periodo']
+            with transaction.atomic():
+                agenda, _ = Agenda.objects.get_or_create(
+                    delegacion=delegation,
+                    periodo=period,
+                )
+                commitment = form.save(commit=False)
+                commitment.agenda = agenda
+                commitment.save()
+                commitment.responsable.add(request.user)
+
+                registrar_historial(
+                    actor=request.user,
+                    action='Crear compromiso como Funcionario',
+                    entity=f'Compromiso:{commitment.pk}',
+                    after=_compromiso_snapshot(commitment),
+                    period=period,
+                )
+            messages.success(request, f'Compromiso {commitment.codigo_publico} registrado en la agenda colectiva.')
+            return redirect(f"/funcionario/agenda_colectiva/?periodo={period.pk}")
+        else:
+            errores = '; '.join(
+                f"{campo}: {', '.join(msgs)}" for campo, msgs in form.errors.items()
+            )
+            messages.error(request, f'No se pudo guardar el compromiso: {errores}')
+
     query = request.GET.get('q', '').strip()
     estado_filtro = request.GET.get('estado_filtro', '').strip()
-    registros = Registro.objects.none()
     commitments = Compromiso.objects.none()
 
     if delegation_id and selected_period:
@@ -477,53 +487,169 @@ def agenda_colectiva(request):
             agenda__periodo=selected_period,
         )
         marcar_compromisos_vencidos(commitments_scope, request.user)
-        registros = Registro.objects.filter(
-            autor__usuariodelegacion__delegacion_id=delegation_id,
-            autor__usuariodelegacion__fecha_fin__isnull=True,
-            periodo=selected_period,
-            incluir_en_agenda=True,
-        ).select_related('autor', 'item').distinct().order_by('-fecha')
 
-        commitments = Compromiso.objects.filter(
-            agenda__delegacion_id=delegation_id,
-            agenda__periodo=selected_period,
-        ).select_related('agenda', 'agenda__periodo').prefetch_related(
-            'responsable',
-        )
+        commitments = commitments_scope.select_related('agenda', 'agenda__periodo', 'solicitante', 'territorio', 'tipo', 'subtipo', 'evidencia'
+        ).prefetch_related('responsable').order_by('-fecha_compromiso', '-pk')
 
         if query:
             commitments = commitments.filter(
                 Q(descripcion__icontains=query)
                 | Q(solicitante__nombre__icontains=query)
                 | Q(solicitante__apellido__icontains=query)
+                | Q(territorio__nombre__icontains=query)
+                | Q(area_apoyo__icontains=query)
             )
         if estado_filtro:
             commitments = commitments.filter(estado=estado_filtro)
 
-    agenda_results = agenda_items(
-        delegation_id=delegation_id,
-        period=selected_period,
-        query=query,
-        actor=request.user,
-    ) if delegation_id and selected_period else []
+    page_obj = Paginator(commitments, 15).get_page(request.GET.get('page'))
 
-    paginator = Paginator(commitments, 10)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
+    # Marcar qué compromisos puede editar el usuario actual
+    for item in page_obj:
+        es_responsable = any(u.pk == request.user.pk for u in item.responsable.all())
+        periodo_abierto = item.agenda.periodo.estado == Periodo.Estado.ABIERTO
+        item.puede_editar = es_responsable and periodo_abierto and not bool(item.evidencia_id)
 
+    tipos = Tipo.objects.filter(estado=Tipo.Estado.ACTIVADO).order_by('nombre')
+    vecinos = Vecino.objects.filter(activo=True).order_by('nombre', 'apellido')
+    territorios = Territorio.objects.filter(delegacion=delegation).order_by('nombre') if delegation else Territorio.objects.none()
+    registros = Registro.objects.none()
+    agenda_results = []
+    if delegation_id and selected_period:
+        registros = Registro.objects.filter(autor__usuariodelegacion__delegacion_id=delegation_id,autor__usuariodelegacion__fecha_fin__isnull=True,periodo=selected_period,incluir_en_agenda=True,).select_related('autor', 'item').distinct().order_by('-fecha')
+        agenda_results = agenda_items(
+            delegation_id=delegation_id,
+            period=selected_period,
+            query=query,
+            actor=request.user,
+        )
     return render(request, 'FuncionarioApp/agenda_colectiva.html', {
         'sgr_role': 'Funcionario',
         'sidebar_modules': _funcionario_sidebar_modules(),
+        'form': form,
         'periodos': periods,
         'periodo_seleccionado': selected_period,
-        'registros': registros,
         'page_obj': page_obj,
         'delegation_assigned': bool(delegation_id),
         'query': query,
         'estado_filtro': estado_filtro,
-        'agenda_results': agenda_results,
+        'estados_choices': Compromiso.Estado.choices,
+        'ambitos_choices': Compromiso.Ambito.choices,
+        'tipos': tipos,
+        'vecinos': vecinos,
+        'territorios': territorios,
+        'registros' : registros,
+        'agenda_results' : agenda_results,
     })
 
+
+@cargo_required('funcionario', permission='manage_collective_agenda')
+@require_GET
+def buscar_compromisos_ajax(request):
+    """Buscador AJAX en vivo (keyup) para filtrar compromisos de la agenda colectiva."""
+    delegation = active_delegation(request)
+    periods = Periodo.objects.filter(estado=Periodo.Estado.ABIERTO).order_by('-fecha_inicio')
+    period_id = request.GET.get('periodo', '')
+    selected_period = periods.filter(pk=int(period_id)).first() if period_id.isdecimal() else periods.first()
+
+    if not delegation or not selected_period:
+        return JsonResponse({'success': True, 'compromisos': []})
+
+    query = request.GET.get('q', '').strip()
+    estado_filtro = request.GET.get('estado', '').strip()
+
+    commitments_scope = Compromiso.objects.filter(agenda__delegacion=delegation,agenda__periodo=selected_period,)
+    marcar_compromisos_vencidos(commitments_scope, request.user)
+
+    qs = commitments_scope.select_related('agenda__periodo', 'solicitante', 'territorio', 'tipo', 'subtipo', 'evidencia'
+    ).prefetch_related('responsable').order_by('-fecha_compromiso', '-pk')
+
+    if query:
+        qs = qs.filter(
+            Q(descripcion__icontains=query)
+            | Q(solicitante__nombre__icontains=query)
+            | Q(solicitante__apellido__icontains=query)
+            | Q(territorio__nombre__icontains=query)
+            | Q(area_apoyo__icontains=query)
+        )
+    if estado_filtro:
+        qs = qs.filter(estado=estado_filtro)
+
+    resultados = []
+    for c in qs[:50]:
+        es_responsable = any(u.pk == request.user.pk for u in c.responsable.all())
+        puede_editar = es_responsable and (c.agenda.periodo.estado == Periodo.Estado.ABIERTO) and not bool(c.evidencia_id)
+        responsables_str = ', '.join(
+            (u.get_full_name() or u.email) for u in c.responsable.all()
+        ) or 'Sin asignar'
+        solicitante_str = f"{c.solicitante.nombre} {c.solicitante.apellido or ''}".strip() if c.solicitante else '—'
+
+        resultados.append({
+            'id': c.pk,
+            'codigo': c.codigo_publico,
+            'descripcion': c.descripcion,
+            'solicitante': solicitante_str,
+            'territorio': c.territorio.nombre if c.territorio else '—',
+            'observaciones': c.observaciones or '—',
+            'genera_puntaje': 'Sí' if (c.genera_puntaje and c.genera_puntaje > 0) else 'No',
+            'tipo': c.tipo.nombre if c.tipo else '—',
+            'subtipo': c.subtipo.nombre if c.subtipo else '—',
+            'ambito': c.get_ambito_display(),
+            'area_apoyo': c.area_apoyo or '—',
+            'fecha_compromiso': timezone.localtime(c.fecha_compromiso).strftime('%d/%m/%Y %H:%M') if c.fecha_compromiso else '—',
+            'fecha_solicitud': timezone.localtime(c.fecha_solicitud).strftime('%d/%m/%Y %H:%M') if c.fecha_solicitud else '—',
+            'evidencia_id': c.evidencia.pk if c.evidencia_id else None,
+            'evidencia_codigo': str(c.evidencia.codigo) if (c.evidencia_id and getattr(c.evidencia, 'codigo', None)) else (f"EV-{c.evidencia.pk}" if c.evidencia_id else None),
+            'evidencia_url': c.evidencia.archivo.url if (c.evidencia_id and c.evidencia.archivo) else None,
+            'estado': c.estado,
+            'estado_display': c.get_estado_display(),
+            'puede_editar': puede_editar,
+        })
+    return JsonResponse({'success': True, 'compromisos': resultados})
+
+
+def _compromiso_snapshot(compromiso):
+    return {
+        'descripcion': compromiso.descripcion,
+        'solicitante_id': compromiso.solicitante_id,
+        'territorio_id': compromiso.territorio_id,
+        'fecha_compromiso': compromiso.fecha_compromiso.isoformat(),
+        'observaciones': compromiso.observaciones,
+        'tipo_id': compromiso.tipo_id,
+        'subtipo_id': compromiso.subtipo_id,
+        'responsable_ids': sorted(compromiso.responsable.values_list('pk', flat=True)),
+    }
+
+@cargo_required('funcionario', permission='manage_collective_agenda')
+@require_GET
+def detalle_compromiso_json(request, compromiso_id):
+    """Retorna los datos del compromiso en JSON para precargar el modal de edición."""
+    delegation = active_delegation(request)
+    commitment = get_object_or_404(Compromiso.objects.select_related('agenda', 'agenda__periodo'),pk=compromiso_id,agenda__delegacion=delegation)
+
+    subtipos_qs = Subtipo.objects.filter(tipo_id=commitment.tipo_id, estado=Subtipo.Estado.ACTIVADO)
+    if commitment.subtipo_id:
+        subtipos_qs = (subtipos_qs | Subtipo.objects.filter(pk=commitment.subtipo_id)).distinct()
+    subtipos = list(subtipos_qs.order_by('nombre').values('pk', 'nombre'))
+
+    return JsonResponse({
+        'id': commitment.pk,
+        'codigo': commitment.codigo_publico,
+        'periodo_id': commitment.agenda.periodo_id,
+        'descripcion': commitment.descripcion,
+        'fecha_solicitud': timezone.localtime(commitment.fecha_solicitud).strftime('%Y-%m-%dT%H:%M') if commitment.fecha_solicitud else '',
+        'fecha_compromiso': timezone.localtime(commitment.fecha_compromiso).strftime('%Y-%m-%dT%H:%M') if commitment.fecha_compromiso else '',
+        'ambito': commitment.ambito,
+        'solicitante_id': commitment.solicitante_id or '',
+        'territorio_id': commitment.territorio_id or '',
+        'area_apoyo': commitment.area_apoyo or '',
+        'mes': commitment.mes,
+        'tipo_id': commitment.tipo_id or '',
+        'subtipo_id': commitment.subtipo_id or '',
+        'estado': commitment.estado,
+        'observaciones': commitment.observaciones or '',
+        'subtipos_disponibles': subtipos,
+    })
 
 @cargo_required('funcionario', permission='search_collective_agenda')
 @require_GET
@@ -546,17 +672,103 @@ def agenda_busqueda_json(request):
     )})
 
 
-def _compromiso_snapshot(compromiso):
-    return {
-        'descripcion': compromiso.descripcion,
-        'solicitante_id': compromiso.solicitante_id,
-        'territorio_id': compromiso.territorio_id,
-        'fecha_compromiso': compromiso.fecha_compromiso.isoformat(),
-        'observaciones': compromiso.observaciones,
-        'tipo_id': compromiso.tipo_id,
-        'subtipo_id': compromiso.subtipo_id,
-        'responsable_ids': sorted(compromiso.responsable.values_list('pk', flat=True)),
-    }
+@cargo_required('funcionario', permission='manage_collective_agenda')
+@require_POST
+def editar_compromiso_ajax(request, compromiso_id):
+    """Actualiza el compromiso vía AJAX desde el modal, validando reglas de negocio y auditando."""
+    delegation, commitments = _compromisos_responsable(request)
+    commitment = get_object_or_404(commitments, pk=compromiso_id)
+
+    if bool(commitment.evidencia_id):
+        return JsonResponse({'success': False, 'message': 'Este compromiso ya tiene evidencia asociada; la edición está bloqueada.'}, status=400)
+
+    if commitment.agenda.periodo.estado != Periodo.Estado.ABIERTO:
+        return JsonResponse({'success': False, 'message': 'Los compromisos de un período cerrado son de solo lectura.'}, status=400)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': 'Payload JSON inválido.'}, status=400)
+
+    descripcion = data.get('descripcion', '').strip()
+    fecha_solicitud_raw = data.get('fecha_solicitud')
+    fecha_compromiso_raw = data.get('fecha_compromiso')
+    ambito = data.get('ambito', Compromiso.Ambito.EXTERNO)
+    solicitante_id = data.get('solicitante_id') or None
+    territorio_id = data.get('territorio_id') or None
+    area_apoyo = data.get('area_apoyo', '').strip()
+    tipo_id = data.get('tipo_id') or None
+    subtipo_id = data.get('subtipo_id') or None
+    estado = data.get('estado', commitment.estado)
+    observaciones = data.get('observaciones', '').strip()
+    periodo_id = data.get('periodo_id') or commitment.agenda.periodo_id
+
+    if not descripcion or not fecha_solicitud_raw or not fecha_compromiso_raw:
+        return JsonResponse({'success': False, 'message': 'La descripción, fecha de solicitud y fecha de compromiso son obligatorias.'}, status=400)
+
+    from datetime import datetime
+    try:
+        fecha_sol = timezone.make_aware(datetime.fromisoformat(fecha_solicitud_raw))
+        fecha_comp = timezone.make_aware(datetime.fromisoformat(fecha_compromiso_raw))
+    except ValueError:
+        return JsonResponse({'success': False, 'message': 'El formato de fecha y hora ingresado no es válido.'}, status=400)
+
+    if fecha_comp < fecha_sol:
+        return JsonResponse({'success': False, 'message': 'La fecha de compromiso no puede ser anterior a la fecha de solicitud.'}, status=400)
+
+    valid_estados = {choice[0] for choice in Compromiso.Estado.choices}
+    if estado not in valid_estados:
+        return JsonResponse({'success': False, 'message': 'El estado seleccionado no es válido.'}, status=400)
+
+    period = get_object_or_404(Periodo, pk=periodo_id, estado=Periodo.Estado.ABIERTO)
+    before = _compromiso_snapshot(commitment)
+    estado_anterior = commitment.estado
+
+    try:
+        with transaction.atomic():
+            agenda, _ = Agenda.objects.get_or_create(delegacion=delegation,periodo=period)
+            commitment.agenda = agenda
+            commitment.descripcion = descripcion
+            commitment.fecha_solicitud = fecha_sol
+            commitment.fecha_compromiso = fecha_comp
+            commitment.mes = fecha_comp.month
+            commitment.ambito = ambito
+            commitment.solicitante_id = solicitante_id
+            commitment.territorio_id = territorio_id
+            commitment.area_apoyo = area_apoyo
+            commitment.observaciones = observaciones
+            commitment.estado = estado
+
+            if tipo_id:
+                commitment.tipo_id = tipo_id
+            if subtipo_id:
+                commitment.subtipo_id = subtipo_id
+
+            commitment.save()
+
+            if estado_anterior != estado:
+                from DelegadoApp.models import HistorialEstadoCompromiso
+                HistorialEstadoCompromiso.objects.create(
+                    compromiso=commitment,
+                    estado_anterior=estado_anterior,
+                    estado_nuevo=estado,
+                    autor=request.user,
+                )
+
+            registrar_historial(
+                actor=request.user,
+                action='Modificar compromiso como Funcionario (AJAX)',
+                entity=f'Compromiso:{commitment.pk}',
+                before=before,
+                after=_compromiso_snapshot(commitment),
+                period=period,
+            )
+        return JsonResponse({
+            'success': True,
+            'message': f'El compromiso {commitment.codigo_publico} se actualizó correctamente.',
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Error al actualizar el compromiso: {str(e)}'}, status=500)
 
 
 def _compromisos_responsable(request):
@@ -569,86 +781,7 @@ def _compromisos_responsable(request):
     ).select_related('agenda', 'agenda__periodo')
 
 
-@cargo_required('funcionario', permission='create_employee_commitments')
-def nuevo_compromiso(request):
-    delegation = active_delegation(request)
-    form = FuncionarioCompromisoForm(request.POST or None)
-    if request.method == 'POST':
-        if delegation is None:
-            messages.error(request, 'Asigna una delegación a tu cuenta antes de crear compromisos.')
-        elif form.is_valid():
-            period = form.cleaned_data['periodo']
-            agenda, _ = Agenda.objects.get_or_create(
-                delegacion=delegation,
-                periodo=period,
-            )
-            with transaction.atomic():
-                commitment = form.save(commit=False)
-                commitment.agenda = agenda
-                commitment.save()
-                commitment.responsable.add(request.user)
-                registrar_historial(
-                    actor=request.user,
-                    action='Crear compromiso como Funcionario',
-                    entity=f'Compromiso:{commitment.pk}',
-                    after=_compromiso_snapshot(commitment),
-                    period=period,
-                )
-            messages.success(request, 'El compromiso quedó agregado a la agenda.')
-            return redirect('funcionario:agenda_colectiva')
-        else:
-            messages.error(request, 'No se pudo guardar. Revisa los campos indicados.')
-    return render(request, 'FuncionarioApp/compromiso_form.html', {
-        'sgr_role': 'Funcionario',
-        'sidebar_modules': _funcionario_sidebar_modules(),
-        'form': form,
-        'compromiso': None,
-    })
 
-
-@cargo_required('funcionario', permission='edit_employee_commitments')
-def editar_compromiso(request, compromiso_id):
-    delegation, commitments = _compromisos_responsable(request)
-    commitment = get_object_or_404(commitments, pk=compromiso_id)
-    if bool(commitment.evidencia_id):
-        messages.error(request, 'Este compromiso ya tiene evidencias; la edición general está bloqueada.')
-        return redirect('funcionario:agenda_colectiva')
-    if commitment.agenda.periodo.estado != Periodo.Estado.ABIERTO:
-        messages.error(request, 'Los compromisos de un período cerrado son de solo lectura.')
-        return redirect('funcionario:agenda_colectiva')
-    form = FuncionarioCompromisoForm(
-        request.POST or None,
-        instance=commitment,
-    )
-    if request.method == 'POST' and form.is_valid():
-        before = _compromiso_snapshot(commitment)
-        with transaction.atomic():
-            period = form.cleaned_data['periodo']
-            agenda, _ = Agenda.objects.get_or_create(
-                delegacion=delegation,
-                periodo=period,
-            )
-            commitment = form.save(commit=False)
-            commitment.agenda = agenda
-            commitment.save()
-            registrar_historial(
-                actor=request.user,
-                action='Modificar compromiso como Funcionario',
-                entity=f'Compromiso:{commitment.pk}',
-                before=before,
-                after=_compromiso_snapshot(commitment),
-                period=commitment.agenda.periodo,
-            )
-        messages.success(request, 'El compromiso se actualizó correctamente.')
-        return redirect('funcionario:agenda_colectiva')
-    if request.method == 'POST':
-        messages.error(request, 'No se pudo guardar. Revisa los campos indicados.')
-    return render(request, 'FuncionarioApp/compromiso_form.html', {
-        'sgr_role': 'Funcionario',
-        'sidebar_modules': _funcionario_sidebar_modules(),
-        'form': form,
-        'compromiso': commitment,
-    })
 
 
 @cargo_required('funcionario', permission='upload_commitment_evidence')

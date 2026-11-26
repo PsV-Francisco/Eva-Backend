@@ -1,7 +1,73 @@
 {% extends 'base.html' %}
 {% block title %}Agenda colectiva | SGR{% endblock %}
 {% block page_title %}Agenda colectiva{% endblock %}
+
 {% block content %}
+<style>
+  :root {
+    --muni-rojo: #B71C1C;
+    --muni-rojo-hover: #8E0000;
+    --muni-rojo-suave: #FFEBEE;
+    --muni-rojo-borde: #EF9A9A;
+  }
+
+  .text-muni {
+    color: var(--muni-rojo) !important;
+  }
+
+  .bg-muni {
+    background-color: var(--muni-rojo) !important;
+    color: #ffffff !important;
+  }
+
+  .btn-muni {
+    background-color: var(--muni-rojo);
+    border-color: var(--muni-rojo);
+    color: #ffffff;
+  }
+
+  .btn-muni:hover,
+  .btn-muni:focus {
+    background-color: var(--muni-rojo-hover);
+    border-color: var(--muni-rojo-hover);
+    color: #ffffff;
+  }
+
+  .btn-outline-muni {
+    color: var(--muni-rojo);
+    border-color: var(--muni-rojo);
+    background-color: transparent;
+  }
+
+  .btn-outline-muni:hover,
+  .btn-outline-muni:focus {
+    background-color: var(--muni-rojo);
+    border-color: var(--muni-rojo);
+    color: #ffffff;
+  }
+
+  .card-muni-top {
+    border-top: 3px solid var(--muni-rojo) !important;
+  }
+
+  .form-control:focus,
+  .form-select:focus {
+    border-color: var(--muni-rojo-borde);
+    box-shadow: 0 0 0 0.2rem rgba(183, 28, 28, 0.18);
+  }
+
+  .tabla-agenda th {
+    white-space: nowrap;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  .tabla-agenda td {
+    font-size: 0.85rem;
+  }
+</style>
+
 <div class="dashboard-layout">
     {% include 'includes/role_sidebar.html' %}
     <div class="dashboard-main">
@@ -9,31 +75,31 @@
         <div class="alert alert-warning">Tu cuenta no tiene una delegación asignada; no hay agenda colectiva disponible.</div>
         {% endif %}
 
+        <!-- ENCABEZADO Y FILTROS COMBINADOS (HU-29 + Período) -->
         <section class="content-section">
-            <div class="section-head d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <h2>{% if periodo_seleccionado %}{{ periodo_seleccionado.nombre }}{% else %}Sin período abierto{% endif %}</h2>
-                {% if delegation_assigned %}
-                <a href="{% url 'funcionario:compromiso_nuevo' %}" class="btn btn-primary">+ Nuevo compromiso</a>
-                {% endif %}
+            <div class="section-head d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <h2 class="mb-0">
+                    <i class="bi bi-calendar2-week text-muni me-2"></i>
+                    {% if periodo_seleccionado %}{{ periodo_seleccionado.nombre }}{% else %}Sin período abierto{% endif %}
+                </h2>
             </div>
-            
-            <!-- NUEVO FORMULARIO HU-29: Búsqueda y Filtros combinados -->
-            <form method="get" id="agenda-search-form" class="row g-3 mb-3 bg-light p-3 rounded shadow-sm border">
+
+            <form method="get" id="agenda-search-form" class="row g-3 mb-4 bg-light p-3 rounded shadow-sm border">
                 <div class="col-md-3">
                     <label for="periodo" class="form-label fw-bold">Período abierto</label>
-                    <select id="periodo" name="periodo" class="form-select">
+                    <select id="periodo" name="periodo" class="form-select" onchange="this.form.submit()">
                         {% for periodo in periodos %}
                         <option value="{{ periodo.pk }}" {% if periodo == periodo_seleccionado %}selected{% endif %}>{{ periodo.nombre }}</option>
                         {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label for="q" class="form-label fw-bold">Búsqueda inteligente</label>
-                    <input type="text" class="form-control" id="q" name="q" value="{{ query }}" placeholder="Descripción o solicitante...">
+                    <label for="q" class="form-label fw-bold">Búsqueda inteligente (en vivo)</label>
+                    <input type="text" class="form-control" id="q" name="q" value="{{ query }}" placeholder="Descripción, vecino, territorio o área..." autocomplete="off">
                 </div>
                 <div class="col-md-3">
                     <label for="estado_filtro" class="form-label fw-bold">Filtrar Estado</label>
-                    <select id="estado_filtro" name="estado_filtro" class="form-select" onchange="this.form.submit()">
+                    <select id="estado_filtro" name="estado_filtro" class="form-select">
                         <option value="">Todos los estados</option>
                         <option value="ingresado" {% if estado_filtro == 'ingresado' %}selected{% endif %}>Ingresado</option>
                         <option value="pendiente" {% if estado_filtro == 'pendiente' %}selected{% endif %}>Pendiente</option>
@@ -50,133 +116,186 @@
             </form>
         </section>
 
-        <!-- SECCIÓN DE REGISTROS -->
-        <section class="content-section d-none">
-            <h2>Registros incluidos en agenda</h2>
-            <div class="table-responsive shadow-sm">
-                <table class="table table-striped">
-                    <thead class="table-dark">
-                        <tr><th>Fecha</th><th>Funcionario</th><th>Ítem</th><th>Actividad</th><th>Estado</th></tr>
-                    </thead>
-                    <tbody>
-                        {% for registro in registros %}
-                        <tr>
-                            <td>{{ registro.fecha|date:'d/m/Y' }}</td>
-                            <td>{{ registro.autor.get_full_name|default:registro.autor.email }}</td>
-                            <td>{{ registro.item }}</td>
-                            <td>{{ registro.descripcion }}</td>
-                            <td>{{ registro.get_estado_display }}</td>
-                        </tr>
-                        {% empty %}
-                        <tr><td colspan="5" class="text-center py-3">No hay registros compartidos para el período.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+        <!-- BLOQUE 1 NUEVO: FORMULARIO DE CREACIÓN DIRECTA DE COMPROMISOS -->
+        {% if delegation_assigned %}
+        <section class="content-section mb-4">
+            <div class="card shadow-sm border-0 card-muni-top">
+                <div class="card-header bg-white py-3 border-bottom">
+                    <h5 class="card-title mb-0 fw-semibold text-muni">
+                        <i class="bi bi-plus-circle me-2"></i>Registrar Nuevo Compromiso
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form id="formCrearCompromiso" method="post" action="{% url 'funcionario:agenda_colectiva' %}" novalidate>
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="crear_compromiso">
+
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <label for="id_periodo" class="form-label fw-semibold">Período de Agenda <span class="text-danger">*</span></label>
+                                {{ form.periodo }}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="id_descripcion" class="form-label fw-semibold">Descripción <span class="text-danger">*</span></label>
+                                {{ form.descripcion }}
+                            </div>
+                            <div class="col-md-3">
+                                <label for="id_ambito" class="form-label fw-semibold">Ámbito <span class="text-danger">*</span></label>
+                                {{ form.ambito }}
+                            </div>
+
+                            <div class="col-md-3">
+                                <label for="id_fecha_solicitud" class="form-label fw-semibold">Fecha Solicitud <span class="text-danger">*</span></label>
+                                {{ form.fecha_solicitud }}
+                            </div>
+                            <div class="col-md-3">
+                                <label for="id_fecha_compromiso" class="form-label fw-semibold">Fecha Compromiso <span class="text-danger">*</span></label>
+                                {{ form.fecha_compromiso }}
+                            </div>
+                            <div class="col-md-3">
+                                <label for="id_solicitante" class="form-label fw-semibold">Vecino (Solicitante)</label>
+                                {{ form.solicitante }}
+                            </div>
+                            <div class="col-md-3">
+                                <label for="id_territorio" class="form-label fw-semibold">Territorio</label>
+                                {{ form.territorio }}
+                            </div>
+
+                            <div class="col-md-3">
+                                <label for="id_tipo" class="form-label fw-semibold">Tipo</label>
+                                {{ form.tipo }}
+                            </div>
+                            <div class="col-md-3">
+                                <label for="id_subtipo" class="form-label fw-semibold">Subtipo</label>
+                                {{ form.subtipo }}
+                            </div>
+                            <div class="col-md-3">
+                                <label for="id_area_apoyo" class="form-label fw-semibold">Área de Apoyo</label>
+                                {{ form.area_apoyo }}
+                            </div>
+                            <div class="col-md-3">
+                                <label for="id_mes" class="form-label fw-semibold">Mes (1-12)</label>
+                                {{ form.mes }}
+                            </div>
+
+                            <div class="col-12">
+                                <label for="id_observaciones" class="form-label fw-semibold">Observaciones</label>
+                                {{ form.observaciones }}
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-end mt-3 pt-2 border-top">
+                            <button type="reset" class="btn btn-light me-2">Limpiar</button>
+                            <button type="submit" class="btn btn-muni fw-semibold">
+                                <i class="bi bi-save me-1"></i> Guardar Compromiso
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </section>
+        {% endif %}
 
-        <!-- SECCIÓN DE COMPROMISOS PAGINADA HU-29 -->
-        <section class="content-section d-none">
+        <!-- BLOQUE 2 INTEGRADO: COMPROMISOS DE LA DELEGACIÓN (Columnas exactas + Paginación + Modal) -->
+        <section class="content-section mb-4">
             <div class="section-head d-flex justify-content-between align-items-center mb-3">
-                <h2>Compromisos de la delegación</h2>
-                <a class="btn btn-danger fw-bold" href="{% url 'funcionario:compromiso_nuevo' %}">+ Nuevo compromiso</a>
+                <h2 class="h5 fw-bold mb-0"><i class="bi bi-list-check text-muni me-2"></i>Compromisos de la delegación</h2>
             </div>
-            <div class="table-responsive shadow-sm">
-                <table class="table table-striped align-middle">
-                    <thead class="table-dark">
+            <div class="table-responsive shadow-sm rounded border bg-white">
+                <table class="table table-hover align-middle mb-0 tabla-agenda" id="tablaCompromisos">
+                    <thead class="bg-muni text-white">
                         <tr>
-                            <th>Fecha</th>
-                            <th>Compromiso</th>
-                            <th>Responsables</th>
-                            <th>Estado</th>
-                            <th>Acciones</th>
+                            <th class="ps-3" style="min-width: 210px;">Descripción</th>
+                            <th style="min-width: 140px;">Vecino</th>
+                            <th style="min-width: 130px;">Territorio</th>
+                            <th style="min-width: 170px;">Observaciones</th>
+                            <th class="text-center">Genera Puntaje</th>
+                            <th>Tipo</th>
+                            <th>Subtipo</th>
+                            <th>Ámbito</th>
+                            <th>Área de Apoyo</th>
+                            <th>Fecha Compromiso</th>
+                            <th>Fecha Solicitud</th>
+                            <th class="text-center">Evidencia</th>
+                            <th class="text-end pe-3" style="min-width: 150px;">Acciones</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <!-- ITERAMOS SOBRE page_obj EN VEZ DE compromisos -->
+                    <tbody id="tbodyCompromisos">
                         {% for compromiso in page_obj %}
                         <tr class="{% if compromiso.esta_vencido %}table-danger{% endif %}">
-                            <td>
-                                <strong>{{ compromiso.fecha_compromiso|date:'d/m/Y' }}</strong>
-                                <div class="text-muted small">Ingreso: {{ compromiso.fecha_solicitud|date:'d/m/Y' }}</div>
-                            </td>
-                            <td>
-                                <div class="fw-bold text-primary small">{{ compromiso.codigo_publico }}</div>
-                                <div>{{ compromiso.descripcion }}</div>
-                                {% if compromiso.solicitante %}
-                                    <div class="text-muted small">
-                                        Vecino: {{ compromiso.solicitante.nombre }} {{ compromiso.solicitante.apellido|default:'' }}
-                                        {% if compromiso.solicitante.rut %}({{ compromiso.solicitante.rut }}){% endif %}
-                                        {% if compromiso.solicitante.telefono %} · Tel: {{ compromiso.solicitante.telefono }}{% endif %}
-                                    </div>
-                                {% endif %}
-                                {% if compromiso.territorio or compromiso.area_apoyo %}
-                                    <div class="text-muted small">
-                                        {% if compromiso.territorio %}Territorio: {{ compromiso.territorio.nombre }}{% endif %}
-                                        {% if compromiso.territorio and compromiso.area_apoyo %} · {% endif %}
-                                        {% if compromiso.area_apoyo %}Apoyo: {{ compromiso.area_apoyo }}{% endif %}
-                                    </div>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% for responsable in compromiso.responsable.all %}
-                                    {{ responsable.get_full_name|default:responsable.email }}{% if not forloop.last %}, {% endif %}
-                                {% empty %}—{% endfor %}
-                            </td>
-                            <td>
+                            <td class="ps-3">
+                                <div class="fw-bold text-muni small">{{ compromiso.codigo_publico }}</div>
+                                <div class="fw-medium text-dark">{{ compromiso.descripcion }}</div>
                                 {% if compromiso.esta_vencido %}
-                                    <span class="badge bg-danger">Vencido</span>
-                                    <div class="text-muted small mt-1">Estado: {{ compromiso.get_estado_display }}</div>
+                                    <span class="badge bg-danger mt-1">Vencido ({{ compromiso.get_estado_display }})</span>
                                 {% else %}
-                                    <span class="badge {% if compromiso.estado == 'realizado' %}bg-success{% elif compromiso.estado == 'en_proceso' %}bg-primary{% else %}bg-secondary{% endif %}">
+                                    <span class="badge {% if compromiso.estado == 'realizado' %}bg-success{% elif compromiso.estado == 'en_proceso' %}bg-primary{% else %}bg-secondary{% endif %} mt-1">
                                         {{ compromiso.get_estado_display }}
                                     </span>
                                 {% endif %}
                             </td>
                             <td>
+                                {% if compromiso.solicitante %}
+                                    {{ compromiso.solicitante.nombre }} {{ compromiso.solicitante.apellido|default:'' }}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ compromiso.territorio.nombre|default:"—" }}</td>
+                            <td class="text-muted small">{{ compromiso.observaciones|default:"—" }}</td>
+                            <td class="text-center">
+                                {% if compromiso.genera_puntaje and compromiso.genera_puntaje > 0 %}
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle">Sí</span>
+                                {% else %}
+                                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">No</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ compromiso.tipo.nombre|default:"—" }}</td>
+                            <td>{{ compromiso.subtipo.nombre|default:"—" }}</td>
+                            <td>{{ compromiso.get_ambito_display }}</td>
+                            <td>{{ compromiso.area_apoyo|default:"—" }}</td>
+                            <td class="text-nowrap">{{ compromiso.fecha_compromiso|date:'d/m/Y H:i' }}</td>
+                            <td class="text-nowrap">{{ compromiso.fecha_solicitud|date:'d/m/Y H:i' }}</td>
+                            <td class="text-center text-nowrap">
+                                {% if compromiso.evidencia %}
+                                    {% if compromiso.evidencia.archivo %}
+                                        <a href="{{ compromiso.evidencia.archivo.url }}" target="_blank" rel="noopener noreferrer" class="badge bg-danger-subtle text-muni border border-danger-subtle text-decoration-none" title="Ver evidencia adjunta">
+                                            <i class="bi bi-paperclip me-1"></i>#{{ compromiso.evidencia.pk }}
+                                        </a>
+                                    {% else %}
+                                        <span class="badge bg-light text-dark border">#{{ compromiso.evidencia.pk }}</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted small">Sin evidencia</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-3 text-nowrap">
                                 {% if request.user in compromiso.responsable.all and compromiso.agenda.periodo.estado == 'abierto' %}
-                                    <form method="post" class="d-inline d-flex gap-2">
-                                        {% csrf_token %}
-                                        <input type="hidden" name="action" value="estado_compromiso">
-                                        <input type="hidden" name="compromiso_id" value="{{ compromiso.pk }}">
-                                        <input type="hidden" name="periodo" value="{{ periodo_seleccionado.pk }}">
-                                        <select name="estado" aria-label="Nuevo estado" class="form-select form-select-sm" style="width: auto;">
-                                            <option value="ingresado" {% if compromiso.estado == 'ingresado' %}selected{% endif %}>Ingresado</option>
-                                            <option value="pendiente" {% if compromiso.estado == 'pendiente' %}selected{% endif %}>Pendiente</option>
-                                            <option value="en_proceso" {% if compromiso.estado == 'en_proceso' %}selected{% endif %}>En proceso</option>
-                                            <option value="realizado" {% if compromiso.estado == 'realizado' %}selected{% endif %}>Realizado</option>
-                                            <option value="cerrado" {% if compromiso.estado == 'cerrado' %}selected{% endif %}>Cerrado</option>
-                                            <option value="no_aplica" {% if compromiso.estado == 'no_aplica' %}selected{% endif %}>No aplica</option>
-                                            <option value="vencido" {% if compromiso.estado == 'vencido' %}selected{% endif %}>Vencido</option>
-                                        </select>
-                                        <textarea name="observaciones" class="form-control form-control-sm" rows="1" placeholder="Avance / observaciones">{{ compromiso.observaciones }}</textarea>
-                                        <button class="btn btn-sm btn-primary" type="submit">Guardar</button>
-                                    </form>
-                                    <div class="mt-2">
-                                        <a href="{% url 'funcionario:compromiso_evidencia' compromiso.pk %}" class="text-decoration-none">Cargar evidencia</a>
-                                        {% if compromiso.evidencia %}
-                                            <br><span class="text-muted small">Edición general bloqueada porque ya tiene evidencias.</span>
-                                        {% else %}
-                                            | <a href="{% url 'funcionario:compromiso_editar' compromiso.pk %}" class="text-decoration-none">Editar datos</a>
-                                        {% endif %}
-                                    </div>
+                                    {% if not compromiso.evidencia %}
+                                        <button type="button" class="btn btn-sm btn-outline-muni btn-editar-compromiso" data-id="{{ compromiso.pk }}" title="Editar datos del compromiso">
+                                            <i class="bi bi-pencil-square"></i> Editar
+                                        </button>
+                                    {% endif %}
+                                    <a href="{% url 'funcionario:compromiso_evidencia' compromiso.pk %}" class="btn btn-sm btn-outline-secondary" title="Cargar evidencia">
+                                        <i class="bi bi-upload"></i>
+                                    </a>
                                 {% elif compromiso.agenda.periodo.estado == 'cerrado' %}
                                     <span class="text-muted small">Período cerrado</span>
                                 {% else %}
-                                    <span class="text-muted small">Solo responsables asignados</span>
+                                    <span class="text-muted small">Solo lectura</span>
                                 {% endif %}
                             </td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="5" class="text-center py-4">No hay compromisos para los filtros seleccionados.</td></tr>
+                        <tr><td colspan="13" class="text-center py-4 text-muted">No hay compromisos para los filtros seleccionados.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
 
-            <!-- CONTROLES DE PAGINACIÓN -->
+            <!-- CONTROLES DE PAGINACIÓN DE COMPROMISOS (Conservados de HU-29) -->
             {% if page_obj.has_other_pages %}
-            <nav class="mt-3">
+            <nav class="mt-3" id="paginacionCompromisos">
                 <ul class="pagination justify-content-center">
                     {% if page_obj.has_previous %}
                         <li class="page-item"><a class="page-link text-danger" href="?page={{ page_obj.previous_page_number }}&q={{ query }}&estado_filtro={{ estado_filtro }}&periodo={{ periodo_seleccionado.pk|default:'' }}">Anterior</a></li>
@@ -195,46 +314,341 @@
             </nav>
             {% endif %}
         </section>
+
+        <!-- SECCIÓN DE REGISTROS INCLUIDOS EN AGENDA (Habilitada y conservada) -->
+        <section class="content-section mb-4">
+            <h2 class="h5 fw-bold mb-3"><i class="bi bi-journal-check text-muni me-2"></i>Registros incluidos en agenda</h2>
+            <div class="table-responsive shadow-sm rounded border bg-white">
+                <table class="table table-striped mb-0">
+                    <thead class="table-dark">
+                        <tr><th>Fecha</th><th>Funcionario</th><th>Ítem</th><th>Actividad</th><th>Estado</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for registro in registros %}
+                        <tr>
+                            <td>{{ registro.fecha|date:'d/m/Y' }}</td>
+                            <td>{{ registro.autor.get_full_name|default:registro.autor.email }}</td>
+                            <td>{{ registro.item }}</td>
+                            <td>{{ registro.descripcion }}</td>
+                            <td>{{ registro.get_estado_display }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" class="text-center py-3 text-muted">No hay registros compartidos para el período.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- SECCIÓN DE RESULTADOS DEL TUBO (Conservada intacta) -->
         <section class="content-section">
-            <div class="section-head"><h2>Resultados del Tubo</h2><span id="agenda-search-status" class="text-muted small"></span></div>
-            <div class="table-responsive shadow-sm">
-                <table class="table table-striped" id="agenda-results-table">
-                    <thead class="table-dark"><tr><th>Código</th><th>Fecha</th><th>Origen</th><th>Solicitante</th><th>Descripción</th><th>Estado</th></tr></thead>
+            <div class="section-head d-flex justify-content-between align-items-center mb-2">
+                <h2 class="h5 fw-bold mb-0"><i class="bi bi-envelope-paper text-muni me-2"></i>Resultados del Tubo</h2>
+                <span id="agenda-search-status" class="text-muted small"></span>
+            </div>
+            <div class="table-responsive shadow-sm rounded border bg-white">
+                <table class="table table-striped mb-0" id="agenda-results-table">
+                    <thead class="table-dark"><tr><th>Código</th><th>Fecha</th><th>Origen</th><th>Solicitante</th><th>Descripción</th><th>Estado</th><th>Acción</th></tr></thead>
                     <tbody id="agenda-results">
                     {% for item in agenda_results %}
-                        <tr><td>{{ item.code }}</td><td>{{ item.date|slice:':10' }}</td><td>{{ item.source }}</td><td>{{ item.applicant }}</td><td>{{ item.description }}</td><td>{{ item.status }}</td></tr>
-                    {% empty %}<tr><td colspan="6" class="text-center py-3">No hay registros para los filtros seleccionados.</td></tr>{% endfor %}
+                        <tr>
+                            <td>{{ item.code }}</td>
+                            <td>{{ item.date|slice:':10' }}</td>
+                            <td>{{ item.source }}</td>
+                            <td>{{ item.applicant }}</td>
+                            <td>{{ item.description }}</td>
+                            <td>{{ item.status }}</td>
+                            <td>
+                                {% if item.editable %}
+                                    <a href="{{ item.edit_url }}" class="btn btn-sm btn-outline-primary">Editar</a>
+                                {% else %}
+                                    <span class="text-muted small">Solo lectura</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="7" class="text-center py-3 text-muted">No hay registros para los filtros seleccionados.</td></tr>
+                    {% endfor %}
                     </tbody>
                 </table>
             </div>
         </section>
     </div>
 </div>
+
+<!-- BLOQUE 3 NUEVO: MODAL DE EDICIÓN DE COMPROMISO -->
+<div class="modal fade" id="modalEditarCompromiso" tabindex="-1" aria-labelledby="modalEditarCompromisoLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header bg-muni">
+        <h5 class="modal-title" id="modalEditarCompromisoLabel">
+          <i class="bi bi-pencil-square me-2"></i>Editar Compromiso <span id="edit_codigo_badge" class="badge bg-light text-muni ms-2"></span>
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <form id="formEditarCompromiso" novalidate>
+        <div class="modal-body">
+          <input type="hidden" id="edit_compromiso_id">
+
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label for="edit_periodo_id" class="form-label fw-semibold">Período <span class="text-danger">*</span></label>
+              <select id="edit_periodo_id" class="form-select" required>
+                {% for p in periodos %}
+                  <option value="{{ p.pk }}">{{ p.nombre }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-4">
+              <label for="edit_estado" class="form-label fw-semibold">Estado <span class="text-danger">*</span></label>
+              <select id="edit_estado" class="form-select" required>
+                {% for val, label in estados_choices %}
+                  <option value="{{ val }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-4">
+              <label for="edit_ambito" class="form-label fw-semibold">Ámbito <span class="text-danger">*</span></label>
+              <select id="edit_ambito" class="form-select" required>
+                {% for val, label in ambitos_choices %}
+                  <option value="{{ val }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-12">
+              <label for="edit_descripcion" class="form-label fw-semibold">Descripción <span class="text-danger">*</span></label>
+              <input type="text" id="edit_descripcion" class="form-control" maxlength="240" required>
+            </div>
+
+            <div class="col-md-6">
+              <label for="edit_fecha_solicitud" class="form-label fw-semibold">Fecha Solicitud <span class="text-danger">*</span></label>
+              <input type="datetime-local" id="edit_fecha_solicitud" class="form-control" required>
+            </div>
+
+            <div class="col-md-6">
+              <label for="edit_fecha_compromiso" class="form-label fw-semibold">Fecha Compromiso <span class="text-danger">*</span></label>
+              <input type="datetime-local" id="edit_fecha_compromiso" class="form-control" required>
+            </div>
+
+            <div class="col-md-6">
+              <label for="edit_solicitante_id" class="form-label fw-semibold">Vecino (Solicitante)</label>
+              <select id="edit_solicitante_id" class="form-select">
+                <option value="">Seleccione un vecino (opcional)</option>
+                {% for v in vecinos %}
+                  <option value="{{ v.pk }}">{{ v.nombre }} {{ v.apellido|default_if_none:"" }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-6">
+              <label for="edit_territorio_id" class="form-label fw-semibold">Territorio</label>
+              <select id="edit_territorio_id" class="form-select">
+                <option value="">Seleccione un territorio (opcional)</option>
+                {% for t in territorios %}
+                  <option value="{{ t.pk }}">{{ t.nombre }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-4">
+              <label for="edit_tipo_id" class="form-label fw-semibold">Tipo</label>
+              <select id="edit_tipo_id" class="form-select">
+                <option value="">Seleccione un tipo</option>
+                {% for tipo in tipos %}
+                  <option value="{{ tipo.pk }}">{{ tipo.nombre }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-4">
+              <label for="edit_subtipo_id" class="form-label fw-semibold">Subtipo</label>
+              <select id="edit_subtipo_id" class="form-select">
+                <option value="">Seleccione un subtipo</option>
+              </select>
+            </div>
+
+            <div class="col-md-4">
+              <label for="edit_area_apoyo" class="form-label fw-semibold">Área de Apoyo</label>
+              <input type="text" id="edit_area_apoyo" class="form-control" maxlength="100">
+            </div>
+
+            <div class="col-12">
+              <label for="edit_observaciones" class="form-label fw-semibold">Observaciones</label>
+              <textarea id="edit_observaciones" class="form-control" rows="2"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer bg-light">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-muni">
+            <i class="bi bi-check-lg me-1"></i> Guardar Cambios
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}
+
 {% block extra_js %}
 <script>
-(() => {
-  const input = document.getElementById('q');
-  const period = document.getElementById('periodo');
-  const clear = document.getElementById('clear-agenda-search');
-  const body = document.getElementById('agenda-results');
-  const status = document.getElementById('agenda-search-status');
-  const endpoint = "{% url 'funcionario:agenda_busqueda_json' %}";
-  let timer;
-  function render(results) {
-    body.replaceChildren();
+document.addEventListener('DOMContentLoaded', function () {
+  const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+
+  // Endpoints
+  const endpointTubo = "{% url 'funcionario:agenda_busqueda_json' %}";
+  const endpointCompromisos = "{% url 'funcionario:buscar_compromisos_ajax' %}";
+  const detalleUrlTemplate = "{% url 'funcionario:detalle_compromiso_json' 0 %}";
+  const editarUrlTemplate = "{% url 'funcionario:editar_compromiso_ajax' 0 %}";
+  const subtiposUrlTemplate = "{% url 'funcionario:subtipos_por_tipo' 0 %}";
+  const evidenciaUrlTemplate = "{% url 'funcionario:compromiso_evidencia' 0 %}";
+
+  function buildUrlWithId(template, id) {
+    return template.replace('/0/', `/${id}/`);
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+  }
+
+  async function fetchJsonSafe(url, options = {}) {
+    const response = await fetch(url, options);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      if (response.status === 403) {
+        throw new Error('No tienes permisos suficientes para realizar esta acción (HTTP 403).');
+      }
+      throw new Error(`El servidor devolvió una respuesta inesperada (HTTP ${response.status}).`);
+    }
+    const body = await response.json();
+    return { status: response.status, ok: response.ok, body };
+  }
+
+  // 0. Mensajes Django con SweetAlert2
+  {% if messages %}
+    {% for message in messages %}
+      Swal.fire({
+        icon: "{% if 'error' in message.tags %}error{% elif 'warning' in message.tags %}warning{% else %}success{% endif %}",
+        title: "{% if 'error' in message.tags %}Atención{% elif 'warning' in message.tags %}Advertencia{% else %}Operación exitosa{% endif %}",
+        text: "{{ message|escapejs }}",
+        confirmButtonColor: "#B71C1C"
+      });
+    {% endfor %}
+  {% endif %}
+
+  // 1. Selects encadenados Tipo -> Subtipo
+  function cargarSubtiposEnSelect(tipoSelectEl, subtipoSelectEl, selectedSubtipoId = '') {
+    const tipoId = tipoSelectEl.value;
+    subtipoSelectEl.innerHTML = '<option value="">Seleccione un subtipo</option>';
+    if (!tipoId) return;
+
+    fetchJsonSafe(buildUrlWithId(subtiposUrlTemplate, tipoId), {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+      .then(({ ok, body }) => {
+        if (!ok || !body.subtipos) return;
+        body.subtipos.forEach(st => {
+          const opt = document.createElement('option');
+          opt.value = st.pk;
+          opt.textContent = st.nombre;
+          if (String(st.pk) === String(selectedSubtipoId)) {
+            opt.selected = true;
+          }
+          subtipoSelectEl.appendChild(opt);
+        });
+      })
+      .catch(() => {});
+  }
+
+  const createTipoSelect = document.getElementById('id_tipo');
+  const createSubtipoSelect = document.getElementById('id_subtipo');
+  if (createTipoSelect && createSubtipoSelect) {
+    createTipoSelect.addEventListener('change', () => cargarSubtiposEnSelect(createTipoSelect, createSubtipoSelect));
+  }
+
+  const editTipoSelect = document.getElementById('edit_tipo_id');
+  const editSubtipoSelect = document.getElementById('edit_subtipo_id');
+  if (editTipoSelect && editSubtipoSelect) {
+    editTipoSelect.addEventListener('change', () => cargarSubtiposEnSelect(editTipoSelect, editSubtipoSelect));
+  }
+
+  // Sincronizar mes automáticamente al cambiar Fecha Compromiso en Creación
+  const createFechaComp = document.getElementById('id_fecha_compromiso');
+  const createMesInput = document.getElementById('id_mes');
+  if (createFechaComp && createMesInput) {
+    createFechaComp.addEventListener('change', function () {
+      if (this.value) {
+        const dt = new Date(this.value);
+        if (!isNaN(dt.getTime())) {
+          createMesInput.value = dt.getMonth() + 1;
+        }
+      }
+    });
+  }
+
+  // 2. Validación SweetAlert2 al CREAR Compromiso
+  const formCrear = document.getElementById('formCrearCompromiso');
+  if (formCrear) {
+    formCrear.addEventListener('submit', function (e) {
+      const descripcion = document.getElementById('id_descripcion').value.trim();
+      const fechaSol = document.getElementById('id_fecha_solicitud').value;
+      const fechaComp = document.getElementById('id_fecha_compromiso').value;
+      const periodo = document.getElementById('id_periodo').value;
+
+      if (!periodo || !descripcion || !fechaSol || !fechaComp) {
+        e.preventDefault();
+        Swal.fire({
+          icon: 'warning',
+          title: 'Campos obligatorios faltantes',
+          text: 'Debes completar Período, Descripción, Fecha de Solicitud y Fecha de Compromiso.',
+          confirmButtonColor: '#B71C1C'
+        });
+        return;
+      }
+
+      if (new Date(fechaComp) < new Date(fechaSol)) {
+        e.preventDefault();
+        Swal.fire({
+          icon: 'error',
+          title: 'Fechas inconsistentes',
+          text: 'La fecha de compromiso no puede ser anterior a la fecha de solicitud.',
+          confirmButtonColor: '#B71C1C'
+        });
+      }
+    });
+  }
+
+  // 3. Búsqueda AJAX unificada (Compromisos + Resultados del Tubo)
+  const inputQ = document.getElementById('q');
+  const selectPeriod = document.getElementById('periodo');
+  const selectEstadoFiltro = document.getElementById('estado_filtro');
+  const clearBtn = document.getElementById('clear-agenda-search');
+  const tbodyCompromisos = document.getElementById('tbodyCompromisos');
+  const paginacionCompromisos = document.getElementById('paginacionCompromisos');
+  const tbodyTubo = document.getElementById('agenda-results');
+  const statusTubo = document.getElementById('agenda-search-status');
+  let timer = null;
+
+  function renderTubo(results) {
+    if (!tbodyTubo) return;
+    tbodyTubo.replaceChildren();
     if (!results.length) {
       const row = document.createElement('tr');
       const cell = document.createElement('td');
       cell.colSpan = 7;
-      cell.className = 'text-center py-3';
+      cell.className = 'text-center py-3 text-muted';
       cell.textContent = 'No hay registros para los filtros seleccionados.';
       row.appendChild(cell);
-      body.appendChild(row);
+      tbodyTubo.appendChild(row);
     } else {
       for (const item of results) {
         const row = document.createElement('tr');
-        for (const value of [item.code, item.date.slice(0, 10), item.source, item.applicant, item.description, item.status]) {
+        for (const value of [item.code, (item.date || '').slice(0, 10), item.source, item.applicant, item.description, item.status]) {
           const cell = document.createElement('td');
           cell.textContent = value || '—';
           row.appendChild(cell);
@@ -251,22 +665,279 @@
           action.className = 'text-muted small';
         }
         row.appendChild(action);
-        body.appendChild(row);
+        tbodyTubo.appendChild(row);
       }
     }
-    status.textContent = `${results.length} resultado${results.length === 1 ? '' : 's'}`;
+    if (statusTubo) {
+      statusTubo.textContent = `${results.length} resultado${results.length === 1 ? '' : 's'}`;
+    }
   }
-  function search() {
-    const params = new URLSearchParams({q: input.value, periodo: period.value});
-    fetch(`${endpoint}?${params}`, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
-      .then(response => response.json())
-      .then(data => render(data.results || []))
-      .catch(() => { status.textContent = 'No fue posible actualizar la búsqueda'; });
+
+  function renderCompromisos(items, qVal, estadoVal) {
+    if (!tbodyCompromisos) return;
+
+    if (paginacionCompromisos) {
+      paginacionCompromisos.style.display = (qVal || estadoVal) ? 'none' : '';
+    }
+
+    if (!items.length) {
+      tbodyCompromisos.innerHTML = `
+        <tr>
+          <td colspan="13" class="text-center py-4 text-muted">
+            No hay compromisos para los filtros seleccionados.
+          </td>
+        </tr>`;
+      return;
+    }
+
+    tbodyCompromisos.innerHTML = items.map(c => {
+      const puntajeBadge = c.genera_puntaje === 'Sí'
+        ? '<span class="badge bg-success-subtle text-success border border-success-subtle">Sí</span>'
+        : '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">No</span>';
+
+      let evidenciaHtml = '<span class="text-muted small">Sin evidencia</span>';
+      if (c.evidencia_id) {
+        if (c.evidencia_url) {
+          evidenciaHtml = `<a href="${escapeHtml(c.evidencia_url)}" target="_blank" rel="noopener noreferrer" class="badge bg-danger-subtle text-muni border border-danger-subtle text-decoration-none" title="Ver evidencia adjunta"><i class="bi bi-paperclip me-1"></i>#${escapeHtml(String(c.evidencia_id))}</a>`;
+        } else {
+          evidenciaHtml = `<span class="badge bg-light text-dark border">#${escapeHtml(String(c.evidencia_id))}</span>`;
+        }
+      }
+
+      const evidenciaUrl = buildUrlWithId(evidenciaUrlTemplate, c.id);
+      let accionHtml = '<span class="text-muted small">Solo lectura</span>';
+      if (c.puede_editar) {
+        accionHtml = `
+          <button type="button" class="btn btn-sm btn-outline-muni btn-editar-compromiso" data-id="${c.id}" title="Editar datos del compromiso">
+            <i class="bi bi-pencil-square"></i> Editar
+          </button>
+          <a href="${evidenciaUrl}" class="btn btn-sm btn-outline-secondary" title="Cargar evidencia">
+            <i class="bi bi-upload"></i>
+          </a>`;
+      } else if (c.tiene_evidencia) {
+        accionHtml = `
+          <a href="${evidenciaUrl}" class="btn btn-sm btn-outline-secondary" title="Cargar evidencia">
+            <i class="bi bi-upload"></i>
+          </a>`;
+      }
+
+      const badgeColor = c.estado === 'vencido'
+        ? 'bg-danger'
+        : (c.estado === 'realizado' ? 'bg-success' : (c.estado === 'en_proceso' ? 'bg-primary' : 'bg-secondary'));
+
+      return `
+        <tr class="${c.estado === 'vencido' ? 'table-danger' : ''}">
+          <td class="ps-3">
+            <div class="fw-bold text-muni small">${escapeHtml(c.codigo)}</div>
+            <div class="fw-medium text-dark">${escapeHtml(c.descripcion)}</div>
+            <span class="badge ${badgeColor} mt-1">${escapeHtml(c.estado_display)}</span>
+          </td>
+          <td>${escapeHtml(c.solicitante)}</td>
+          <td>${escapeHtml(c.territorio)}</td>
+          <td class="text-muted small">${escapeHtml(c.observaciones)}</td>
+          <td class="text-center">${puntajeBadge}</td>
+          <td>${escapeHtml(c.tipo)}</td>
+          <td>${escapeHtml(c.subtipo)}</td>
+          <td>${escapeHtml(c.ambito)}</td>
+          <td>${escapeHtml(c.area_apoyo)}</td>
+          <td class="text-nowrap">${escapeHtml(c.fecha_compromiso)}</td>
+          <td class="text-nowrap">${escapeHtml(c.fecha_solicitud)}</td>
+          <td class="text-center text-nowrap">${evidenciaHtml}</td>
+          <td class="text-end pe-3 text-nowrap">${accionHtml}</td>
+        </tr>`;
+    }).join('');
   }
-  input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 300); });
-  period.addEventListener('change', search);
-  clear.addEventListener('click', () => { input.value = ''; search(); input.focus(); });
-  search();
-})();
+
+  function ejecutarBusquedaGeneral() {
+    const qVal = inputQ ? inputQ.value.trim() : '';
+    const periodVal = selectPeriod ? selectPeriod.value : '';
+    const estadoVal = selectEstadoFiltro ? selectEstadoFiltro.value : '';
+
+    // 1. Filtrar Compromisos en vivo
+    const paramsComp = new URLSearchParams({ q: qVal, periodo: periodVal, estado: estadoVal });
+    fetchJsonSafe(`${endpointCompromisos}?${paramsComp}`, {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+      .then(({ ok, body }) => {
+        if (ok && body.success) {
+          renderCompromisos(body.compromisos || [], qVal, estadoVal);
+        }
+      })
+      .catch(() => {});
+
+    // 2. Filtrar Resultados del Tubo (funcionalidad existente)
+    const paramsTubo = new URLSearchParams({ q: qVal, periodo: periodVal });
+    fetch(`${endpointTubo}?${paramsTubo}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(res => res.json())
+      .then(data => renderTubo(data.results || []))
+      .catch(() => {
+        if (statusTubo) statusTubo.textContent = 'No fue posible actualizar la búsqueda';
+      });
+  }
+
+  if (inputQ) {
+    inputQ.addEventListener('keyup', () => {
+      clearTimeout(timer);
+      timer = setTimeout(ejecutarBusquedaGeneral, 250);
+    });
+  }
+
+  if (selectEstadoFiltro) {
+    selectEstadoFiltro.addEventListener('change', ejecutarBusquedaGeneral);
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (inputQ) inputQ.value = '';
+      if (selectEstadoFiltro) selectEstadoFiltro.value = '';
+      ejecutarBusquedaGeneral();
+      if (inputQ) inputQ.focus();
+    });
+  }
+
+  // 4. Modal de Edición de Compromiso
+  const modalElement = document.getElementById('modalEditarCompromiso');
+  const modalEditar = modalElement ? new bootstrap.Modal(modalElement) : null;
+
+  if (tbodyCompromisos && modalEditar) {
+    tbodyCompromisos.addEventListener('click', function (e) {
+      const btnEditar = e.target.closest('.btn-editar-compromiso');
+      if (!btnEditar) return;
+
+      const compromisoId = btnEditar.dataset.id;
+      const urlDetalle = buildUrlWithId(detalleUrlTemplate, compromisoId);
+
+      fetchJsonSafe(urlDetalle, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+        .then(({ ok, body }) => {
+          if (!ok) {
+            throw new Error(body.message || 'No se pudo cargar el detalle del compromiso.');
+          }
+
+          document.getElementById('edit_compromiso_id').value = body.id;
+          document.getElementById('edit_codigo_badge').textContent = body.codigo || '';
+          document.getElementById('edit_periodo_id').value = body.periodo_id;
+          document.getElementById('edit_estado').value = body.estado;
+          document.getElementById('edit_ambito').value = body.ambito;
+          document.getElementById('edit_descripcion').value = body.descripcion;
+          document.getElementById('edit_fecha_solicitud').value = body.fecha_solicitud;
+          document.getElementById('edit_fecha_compromiso').value = body.fecha_compromiso;
+          document.getElementById('edit_solicitante_id').value = body.solicitante_id || '';
+          document.getElementById('edit_territorio_id').value = body.territorio_id || '';
+          document.getElementById('edit_area_apoyo').value = body.area_apoyo || '';
+          document.getElementById('edit_observaciones').value = body.observaciones || '';
+          document.getElementById('edit_tipo_id').value = body.tipo_id || '';
+
+          editSubtipoSelect.innerHTML = '<option value="">Seleccione un subtipo</option>';
+          (body.subtipos_disponibles || []).forEach(st => {
+            const opt = document.createElement('option');
+            opt.value = st.pk;
+            opt.textContent = st.nombre;
+            if (String(st.pk) === String(body.subtipo_id)) {
+              opt.selected = true;
+            }
+            editSubtipoSelect.appendChild(opt);
+          });
+
+          modalEditar.show();
+        })
+        .catch(err => {
+          Swal.fire({
+            icon: 'error',
+            title: 'Error al cargar datos',
+            text: err.message,
+            confirmButtonColor: '#B71C1C'
+          });
+        });
+    });
+  }
+
+  // 5. Guardar Edición vía AJAX con SweetAlert2
+  const formEditar = document.getElementById('formEditarCompromiso');
+  if (formEditar) {
+    formEditar.addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      const compromisoId = document.getElementById('edit_compromiso_id').value;
+      const descripcion = document.getElementById('edit_descripcion').value.trim();
+      const fechaSolicitud = document.getElementById('edit_fecha_solicitud').value;
+      const fechaCompromiso = document.getElementById('edit_fecha_compromiso').value;
+
+      if (!descripcion || !fechaSolicitud || !fechaCompromiso) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'Campos obligatorios',
+          text: 'Debes completar Descripción, Fecha de Solicitud y Fecha de Compromiso.',
+          confirmButtonColor: '#B71C1C'
+        });
+        return;
+      }
+
+      if (new Date(fechaCompromiso) < new Date(fechaSolicitud)) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Fechas inconsistentes',
+          text: 'La fecha de compromiso no puede ser anterior a la fecha de solicitud.',
+          confirmButtonColor: '#B71C1C'
+        });
+        return;
+      }
+
+      const urlEditar = buildUrlWithId(editarUrlTemplate, compromisoId);
+
+      fetchJsonSafe(urlEditar, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({
+          periodo_id: document.getElementById('edit_periodo_id').value,
+          estado: document.getElementById('edit_estado').value,
+          ambito: document.getElementById('edit_ambito').value,
+          descripcion: descripcion,
+          fecha_solicitud: fechaSolicitud,
+          fecha_compromiso: fechaCompromiso,
+          solicitante_id: document.getElementById('edit_solicitante_id').value || null,
+          territorio_id: document.getElementById('edit_territorio_id').value || null,
+          tipo_id: document.getElementById('edit_tipo_id').value || null,
+          subtipo_id: document.getElementById('edit_subtipo_id').value || null,
+          area_apoyo: document.getElementById('edit_area_apoyo').value.trim(),
+          observaciones: document.getElementById('edit_observaciones').value.trim()
+        })
+      })
+        .then(({ ok, body }) => {
+          if (ok && body.success) {
+            modalEditar.hide();
+            Swal.fire({
+              icon: 'success',
+              title: 'Compromiso actualizado',
+              text: body.message,
+              confirmButtonColor: '#B71C1C'
+            }).then(() => {
+              ejecutarBusquedaGeneral();
+            });
+          } else {
+            Swal.fire({
+              icon: 'error',
+              title: 'Error de validación',
+              text: body.message || 'No se pudieron guardar los cambios del compromiso.',
+              confirmButtonColor: '#B71C1C'
+            });
+          }
+        })
+        .catch(err => {
+          Swal.fire({
+            icon: 'error',
+            title: 'Error al guardar',
+            text: err.message || 'Ocurrió un error de comunicación con el servidor.',
+            confirmButtonColor: '#B71C1C'
+          });
+        });
+    });
+  }
+});
 </script>
 {% endblock %}
