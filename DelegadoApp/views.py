@@ -24,6 +24,15 @@ from DelegadoApp.models import (
 from DelegadoApp.services import actualizar_compromiso, actualizar_estado_compromiso, detalle_actividades, marcar_compromisos_vencidos, resumen_delegacion
 
 
+def _periodo_abierto(periodo):
+    """Return whether a period is open, tolerating legacy display casing."""
+    return bool(
+        periodo
+        and str(periodo.estado).strip().casefold()
+        == str(Periodo.Estado.ABIERTO).casefold()
+    )
+
+
 def _tracking_ip_key(ip_address):
     return f'seguimiento_publico:{ip_address}:attempts'
 
@@ -164,7 +173,7 @@ def home(request):
             messages.error(request, 'Tu cuenta no tiene una delegación asignada.')
         else:
             compromiso = get_object_or_404(commitments, pk=request.POST.get('compromiso_id'))
-            if compromiso.agenda.periodo.estado != Periodo.Estado.ABIERTO:
+            if not _periodo_abierto(compromiso.agenda.periodo):
                 messages.error(request, 'Los compromisos de un período cerrado son de solo lectura.')
             else:
                 state_form = CompromisoEstadoForm(request.POST)
@@ -243,7 +252,7 @@ def home(request):
                 messages.error(request, 'No se encontró el compromiso que intentas eliminar.')
             elif bool(commitment.evidencia_id):
                 messages.error(request, 'No se puede eliminar un compromiso con evidencias asociadas.')
-            elif commitment.agenda.periodo.estado != Periodo.Estado.ABIERTO:
+            elif not _periodo_abierto(commitment.agenda.periodo):
                 messages.error(request, 'Los compromisos de un período cerrado son de solo lectura.')
             else:
                 try:
@@ -272,7 +281,7 @@ def home(request):
         if commitment and bool(commitment.evidencia_id):
             messages.error(request, 'No se puede modificar un compromiso con evidencias asociadas.')
             return redirect('delegado:home')
-        if commitment and commitment.agenda.periodo.estado != Periodo.Estado.ABIERTO:
+        if commitment and not _periodo_abierto(commitment.agenda.periodo):
             messages.error(request, 'Los compromisos de un período cerrado son de solo lectura.')
             return redirect('delegado:home')
 
@@ -286,6 +295,9 @@ def home(request):
         )
         if form.is_valid():
             period = form.cleaned_data['periodo']
+            if not _periodo_abierto(period):
+                messages.error(request, 'Solo puedes asociar compromisos a períodos abiertos.')
+                return redirect('delegado:home')
             agenda, _ = Agenda.objects.get_or_create(
                 delegacion_id=delegation_id, periodo=period,
             )
@@ -303,7 +315,7 @@ def home(request):
                 if commitment else []
             )
             commitment = form.save(commit=False)
-            commitment.agenda = agenda
+            commitment.agenda_id = agenda.pk
             with transaction.atomic():
                 commitment.save()
                 form.save_m2m()
@@ -352,10 +364,19 @@ def home(request):
             instance=commitment, user=request.user, delegation=delegation,
         )
 
+    commitment_rows = list(commitments[:30])
+    for commitment_row in commitment_rows:
+        commitment_row.periodo_abierto = _periodo_abierto(
+            commitment_row.agenda.periodo
+        )
+
     return render(request, 'DelegadoApp/index.html', {
-        'sgr_role': 'Delegación', 'form': form, 'commitments': commitments[:30],
+        'sgr_role': 'Delegación', 'form': form, 'commitments': commitment_rows,
         'commitment_count': commitments.count(), 'has_delegation': bool(delegation_id),
         'editing_commitment': commitment,
+        'periodos_abiertos': Periodo.objects.filter(
+            estado__iexact=Periodo.Estado.ABIERTO,
+        ).order_by('-fecha_inicio'),
         'sidebar_modules': (
             {'label': 'Agenda colectiva', 'url_name': 'delegado:home'},
             {'label': 'Resumen de la delegación', 'url_name': 'delegado:resumen'},

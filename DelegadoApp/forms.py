@@ -16,7 +16,7 @@ class CompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
     )
     tipo = forms.ModelChoiceField(queryset=Tipo.objects.none(),required=False,label='Tipo',empty_label='Sin tipo (predeterminado)',widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_tipo'}),)
     subtipo = forms.ModelChoiceField(queryset=Subtipo.objects.none(),required=False,label='Subtipo',empty_label='Sin subtipo (predeterminado)',widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_subtipo'}),)
-    periodo = forms.ModelChoiceField(queryset=Periodo.objects.filter(estado=Periodo.Estado.ABIERTO),label='Período de agenda',widget=forms.Select(attrs={'class': 'form-select'}),)
+    periodo = forms.ModelChoiceField(queryset=Periodo.objects.filter(estado__iexact=Periodo.Estado.ABIERTO),label='Período de agenda',widget=forms.Select(attrs={'class': 'form-select'}),)
     evidencia = forms.ModelChoiceField(queryset=Evidencia.objects.all(),required=False,label='Evidencia principal',empty_label='Sin evidencia asignada',widget=forms.Select(attrs={'class': 'form-select'}),)
 
     class Meta:
