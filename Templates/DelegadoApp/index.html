@@ -2,6 +2,94 @@
 {% block title %}Delegación | SGR{% endblock %}
 {% block page_title %}Agenda colectiva{% endblock %}
 {% block content %}
+<style>
+  .commitments-table-wrap {
+    overflow-x: auto;
+  }
+
+  .commitments-table {
+    min-width: 1180px;
+  }
+
+  .commitments-table th,
+  .commitments-table td {
+    vertical-align: top;
+  }
+
+  .commitments-table td:nth-child(4) > .tag {
+    white-space: nowrap;
+  }
+
+  .commitments-table td:nth-child(5) {
+    min-width: 190px;
+  }
+
+  .commitments-table td:nth-child(5) > .d-flex {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px !important;
+  }
+
+  .commitments-table td:nth-child(5) > .d-flex > a,
+  .commitments-table td:nth-child(5) > .d-flex > button,
+  .commitments-table td:nth-child(5) > .d-flex > form {
+    min-width: 0;
+  }
+
+  .commitments-table td:nth-child(5) > .d-flex > form:last-child {
+    grid-column: 1 / -1;
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px !important;
+  }
+
+  .commitments-table td:nth-child(5) > .d-flex > form:last-child .form-label {
+    margin-bottom: 0 !important;
+  }
+
+  .commitments-table td:nth-child(5) > .d-flex > form:last-child .btn,
+  .commitments-table td:nth-child(5) > .d-flex > form:last-child .form-control {
+    min-width: 0;
+  }
+
+  .commitments-table td:nth-child(6) {
+    min-width: 190px;
+  }
+
+  .commitments-table td:nth-child(6) > form {
+    display: flex !important;
+    flex-direction: column;
+    gap: 6px !important;
+  }
+
+  .commitments-table td:nth-child(6) > form select,
+  .commitments-table td:nth-child(6) > form textarea {
+    width: 100%;
+  }
+
+  .commitments-table td:nth-child(6) > form button {
+    width: 100%;
+    white-space: nowrap;
+  }
+
+  .commitments-table td:nth-child(7) {
+    min-width: 120px;
+  }
+
+  .commitments-table td:nth-child(7) > div {
+    display: flex;
+    flex-direction: column;
+    gap: 6px !important;
+  }
+
+  .commitments-table td:nth-child(7) > div > a,
+  .commitments-table td:nth-child(7) > div > form,
+  .commitments-table td:nth-child(7) > div > form button {
+    width: 100%;
+    white-space: nowrap;
+  }
+</style>
 <div class="dashboard-layout">
 {% include 'includes/role_sidebar.html' %}
 <div class="dashboard-main">
@@ -15,7 +103,7 @@
 </div><aside class="side-note"><span class="side-note-mark">i</span><h3>Seguimiento compartido</h3><p>Los compromisos se muestran solo dentro de tu delegación. El estado puede actualizarse desde esta misma vista.</p></aside></section>
 {% endif %}
 <section class="content-section"><div class="section-head"><div><p class="eyebrow">SEGUIMIENTO</p><h2>Compromisos</h2></div><span class="count-pill">{{ commitment_count }} en agenda</span></div>
-	<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Fecha</th><th>Compromiso</th><th>Responsables</th><th>Estado</th><th>Seguimiento</th><th>Actualizar</th><th>Acciones</th></tr></thead><tbody>
+	<div class="table-responsive commitments-table-wrap"><table class="table align-middle commitments-table"><thead><tr><th>Fecha</th><th>Compromiso</th><th>Responsables</th><th>Estado</th><th>Seguimiento</th><th>Actualizar</th><th>Acciones</th></tr></thead><tbody>
 		{% for compromiso in commitments %}<tr><td>{{ compromiso.fecha|date:'d/m/Y' }}</td><td><strong>{{ compromiso.descripcion }}</strong><small class="d-block text-muted">{{ compromiso.solicitante|default:'Sin solicitante' }} · {{ compromiso.territorio|default:'Sin territorio' }}</small></td><td>{% for responsable in compromiso.responsable.all %}<span class="tag">{{ responsable.get_full_name|default:responsable.email }}</span>{% empty %}—{% endfor %}</td><td><span class="tag">{{ compromiso.get_estado_display }}</span><details class="small mt-1"><summary>Historial ({{ compromiso.historial_estados.count }})</summary>{% for cambio in compromiso.historial_estados.all %}<div>{{ cambio.estado_anterior|default:'—' }} → {{ cambio.get_estado_nuevo_display }} · {{ cambio.autor.email }} · {{ cambio.fecha|date:'d/m/Y H:i' }}</div>{% empty %}<div>Sin cambios.</div>{% endfor %}</details></td><td>
 			{% if compromiso.seguimiento_token %}
 				<div class="d-flex flex-column gap-2">
@@ -91,7 +179,7 @@ document.querySelectorAll('form').forEach((form) => {
     const textarea = document.createElement('textarea');
     textarea.name = 'observaciones';
     textarea.className = 'form-control form-control-sm';
-    textarea.rows = 1;
+    textarea.rows = 2;
     textarea.placeholder = 'Avance / observaciones';
     select.insertAdjacentElement('afterend', textarea);
   }
