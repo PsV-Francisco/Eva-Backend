@@ -543,7 +543,7 @@ def agenda_colectiva(request):
     })
 
 
-@cargo_required('funcionario', permission='manage_collective_agenda')
+@cargo_required('funcionario', permission='search_collective_commitments_ajax')
 @require_GET
 def buscar_compromisos_ajax(request):
     """Buscador AJAX en vivo (keyup) para filtrar compromisos de la agenda colectiva."""
@@ -620,7 +620,7 @@ def _compromiso_snapshot(compromiso):
         'responsable_ids': sorted(compromiso.responsable.values_list('pk', flat=True)),
     }
 
-@cargo_required('funcionario', permission='manage_collective_agenda')
+@cargo_required('funcionario', permission='view_collective_commitment_detail')
 @require_GET
 def detalle_compromiso_json(request, compromiso_id):
     """Retorna los datos del compromiso en JSON para precargar el modal de edición."""
@@ -672,7 +672,7 @@ def agenda_busqueda_json(request):
     )})
 
 
-@cargo_required('funcionario', permission='manage_collective_agenda')
+@cargo_required('funcionario', permission='edit_collective_commitment_ajax')
 @require_POST
 def editar_compromiso_ajax(request, compromiso_id):
     """Actualiza el compromiso vía AJAX desde el modal, validando reglas de negocio y auditando."""
