@@ -293,9 +293,11 @@
                                             <i class="bi bi-pencil-square"></i> Editar
                                         </button>
                                     {% endif %}
+                                    {% if not compromiso.evidencia or compromiso.evidencia.estado == 'rechazada' %}
                                     <a href="{% url 'funcionario:compromiso_evidencia' compromiso.pk %}" class="btn btn-sm btn-outline-secondary" title="Cargar evidencia">
                                         <i class="bi bi-upload"></i>
                                     </a>
+                                    {% endif %}
                                 {% elif compromiso.agenda.periodo.estado == 'cerrado' %}
                                     <span class="text-muted small">Período cerrado</span>
                                 {% else %}

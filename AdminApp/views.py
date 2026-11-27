@@ -936,11 +936,11 @@ def detalle_cargo_json(request, cargo_id):
         # Nombres para que el modal muestre también asignaciones a funciones
         # o ítems que hoy están inactivos (no vienen en la lista de activos).
         'funciones_info': [
-            {'id': a.funcion_id, 'nombre': a.funcion.nombre, 'activo': a.funcion.estado == Funcion.Estado.ACTIVO}
+            {'id': a.funcion_id, 'nombre': a.funcion.nombre, 'activo': (a.funcion.estado or '').strip().lower() == Funcion.Estado.ACTIVO}
             for a in vigentes_fn.select_related('funcion').order_by('funcion__nombre')
         ],
         'items_info': [
-            {'id': a.item_id, 'nombre': a.item.nombre, 'activo': a.item.estado == Item.Estado.ACTIVO}
+            {'id': a.item_id, 'nombre': a.item.nombre, 'activo': (a.item.estado or '').strip().lower() == Item.Estado.ACTIVO}
             for a in vigentes_it.select_related('item').order_by('item__nombre')
         ],
         'vigente_desde': vigente_desde.isoformat(),

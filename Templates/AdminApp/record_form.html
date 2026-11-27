@@ -39,6 +39,12 @@
         </div>
         <button class="btn btn-primary" type="submit">Guardar</button>
       </form>
+      {% if delete_url %}
+      <form method="post" action="{{ delete_url }}?delegacion={{ selected_delegation }}" class="mt-3" data-confirm="¿Eliminar este registro? Esta acción no se puede deshacer.">
+        {% csrf_token %}
+        <button class="btn btn-outline-danger" type="submit">Eliminar</button>
+      </form>
+      {% endif %}
       {% if historial_reasignaciones %}
       <section class="content-section mt-4">
         <div class="section-head"><div><p class="eyebrow">TRAZABILIDAD</p><h3>Historial de reasignaciones</h3></div></div>

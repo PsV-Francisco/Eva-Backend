@@ -38,7 +38,7 @@ from AdminApp.record_forms import (
     ReclamoForm,
 )
 from config.decorators import cargo_required
-from config.permissions import q_usuarios_funcionario
+from config.permissions import PERMISSION_BY_VIEW, can_access_permission, q_usuarios_funcionario
 from CoordinadorApp.models import AtencionSocial, Desempeno, Periodo
 from CoordinadorApp.reporting import consolidated_report_csv_rows
 from DelegadoApp.models import (
@@ -799,11 +799,28 @@ def _related_record_form(request, key, record_id=None):
     return render(request, 'AdminApp/record_form.html', {
         'title': f'{"Editar" if editing else "Crear"} {spec.title.lower()}',
         'form': form,
+        'delete_url': _related_record_delete_url(request, key, editing),
         'list_url': reverse(f'administracion:{key}'),
         'selected_delegation': _delegation_param(request),
         'delegaciones': available_delegations(request.user),
         'is_administrator': is_system_administrator(request.user),
     })
+
+
+def _related_record_delete_url(request, key, record):
+    # Botón "Eliminar" en el formulario de edición, solo si la vista de
+    # eliminación existe y el usuario tiene ese permiso.
+    list_spec = LIST_SPECS.get(key)
+    if record is None or list_spec is None or not list_spec.delete_route:
+        return ''
+    definition = PERMISSION_BY_VIEW.get(list_spec.delete_route)
+    if definition and not can_access_permission(
+        request.user,
+        definition.codename,
+        definition.cargos,
+    ):
+        return ''
+    return reverse(list_spec.delete_route, args=[record.pk])
 
 
 def _related_record_delete(request, key, record_id):

@@ -12,6 +12,9 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_POST
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Importaciones de la aplicación AdminApp
 from AdminApp.audit import registrar_historial
@@ -808,6 +811,10 @@ def editar_compromiso_ajax(request, compromiso_id):
     else:
         mes = fecha_comp.month
 
+    # Ids no numéricos terminaban en error 500 al consultar la base.
+    if any(valor and not str(valor).isdecimal() for valor in (tipo_id, subtipo_id, periodo_id)):
+        return JsonResponse({'success': False, 'message': 'El tipo, subtipo o período seleccionado no es válido.'}, status=400)
+
     # Validar coherencia entre tipo y subtipo
     if tipo_id and subtipo_id:
         if not Subtipo.objects.filter(pk=subtipo_id, tipo_id=tipo_id).exists():
@@ -822,6 +829,15 @@ def editar_compromiso_ajax(request, compromiso_id):
     valid_ambitos = {choice[0] for choice in Compromiso.Ambito.choices}
     if ambito not in valid_ambitos:
         return JsonResponse({'success': False, 'message': 'El ámbito seleccionado no es válido.'}, status=400)
+
+    # Solicitante y territorio deben existir; el territorio, además, debe ser
+    # de la delegación. Antes un id inválido terminaba en error 500.
+    if solicitante_id and str(solicitante_id) != str(commitment.solicitante_id or ''):
+        if not str(solicitante_id).isdecimal() or not Vecino.objects.filter(pk=solicitante_id, activo=True).exists():
+            return JsonResponse({'success': False, 'message': 'El vecino seleccionado no existe o está inactivo.'}, status=400)
+    if territorio_id and str(territorio_id) != str(commitment.territorio_id or ''):
+        if not str(territorio_id).isdecimal() or not Territorio.objects.filter(pk=territorio_id, delegacion=delegation).exists():
+            return JsonResponse({'success': False, 'message': 'El territorio debe pertenecer a tu delegación.'}, status=400)
 
     period = get_object_or_404(Periodo, pk=periodo_id, estado=Periodo.Estado.ABIERTO)
     before = _compromiso_snapshot(commitment)
@@ -868,8 +884,9 @@ def editar_compromiso_ajax(request, compromiso_id):
             'success': True,
             'message': f'El compromiso {commitment.codigo_publico} se actualizó correctamente.',
         })
-    except Exception as e:
-        return JsonResponse({'success': False, 'message': f'Error al actualizar el compromiso: {str(e)}'}, status=500)
+    except Exception:
+        logger.exception('Error al actualizar el compromiso %s', commitment.pk)
+        return JsonResponse({'success': False, 'message': 'No se pudo actualizar el compromiso. Revisa los datos e inténtalo nuevamente.'}, status=500)
 
 
 def _compromisos_responsable(request):
@@ -892,6 +909,12 @@ def cargar_evidencia_compromiso(request, compromiso_id):
     if commitment.agenda.periodo.estado != Periodo.Estado.ABIERTO:
         messages.error(request, 'Las evidencias de un período cerrado son de solo lectura.')
         return redirect('funcionario:agenda_colectiva')
+    evidencia_anterior = commitment.evidencia if commitment.evidencia_id else None
+    if evidencia_anterior is not None and evidencia_anterior.estado != Evidencia.Estado.RECHAZADA:
+        # Solo se reemplaza una evidencia rechazada; una pendiente o aprobada
+        # ya está en revisión o fue validada.
+        messages.error(request, 'Este compromiso ya tiene una evidencia pendiente o aprobada; solo se puede reemplazar si fue rechazada.')
+        return redirect('funcionario:agenda_colectiva')
     form = CompromisoEvidenciaForm(request.POST or None, request.FILES or None)
     if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
@@ -905,6 +928,10 @@ def cargar_evidencia_compromiso(request, compromiso_id):
                 actor=request.user,
                 action='Cargar evidencia de compromiso',
                 entity=f'Evidencia:{evidence.pk}',
+                before={
+                    'codigo': str(evidencia_anterior.codigo),
+                    'estado': evidencia_anterior.estado,
+                } if evidencia_anterior else None,
                 after={
                     'codigo': str(evidence.codigo),
                     'compromiso_id': commitment.pk,
