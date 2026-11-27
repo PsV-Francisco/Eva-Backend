@@ -588,26 +588,43 @@ def editar_delegacion_ajax(request, delegacion_id):
         return JsonResponse({'success': False, 'message': f'Error al actualizar la delegación: {str(e)}'}, status=500)
 
 
-@cargo_required('admin', 'administrador', permission='delete_admin_delegations')
+@cargo_required('admin', 'administrador', permission='edit_admin_delegations_ajax')
 @require_POST
-def eliminar_delegacion(request, delegacion_id):
-    """Elimina lógicamente o físicamente una delegación validando restricciones de integridad."""
+def cambiar_estado_delegacion_ajax(request, delegacion_id):
+    """Alterna el estado lógico de la delegación (ACTIVADO <-> DESACTIVADO) vía AJAX y registra en Historial."""
     delegacion = get_object_or_404(Delegacion, pk=delegacion_id)
     before = _delegacion_snapshot(delegacion)
-    entity = f'Delegacion:{delegacion.pk}'
+
+    nuevo_estado = (Delegacion.Estado.DESACTIVADO
+        if delegacion.estado == Delegacion.Estado.ACTIVADO
+        else Delegacion.Estado.ACTIVADO
+    )
+    accion_texto = 'Desactivar delegación' if nuevo_estado == Delegacion.Estado.DESACTIVADO else 'Activar delegación'
+
     try:
         with transaction.atomic():
-            delegacion.delete()
+            delegacion.estado = nuevo_estado
+            delegacion.save(update_fields=['estado'])
+
             registrar_historial(
                 actor=request.user,
-                action='Eliminar delegación',
-                entity=entity,
+                action=accion_texto,
+                entity=f'Delegacion:{delegacion.pk}',
                 before=before,
+                after=_delegacion_snapshot(delegacion),
             )
-        messages.success(request, 'Delegación eliminada correctamente.')
-    except ProtectedError:
-        messages.error(request, 'No se puede eliminar la delegación porque tiene usuarios, territorios o registros asociados. Desactívala en su lugar.')
-    return redirect('administracion:delegaciones')
+        etiqueta = 'Activada' if nuevo_estado == Delegacion.Estado.ACTIVADO else 'Desactivada'
+        return JsonResponse({
+            'success': True,
+            'estado': nuevo_estado,
+            'message': f'La delegación "{delegacion.nombre}" pasó a estado {etiqueta} y se registró en auditoría.',
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error al cambiar el estado de la delegación: {str(e)}',
+        }, status=500)
+
 
 @cargo_required('admin', 'administrador', permission='access_admin_delegations')
 @require_GET

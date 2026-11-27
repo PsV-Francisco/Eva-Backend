@@ -116,12 +116,15 @@
                 <button type="button" class="btn btn-sm btn-outline-muni btn-editar-delegacion" data-id="{{ d.pk }}">
                   <i class="bi bi-pencil-square"></i> Editar
                 </button>
-                <form method="post" action="{% url 'administracion:eliminar_delegacion' d.pk %}" class="d-inline form-eliminar-delegacion">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-sm btn-outline-danger">
-                    <i class="bi bi-trash"></i> Eliminar
+                {% if d.estado == 'ACTIVADO' %}
+                  <button type="button" class="btn btn-sm btn-outline-danger btn-toggle-estado-delegacion" data-id="{{ d.pk }}" data-nombre="{{ d.nombre }}" data-estado="ACTIVADO">
+                    <i class="bi bi-slash-circle"></i> Desactivar
                   </button>
-                </form>
+                {% else %}
+                  <button type="button" class="btn btn-sm btn-outline-success btn-toggle-estado-delegacion" data-id="{{ d.pk }}" data-nombre="{{ d.nombre }}" data-estado="DESACTIVADO">
+                    <i class="bi bi-check-circle"></i> Activar
+                  </button>
+                {% endif %}
               </td>
             </tr>
             {% empty %}
@@ -202,7 +205,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const buscarUrl = "{% url 'administracion:buscar_delegaciones_ajax' %}";
   const detalleUrlTemplate = "{% url 'administracion:detalle_delegacion_json' 0 %}";
   const editarUrlTemplate = "{% url 'administracion:editar_delegacion_ajax' 0 %}";
-  const eliminarUrlTemplate = "{% url 'administracion:eliminar_delegacion' 0 %}";
+  const toggleEstadoUrlTemplate = "{% url 'administracion:cambiar_estado_delegacion_ajax' 0 %}";
 
   function buildUrl(template, id) {
     return template.replace('/0/', `/${id}/`);
@@ -245,7 +248,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Confirmación eliminar con SweetAlert2
   document.addEventListener('submit', function (e) {
-    const formElim = e.target.closest('.form-eliminar-delegacion');
+    const toggleEstadoUrlTemplate = "{% url 'administracion:cambiar_estado_delegacion_ajax' 0 %}";
     if (!formElim) return;
     e.preventDefault();
     Swal.fire({
@@ -278,9 +281,10 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
     tbody.innerHTML = items.map(d => {
-      const badge = d.estado === 'ACTIVADO'
-        ? '<span class="badge bg-success-subtle text-success border border-success-subtle">ACTIVADO</span>'
-        : '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">DESACTIVADO</span>';
+      const btnEstado = d.estado === 'ACTIVADO'
+        ? `<button type="button" class="btn btn-sm btn-outline-danger btn-toggle-estado-delegacion" data-id="${d.id}" data-nombre="${escapeHtml(d.nombre)}" data-estado="ACTIVADO"><i class="bi bi-slash-circle"></i> Desactivar</button>`
+        : `<button type="button" class="btn btn-sm btn-outline-success btn-toggle-estado-delegacion" data-id="${d.id}" data-nombre="${escapeHtml(d.nombre)}" data-estado="DESACTIVADO"><i class="bi bi-check-circle"></i> Activar</button>`;
+
       return `
         <tr>
           <td class="ps-3 fw-semibold text-dark">${escapeHtml(d.nombre)}</td>
@@ -290,12 +294,7 @@ document.addEventListener('DOMContentLoaded', function () {
             <button type="button" class="btn btn-sm btn-outline-muni btn-editar-delegacion" data-id="${d.id}">
               <i class="bi bi-pencil-square"></i> Editar
             </button>
-            <form method="post" action="${buildUrl(eliminarUrlTemplate, d.id)}" class="d-inline form-eliminar-delegacion">
-              <input type="hidden" name="csrfmiddlewaretoken" value="${escapeHtml(csrfToken)}">
-              <button type="submit" class="btn btn-sm btn-outline-danger">
-                <i class="bi bi-trash"></i> Eliminar
-              </button>
-            </form>
+            ${btnEstado}
           </td>
         </tr>`;
     }).join('');
@@ -327,7 +326,7 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   // Abrir Modal de Edición y rellenar datos vía JSON
-  const modalEditar = new bootstrap.Modal(document.getElementById('modalEditarDelegacion'));
+ const modalEditar = new bootstrap.Modal(document.getElementById('modalEditarDelegacion'));
 
   tbody.addEventListener('click', function (e) {
     const btn = e.target.closest('.btn-editar-delegacion');
@@ -346,6 +345,65 @@ document.addEventListener('DOMContentLoaded', function () {
       .catch(() => {
         Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudieron cargar los datos de la delegación.', confirmButtonColor: '#B71C1C' });
       });
+  });
+
+  // Activar / Desactivar Delegación vía AJAX
+  tbody.addEventListener('click', function (e) {
+    const btnToggle = e.target.closest('.btn-toggle-estado-delegacion');
+    if (!btnToggle) return;
+
+    const id = btnToggle.dataset.id;
+    const nombre = btnToggle.dataset.nombre || '';
+    const estadoActual = btnToggle.dataset.estado;
+    const vaADesactivar = estadoActual === 'ACTIVADO';
+
+    Swal.fire({
+      icon: 'warning',
+      title: vaADesactivar ? '¿Desactivar delegación?' : '¿Activar delegación?',
+      text: vaADesactivar
+        ? `La delegación "${nombre}" quedará en estado DESACTIVADO.`
+        : `La delegación "${nombre}" volverá a estado ACTIVADO.`,
+      showCancelButton: true,
+      confirmButtonColor: vaADesactivar ? '#B71C1C' : '#198754',
+      cancelButtonText: 'Cancelar',
+      confirmButtonText: vaADesactivar ? 'Sí, desactivar' : 'Sí, activar'
+    }).then(result => {
+      if (!result.isConfirmed) return;
+
+      fetch(buildUrl(toggleEstadoUrlTemplate, id), {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      })
+        .then(res => res.json().then(body => ({ ok: res.ok, body })))
+        .then(({ ok, body }) => {
+          if (ok && body.success) {
+            Swal.fire({
+              icon: 'success',
+              title: 'Estado actualizado',
+              text: body.message,
+              confirmButtonColor: '#B71C1C'
+            }).then(() => filtrarDelegaciones());
+          } else {
+            Swal.fire({
+              icon: 'error',
+              title: 'Error',
+              text: body.message || 'No se pudo cambiar el estado.',
+              confirmButtonColor: '#B71C1C'
+            });
+          }
+        })
+        .catch(() => {
+          Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Error de comunicación con el servidor.',
+            confirmButtonColor: '#B71C1C'
+          });
+        });
+    });
   });
 
   // Guardar Edición vía AJAX
