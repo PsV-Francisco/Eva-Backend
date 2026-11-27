@@ -9,7 +9,7 @@ from django.db import models
 #Importaciones de Modelos
 from AdminApp.models import Delegacion
 from CoordinadorApp.models import AtencionSocial, GestionAtencion, Item, Periodo
-from DelegadoApp.models import Compromiso
+from DelegadoApp.models import Compromiso, Hito
 from FuncionarioApp.models import (CargoJv,JuntaVecino,Registro,Subtipo,Carta,Territorio,Tipo,Vecino,tipo_subtipo_predeterminados,validar_periodo_semanal_abierto)
 
 #Otras Importaciones
@@ -51,6 +51,29 @@ def _set_tipo_subtipo_choices(form, instance=None):
     if instance and instance.pk and instance.subtipo_id:
         subtipos = subtipos | Subtipo.objects.filter(pk=instance.subtipo_id)
     form.fields['subtipo'].queryset = subtipos.distinct().order_by('nombre')
+
+
+# HU-34: las actividades realizadas dentro de un hito son solicitudes internas.
+TIPO_ACTIVIDAD_HITO = 'Solicitudes o actividades internas'
+
+
+def _asignar_tipo_hito(form, instance):
+    tipo = Tipo.objects.filter(nombre__iexact=TIPO_ACTIVIDAD_HITO).order_by('pk').first()
+    if tipo is None:
+        tipo = Tipo.objects.create(nombre=TIPO_ACTIVIDAD_HITO, estado=Tipo.Estado.ACTIVADO)
+    subtipo = form.cleaned_data.get('subtipo')
+    if subtipo is None or subtipo.tipo_id != tipo.pk:
+        _, subtipo = tipo_subtipo_predeterminados(tipo)
+    instance.tipo = tipo
+    instance.subtipo = subtipo
+    if instance.hito.incluir_agenda:
+        instance.incluir_en_agenda = True
+
+
+def _hito_label(hito):
+    inicio = timezone.localtime(hito.fecha_inicio).strftime('%d/%m/%Y') if hito.fecha_inicio else ''
+    termino = timezone.localtime(hito.fecha_termino).strftime('%d/%m/%Y') if hito.fecha_termino else 'sin término'
+    return f'{hito.nombre} — {hito.territorio.nombre} ({inicio} al {termino})'
 
 
 def _active_catalog_queryset(model):
@@ -140,11 +163,12 @@ class RegistroForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
     tipo = forms.ModelChoiceField(queryset=Tipo.objects.none(),required=False,label='Tipo',empty_label='Sin tipo (predeterminado)',)
     subtipo = forms.ModelChoiceField(queryset=Subtipo.objects.none(),required=False,label='Subtipo',empty_label='Sin subtipo (predeterminado)',)
     evidencia = forms.FileField(label='Archivo de evidencia',required=False,widget=forms.ClearableFileInput(attrs={'accept': 'image/jpeg,image/png,application/pdf','class': 'form-control',}),)
+    hito = forms.ModelChoiceField(queryset=Hito.objects.none(),required=False,label='Hito asociado',empty_label='Sin hito',help_text='Las actividades de un hito se clasifican como "Solicitudes o actividades internas".',)
 
     class Meta:
         model = Registro
         fields = (
-            'fecha', 'periodo', 'item', 'vecino','descripcion', 'accion', 'contacto',
+            'fecha', 'periodo', 'item', 'hito', 'vecino','descripcion', 'accion', 'contacto',
             'telefono', 'incluir_en_agenda',
         )
         labels = {
@@ -187,6 +211,16 @@ class RegistroForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
         self.fields['vecino'].label_from_instance = (
             lambda obj: f"{obj.nombre} {obj.apellido}".strip()
         )
+        #Hitos (HU-34): solo hitos operativos donde el funcionario es responsable
+        hitos = Hito.objects.filter(estado=Hito.Estado.ABIERTO)
+        hitos = hitos.filter(responsables=user) if user is not None else hitos.none()
+        self._set_hito_queryset(hitos)
+
+    def _set_hito_queryset(self, hitos):
+        if self.instance.pk and self.instance.hito_id:
+            hitos = hitos | Hito.objects.filter(pk=self.instance.hito_id)
+        self.fields['hito'].queryset = hitos.select_related('territorio').distinct().order_by('fecha_inicio', 'nombre')
+        self.fields['hito'].label_from_instance = _hito_label
 
     def clean_evidencia(self):
         uploaded_file = self.cleaned_data.get('evidencia')
@@ -200,11 +234,20 @@ class RegistroForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
                 validar_periodo_semanal_abierto(fecha)
             except ValidationError as error:
                 self.add_error('fecha', error.message)
+        hito = cleaned_data.get('hito')
+        if (
+            hito and self.instance.autor_id
+            and hito.pk != self.initial.get('hito')
+            and not hito.responsables.filter(pk=self.instance.autor_id).exists()
+        ):
+            self.add_error('hito', 'El funcionario debe ser responsable del hito seleccionado.')
         return cleaned_data
 
     def save(self, commit=True):
         instance = super().save(commit=False)
         _assign_tipo_subtipo(self, instance)
+        if instance.hito_id:
+            _asignar_tipo_hito(self, instance)
         if commit:
             instance.save()
             self.save_m2m()

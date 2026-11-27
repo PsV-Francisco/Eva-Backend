@@ -37,7 +37,7 @@ from SupervisorApp.files import validate_evidence_file
 # Importaciones de Decoradores y Formularios de FuncionarioApp
 from config.decorators import cargo_required
 from config.delegations import active_delegation
-from FuncionarioApp.forms import (AtencionSocialForm,CartaForm,CompromisoEvidenciaForm,FuncionarioCompromisoForm,GestionAtencionForm,JuntaVecinoForm,RegistroForm,VecinoForm)
+from FuncionarioApp.forms import (AtencionSocialForm,CartaForm,CompromisoEvidenciaForm,FuncionarioCompromisoForm,GestionAtencionForm,JuntaVecinoForm,RegistroForm,TIPO_ACTIVIDAD_HITO,VecinoForm)
 from FuncionarioApp.forms import TerritorioForm
 
 from django.utils import timezone
@@ -467,6 +467,9 @@ def editar_registro_ajax(request, registro_id):
     registro.periodo = periodo
     registro.tipo_id = int(tipo_id)
     registro.subtipo_id = int(subtipo_id)
+    if registro.hito_id and not Tipo.objects.filter(pk=registro.tipo_id, nombre__iexact=TIPO_ACTIVIDAD_HITO).exists():
+        # HU-34: una actividad de hito sigue siendo una solicitud interna.
+        return JsonResponse({'success': False, 'message': f'Las actividades asociadas a un hito deben mantener el tipo "{TIPO_ACTIVIDAD_HITO}".'}, status=400)
     try:
         # Aplica las reglas del modelo: cierre semanal de la nueva fecha,
         # tope diario de actividades y validación de cada campo.

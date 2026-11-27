@@ -125,6 +125,8 @@ class Registro(models.Model):
 	tipo = models.ForeignKey(Tipo,on_delete=models.PROTECT,db_column='TIPO',related_name='registros')
 	subtipo = models.ForeignKey(Subtipo,on_delete=models.PROTECT,db_column='SUBTIPO',related_name='registros')
 	evidencia = models.ForeignKey('SupervisorApp.Evidencia',on_delete=models.SET_NULL,db_column='EVIDENCIA',related_name='registros',null=True,blank=True,verbose_name='Evidencia principal')
+	# HU-34: actividad realizada dentro de un hito territorial.
+	hito = models.ForeignKey('DelegadoApp.Hito',on_delete=models.SET_NULL,null=True,blank=True,db_column='HITO',related_name='actividades')
 
 	class Meta:
 		ordering = ['-fecha', '-creado']

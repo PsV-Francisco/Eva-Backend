@@ -18,9 +18,10 @@ class CompromisoAdmin(admin.ModelAdmin):
 
 @admin.register(Hito)
 class HitoAdmin(admin.ModelAdmin):
-	list_display = ('nombre', 'fecha_termino', 'territorio', 'delegacion', 'responsable')
+	list_display = ('nombre', 'fecha_inicio', 'fecha_termino', 'territorio', 'delegacion', 'estado')
 	list_filter = ('estado', 'delegacion', 'fecha_termino')
-	search_fields = ('nombre', 'descripcion', 'responsable__email', 'registro__descripcion')
+	search_fields = ('nombre', 'descripcion', 'responsables__email')
+	filter_horizontal = ('responsables',)
 	readonly_fields = ('delegacion',)
 
 

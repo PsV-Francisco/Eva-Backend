@@ -22,7 +22,7 @@ from DelegadoApp.models import (
     Agenda, Ausencia, Compromiso, HistorialEstadoCompromiso,
     HistorialReasignacionCompromiso, SeguimientoAcceso,
 )
-from DelegadoApp.services import actualizar_compromiso, actualizar_estado_compromiso, detalle_actividades, marcar_compromisos_vencidos, resumen_delegacion
+from DelegadoApp.services import actualizar_compromiso, actualizar_estado_compromiso, detalle_actividades, etiqueta_semaforo, marcar_compromisos_vencidos, resumen_delegacion
 
 
 def _periodo_abierto(periodo):
@@ -504,7 +504,7 @@ def _resumen_excel_response(request, *, delegation, period, rows, **_metadata):
         values = [
             row['usuario'].get_full_name() or row['usuario'].email,
             row['usuario'].email,
-            row['cumplimiento'], row['esperado'], row['semaforo'].title(),
+            row['cumplimiento'], row['esperado'], etiqueta_semaforo(row['semaforo']),
             row.get('ultimo_registro') or 'Sin registros',
             row.get('fecha_ultimo_registro'), row.get('dias_sin_ingreso'),
             row.get('promedio_diario', 0),

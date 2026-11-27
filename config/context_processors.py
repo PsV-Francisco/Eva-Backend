@@ -84,6 +84,7 @@ NAVIGATION_BY_CARGO = {
     ),
     'delegado': (
         ('Inicio', 'home'),
+        ('Hitos', 'administracion:hitos'),
         ('Manual / Ayuda', 'manual'),
     ),
     'supervisor': (

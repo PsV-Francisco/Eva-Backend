@@ -159,8 +159,11 @@ def resumen_delegacion(*, delegation=None, period=None, all_delegations=False, f
             'usuario': user,
             'cumplimiento': summary['avance_real'],
             'esperado': summary['avance_esperado'],
+            # Sin ítems asignados no hay meta que evaluar: antes 0 >= 0 lo
+            # dejaba en "Verde" y no cuadraba con la distribución.
             'semaforo': (
-                'verde' if summary['avance_real'] >= summary['avance_esperado'] * rules['ambar'] / Decimal('100')
+                'sin_items' if not summary['items']
+                else 'verde' if summary['avance_real'] >= summary['avance_esperado'] * rules['ambar'] / Decimal('100')
                 else 'ambar' if summary['avance_real'] >= summary['avance_esperado'] * rules['rojo'] / Decimal('100') else 'rojo'
             ),
             'umbral': threshold,
@@ -234,6 +237,18 @@ def resumen_delegacion(*, delegation=None, period=None, all_delegations=False, f
         'avance_esperado_colectivo': expected_collective,
     })
     return empty_result
+
+
+SEMAFORO_LABELS = {
+    'verde': 'Verde',
+    'ambar': 'Ambar',
+    'rojo': 'Rojo',
+    'sin_items': 'Sin items',
+}
+
+
+def etiqueta_semaforo(estado):
+    return SEMAFORO_LABELS.get(estado, str(estado).title())
 
 
 def detalle_actividades(*, user_ids, period):

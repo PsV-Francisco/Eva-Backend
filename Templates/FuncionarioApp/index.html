@@ -71,13 +71,19 @@
             {{ form.accion }}
           </div>
 
-          <div class="col-md-6">
+          <div class="col-md-4">
+            <label class="form-label">Hito Asociado (Opcional)</label>
+            {{ form.hito }}
+            <div class="form-text">{{ form.hito.help_text }}</div>
+          </div>
+
+          <div class="col-md-4">
             <label class="form-label">Archivo de Evidencia (Opcional)</label>
             {{ form.evidencia }}
             <div class="form-text">JPG, PNG o PDF. Máximo 5 MB.</div>
           </div>
 
-          <div class="col-md-6 d-flex align-items-center mt-4">
+          <div class="col-md-4 d-flex align-items-center mt-4">
             <div class="form-check">
               {{ form.incluir_en_agenda }}
               <label class="form-check-label ms-1" for="{{ form.incluir_en_agenda.id_for_label }}">

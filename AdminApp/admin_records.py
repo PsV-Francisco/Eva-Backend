@@ -11,6 +11,8 @@ from django.urls import reverse
 from django.contrib import messages
 from django.db.models.deletion import ProtectedError
 from django.utils import timezone
+from django.utils.html import strip_tags
+from django.utils.safestring import SafeString
 from django.views.decorators.http import (
     require_GET,
     require_http_methods,
@@ -49,7 +51,7 @@ from DelegadoApp.models import (
     HistorialReasignacionCompromiso,
     Reclamo,
 )
-from DelegadoApp.services import actualizar_estado_compromiso
+from DelegadoApp.services import actualizar_estado_compromiso, etiqueta_semaforo
 from FuncionarioApp.models import (
     JuntaVecino,
     Registro,
@@ -71,6 +73,7 @@ class RecordListSpec:
     assignment_lookup: str = ''
     select_related: tuple = ()
     numeric_search_fields: tuple = ()
+    prefetch_related: tuple = ()
     create_route: str = ''
     edit_route: str = ''
     delete_route: str = ''
@@ -165,22 +168,27 @@ LIST_SPECS = {
         model=Hito,
         columns=(
             ('Hito', 'nombre'),
-            ('Fecha de término', 'fecha_termino'),
+            ('Inicio', 'fecha_inicio'),
+            ('Término', 'fecha_termino'),
             ('Delegación', 'delegacion__nombre'),
             ('Territorio', 'territorio__nombre'),
-            ('Responsable', 'responsable__email'),
-            ('Estado', 'estado'),
+            ('Responsables', 'responsables_display'),
+            ('Estado', 'get_estado_display'),
+            ('Situación', 'situacion_badge'),
         ),
         search_fields=(
             'nombre',
             'descripcion',
             'delegacion__nombre',
             'territorio__nombre',
-            'responsable__email',
+            'responsables__email',
+            'responsables__first_name',
+            'responsables__last_name',
             'estado',
         ),
         delegation_lookup='delegacion_id',
-        select_related=('delegacion', 'territorio', 'responsable'),
+        select_related=('delegacion', 'territorio'),
+        prefetch_related=('responsables',),
         create_route='administracion:hito-nuevo',
         edit_route='administracion:hito-editar',
         delete_route='administracion:hito-eliminar',
@@ -391,9 +399,16 @@ def _column_value(record, field):
         value = getattr(value, part, None)
         if value is None:
             return ''
+    if callable(value):
+        value = value()
     if isinstance(value, bool):
         return 'Activo' if value else 'Inactivo'
     return value
+
+
+def _csv_value(value):
+    # Las columnas con insignias HTML se exportan solo como texto.
+    return strip_tags(value) if isinstance(value, SafeString) else value
 
 
 def _search_queryset(queryset, fields, numeric_fields, query):
@@ -413,7 +428,9 @@ def _record_list(request, spec):
     if export not in {'', 'csv'}:
         return HttpResponseBadRequest('Formato de exportación no válido.')
 
-    queryset = spec.model.objects.select_related(*spec.select_related)
+    queryset = spec.model.objects.select_related(
+        *spec.select_related,
+    ).prefetch_related(*spec.prefetch_related)
     queryset = filter_by_delegation(
         queryset,
         request,
@@ -444,7 +461,10 @@ def _record_list(request, spec):
     if export == 'csv':
         rows = [headers]
         rows.extend(
-            [_column_value(record, field) for _, field in spec.columns]
+            [
+                _csv_value(_column_value(record, field))
+                for _, field in spec.columns
+            ]
             for record in queryset
         )
         return csv_response(
@@ -632,11 +652,7 @@ def _related_record_queryset(spec, request):
         queryset = queryset.select_related(
             'delegacion',
             'territorio',
-            'responsable',
-            'registro__autor',
-            'registro__item',
-            'registro__periodo',
-        )
+        ).prefetch_related('responsables')
     return filter_by_delegation(
         queryset,
         request,
@@ -659,6 +675,14 @@ def _related_form_kwargs(spec, request):
     delegations = available_delegations(request.user)
     if delegation is not None:
         delegations = delegations.filter(pk=delegation.pk)
+    elif not is_system_administrator(request.user):
+        # Un delegado sin delegación activa no puede ver datos de otras.
+        return {
+            'delegaciones': delegations.none(),
+            'territorios': Territorio.objects.none(),
+            'responsables': get_user_model().objects.none(),
+            'registros': Registro.objects.none(),
+        }
     territories = Territorio.objects.all()
     records = Registro.objects.filter(
         autor__usuariodelegacion__fecha_fin__isnull=True,
@@ -696,6 +720,11 @@ def _related_record_snapshot(spec, record):
     snapshot = {}
     for field_name in spec.form_class.Meta.fields:
         field = spec.model._meta.get_field(field_name)
+        if field.many_to_many:
+            snapshot[field_name] = sorted(
+                getattr(record, field_name).values_list('pk', flat=True),
+            )
+            continue
         value = getattr(record, field.attname)
         if hasattr(value, 'isoformat'):
             value = value.isoformat()
@@ -715,7 +744,7 @@ def _related_record_snapshot(spec, record):
 def _related_record_period(record):
     return (
         record.periodo if hasattr(record, 'periodo_id')
-        else record.registro.periodo if record.registro_id
+        else record.registro.periodo if getattr(record, 'registro_id', None)
         else None
     )
 
@@ -727,13 +756,15 @@ def _related_record_form(request, key, record_id=None):
         get_object_or_404(queryset, pk=record_id)
         if record_id is not None else None
     )
+    # La foto "antes" se toma antes de validar: is_valid() copia los datos
+    # nuevos sobre la instancia y la trazabilidad quedaba igual al "después".
+    before = _related_record_snapshot(spec, editing) if editing else None
     form = spec.form_class(
         request.POST or None,
         instance=editing,
         **_related_form_kwargs(spec, request),
     )
     if request.method == 'POST' and form.is_valid():
-        before = _related_record_snapshot(spec, editing) if editing else None
         with transaction.atomic():
             record = form.save()
             registrar_historial(
@@ -859,22 +890,22 @@ def reclamo_eliminar(request, record_id):
 
 
 @require_GET
-@cargo_required('admin', 'administrador', permission='access_admin_milestones')
+@cargo_required('admin', 'administrador', 'delegado', permission='access_admin_milestones')
 def hitos(request):
     return _record_list(request, LIST_SPECS['hitos'])
 
 
-@cargo_required('admin', 'administrador', permission='create_admin_milestones')
+@cargo_required('admin', 'administrador', 'delegado', permission='create_admin_milestones')
 def hito_nuevo(request):
     return _related_record_form(request, 'hitos')
 
 
-@cargo_required('admin', 'administrador', permission='edit_admin_milestones')
+@cargo_required('admin', 'administrador', 'delegado', permission='edit_admin_milestones')
 def hito_editar(request, record_id):
     return _related_record_form(request, 'hitos', record_id)
 
 
-@cargo_required('admin', 'administrador', permission='delete_admin_milestones')
+@cargo_required('admin', 'administrador', 'delegado', permission='delete_admin_milestones')
 @require_POST
 def hito_eliminar(request, record_id):
     return _related_record_delete(request, 'hitos', record_id)
@@ -1003,7 +1034,7 @@ def resumen_delegacion(request):
             row['usuario'].email,
             row['cumplimiento'],
             row['esperado'],
-            row['semaforo'],
+            etiqueta_semaforo(row['semaforo']),
             row['ultimo_registro'] or '',
             row['fecha_ultimo_registro'] or '',
         ] for row in result['funcionarios'])

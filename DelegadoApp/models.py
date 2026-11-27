@@ -1,6 +1,9 @@
 import secrets
+from datetime import timedelta
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils.html import format_html
 from FuncionarioApp.models import Tipo, Subtipo, Vecino, Territorio 
 from django.utils import timezone
 from django.urls import reverse
@@ -206,13 +209,26 @@ class Licencia(models.Model):
 
 #Modelo : Hito (OK)
 class Hito(models.Model):
+	# HU-34: hitos territoriales de la delegación.
 	class Estado(models.TextChoices):
 		ABIERTO = 'operativo','Operativo'
+		FINALIZADO = 'finalizado','Finalizado'
 		CERRADO = 'cancelado','Cancelado'
+
+	# Días de anticipación con que un hito se marca como "Próximo".
+	DIAS_PROXIMO = 7
+	SITUACIONES = {
+		'proximo': ('Próximo', 'traffic-ambar'),
+		'vencido': ('Vencido', 'traffic-rojo'),
+		'finalizado': ('Finalizado', 'traffic-verde'),
+		'en_curso': ('En curso', ''),
+		'cancelado': ('Cancelado', ''),
+	}
 
 	nombre = models.CharField(max_length=100, db_column='NOMBRE')
 	descripcion = models.CharField(max_length=500, null=True, blank=True, db_column='DESCRIPCION')
-	fecha_termino = models.DateTimeField(db_column='FECHA_TERMINO')
+	fecha_inicio = models.DateTimeField(default=timezone.now, db_column='FECHA_INICIO')
+	fecha_termino = models.DateTimeField(null=True, blank=True, db_column='FECHA_TERMINO')
 	recursos_asociados = models.IntegerField(db_column='RECURSOS_ASOCIADOS')
 	territorio = models.ForeignKey('FuncionarioApp.Territorio',on_delete=models.PROTECT,db_column='TERRITORIO',related_name='hitos')
 	estado = models.CharField(max_length=16, choices=Estado.choices, default=Estado.ABIERTO)
@@ -220,14 +236,55 @@ class Hito(models.Model):
 	incluir_agenda = models.SmallIntegerField(db_column='INCLUIR_AGENDA')
 	periodicidad = models.CharField(max_length=100, db_column='PERIODICIDAD',null=True,blank=True)
 	delegacion = models.ForeignKey('AdminApp.Delegacion',on_delete=models.PROTECT,db_column='DELEGACION',related_name='hitos')
-	responsable = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,db_column='RESPONSABLE',related_name='hitos_responsable')
-	registro = models.ForeignKey('FuncionarioApp.Registro',on_delete=models.PROTECT,db_column='REGISTRO',related_name='hitos')
+	responsables = models.ManyToManyField(settings.AUTH_USER_MODEL,related_name='hitos_responsables',db_table='hito_responsables')
 
 	class Meta:
 		db_table = 'hito'
-		ordering = ['fecha_termino', 'nombre']
+		ordering = ['fecha_inicio', 'nombre']
 		verbose_name = 'hito'
 		verbose_name_plural = 'hitos'
+
+	def __str__(self):
+		return self.nombre
+
+	def clean(self):
+		super().clean()
+		if self.fecha_inicio and self.fecha_termino and self.fecha_termino < self.fecha_inicio:
+			raise ValidationError({'fecha_termino': 'La fecha de término no puede ser anterior a la fecha de inicio.'})
+
+	@property
+	def situacion(self):
+		if self.estado == self.Estado.CERRADO:
+			return 'cancelado'
+		if self.estado == self.Estado.FINALIZADO:
+			return 'finalizado'
+		ahora = timezone.now()
+		if self.fecha_termino and self.fecha_termino < ahora:
+			return 'vencido'
+		limite = ahora + timedelta(days=self.DIAS_PROXIMO)
+		if self.fecha_inicio and self.fecha_inicio > ahora:
+			return 'proximo'
+		if self.fecha_termino and self.fecha_termino <= limite:
+			return 'proximo'
+		return 'en_curso'
+
+	@property
+	def situacion_display(self):
+		return self.SITUACIONES[self.situacion][0]
+
+	@property
+	def situacion_badge(self):
+		label, css_class = self.SITUACIONES[self.situacion]
+		if css_class:
+			return format_html('<span class="traffic-light {}">{}</span>', css_class, label)
+		return format_html('<span class="tag">{}</span>', label)
+
+	@property
+	def responsables_display(self):
+		return ', '.join(
+			usuario.get_full_name() or usuario.email
+			for usuario in self.responsables.all()
+		)
 
 #Modelo : Informe (OK)
 class Informe(models.Model):

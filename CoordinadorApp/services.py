@@ -206,7 +206,10 @@ def porcentaje_esperado(periodo, fecha_corte=None, usuario=None, *, hoy=None):
     if usuario is not None:
         transcurridos -= _dias_no_trabajados(periodo,usuario,periodo.fecha_inicio,min(fecha_corte, periodo.fecha_fin))
         transcurridos = max(transcurridos, 0)
-    return (Decimal(transcurridos) * HUNDRED / Decimal(total)).quantize(Decimal('0.01'),rounding=ROUND_HALF_UP)
+    # Los días administrativos/libres reducen el total pero no los días
+    # transcurridos; sin tope, al final del período el esperado superaba 100%.
+    esperado = min(Decimal(transcurridos) * HUNDRED / Decimal(total), HUNDRED)
+    return esperado.quantize(Decimal('0.01'),rounding=ROUND_HALF_UP)
 
 
 def _semaforo(cumplimiento, esperado, *, umbral_rojo=None, umbral_ambar=None):
