@@ -44,13 +44,14 @@ def _section_for(label, url_name):
     } or 'informe' in normalized_label or 'reporte' in normalized_label:
         return 'informes'
     if route in {
+        'administracion:territorios',
         'administracion:vecinos',
         'administracion:juntas',
         'administracion:hitos',
         'funcionario:vecinos',
         'funcionario:vecino_nuevo',
         'funcionario:juntas',
-    } or any(term in normalized_label for term in ('vecino', 'junta', 'hito')):
+    } or any(term in normalized_label for term in ('territorio','vecino', 'junta', 'hito')):
         return 'territorio'
     if (
         route == 'administracion:home'

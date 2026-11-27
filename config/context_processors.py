@@ -46,6 +46,7 @@ NAVIGATION_BY_CARGO = {
         ('Funciones', 'administracion:funciones'),
         ('Cargos por función', 'administracion:cargos-funciones'),
         ('Delegaciones', 'administracion:delegaciones'),
+        ('Territorios', 'administracion:territorios'),
         ('Roles y permisos', 'administracion:roles'),
         ('Usuarios', 'administracion:home'),
         ('Ítems y metas', 'administracion:items'),
