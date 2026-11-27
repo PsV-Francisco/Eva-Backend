@@ -16,6 +16,7 @@ from AdminApp.audit import registrar_historial
 from config.decorators import cargo_required
 from config.delegations import active_delegation
 from CoordinadorApp.models import Desempeno, Periodo
+from CoordinadorApp.services import periodo_vigente
 from DelegadoApp.forms import AusenciaForm, CompromisoEstadoForm, CompromisoForm
 from DelegadoApp.models import (
     Agenda, Ausencia, Compromiso, HistorialEstadoCompromiso,
@@ -555,9 +556,7 @@ def resumen(request):
     selected_period = (
         Periodo.objects.filter(pk=int(period_id)).first()
         if period_id.isdecimal()
-        else Periodo.objects.filter(
-            estado=Periodo.Estado.ABIERTO,
-        ).order_by('-fecha_inicio').first()
+        else periodo_vigente(Periodo.objects.filter(estado=Periodo.Estado.ABIERTO))
     )
     periods = Periodo.objects.order_by('-fecha_inicio')
     summary = resumen_delegacion(

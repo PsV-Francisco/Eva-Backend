@@ -9,7 +9,7 @@ from django.utils import timezone
 from AdminApp.audit import registrar_historial
 #Importación de Modelos
 from AdminApp.models import ParametroSistema
-from CoordinadorApp.models import Desempeno, SolicitudAutorizacionPeriodo
+from CoordinadorApp.models import Desempeno, Periodo, SolicitudAutorizacionPeriodo
 from FuncionarioApp.models import Registro, limite_diario_actividades
 from SupervisorApp.models import Evidencia
 from DelegadoApp.models import Ausencia, Licencia
@@ -21,6 +21,22 @@ DEFAULT_TOPE_CUMPLIMIENTO = Decimal('120')
 DEFAULT_UMBRAL_ROJO = Decimal('60')
 DEFAULT_UMBRAL_AMBAR = Decimal('80')
 META_SCOPE = 'metas'
+
+
+def periodo_vigente(queryset=None, hoy=None):
+    """Retorna el período que contiene la fecha actual (HU-28).
+
+    Si ningún período del queryset contiene la fecha, usa el último que ya
+    comenzó y, como último recurso, el primero disponible. Así las vistas no
+    abren por defecto un trimestre futuro sin datos.
+    """
+    periodos = Periodo.objects.all() if queryset is None else queryset
+    hoy = hoy or timezone.localdate()
+    return (
+        periodos.filter(fecha_inicio__lte=hoy, fecha_fin__gte=hoy).order_by('-fecha_inicio', '-pk').first()
+        or periodos.filter(fecha_inicio__lte=hoy).order_by('-fecha_inicio', '-pk').first()
+        or periodos.order_by('fecha_inicio', 'pk').first()
+    )
 
 def max_dias_autorizacion():
     return int(ParametroSistema.obtener(ParametroSistema.Clave.MAX_DIAS_AUTORIZACION))

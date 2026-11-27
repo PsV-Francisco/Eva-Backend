@@ -369,7 +369,7 @@ def agenda_items(*, delegation_id, period, query='', actor=None):
             continue
         can_edit = bool(actor and commitment.responsable.filter(pk=actor.pk).exists())
         items.append({'id': f'compromiso:{commitment.pk}', 'commitment_id': commitment.pk,
-                      'edit_url': reverse('funcionario:compromiso_editar', args=[commitment.pk]),
+                      'edit_url': f"{reverse('funcionario:agenda_colectiva')}?periodo={period.pk}",
                       'source': 'Compromiso', 'code': commitment.codigo_publico,
                       'date': commitment.fecha_compromiso.isoformat(), 'description': commitment.descripcion,
                       'applicant': str(commitment.solicitante or ''), 'status': commitment.get_estado_display(),

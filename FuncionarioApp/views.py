@@ -23,7 +23,7 @@ from FuncionarioApp.models import (Carta,CargoJv,JuntaVecino,Registro,Subtipo,Te
 
 # Importaciones de la aplicación CoordinadorApp
 from CoordinadorApp.models import AtencionSocial, Desempeno, GestionAtencion, Item, Periodo
-from CoordinadorApp.services import clasificar_umbral, resumen_cumplimiento, umbral_delegacion
+from CoordinadorApp.services import clasificar_umbral, periodo_vigente, resumen_cumplimiento, umbral_delegacion
 
 # Importaciones de la aplicación DelegadoApp y SupervisorApp
 from DelegadoApp.models import Agenda, Compromiso
@@ -113,7 +113,7 @@ def _telefono_repetido(vecino):
 
 def _render_cumplimiento(request):
     assigned_periods = Periodo.objects.all().order_by('-fecha_inicio')
-    default_period = assigned_periods.first()
+    default_period = periodo_vigente(assigned_periods)
     period_id = request.GET.get('periodo', '').strip()
     selected_period = None
 
@@ -431,7 +431,7 @@ def agenda_colectiva(request):
     period_id = request.GET.get('periodo', '')
     selected_period = (periods.filter(pk=int(period_id)).first()
         if period_id.isdecimal()
-        else periods.first()
+        else periodo_vigente(periods)
     )
 
     initial_data = {}
@@ -550,7 +550,7 @@ def buscar_compromisos_ajax(request):
     delegation = active_delegation(request)
     periods = Periodo.objects.filter(estado=Periodo.Estado.ABIERTO).order_by('-fecha_inicio')
     period_id = request.GET.get('periodo', '')
-    selected_period = periods.filter(pk=int(period_id)).first() if period_id.isdecimal() else periods.first()
+    selected_period = periods.filter(pk=int(period_id)).first() if period_id.isdecimal() else periodo_vigente(periods)
 
     if not delegation or not selected_period:
         return JsonResponse({'success': True, 'compromisos': []})
@@ -657,7 +657,7 @@ def agenda_busqueda_json(request):
     delegation = active_delegation(request)
     periods = Periodo.objects.filter(estado=Periodo.Estado.ABIERTO).order_by('-fecha_inicio')
     period_id = request.GET.get('periodo', '')
-    period = periods.filter(pk=int(period_id)).first() if period_id.isdecimal() else periods.first()
+    period = periods.filter(pk=int(period_id)).first() if period_id.isdecimal() else periodo_vigente(periods)
     if not delegation or not period:
         return JsonResponse({'results': []})
     marcar_compromisos_vencidos(

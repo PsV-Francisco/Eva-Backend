@@ -23,7 +23,7 @@ from CoordinadorApp.forms import PeriodoForm
 from CoordinadorApp.models import Desempeno, Periodo, SolicitudAutorizacionPeriodo
 from CoordinadorApp.reporting import consolidated_report_csv_rows
 from CoordinadorApp.authorization_forms import AuthorizationRequestForm
-from CoordinadorApp.services import _authorization_snapshot
+from CoordinadorApp.services import _authorization_snapshot, periodo_vigente
 from CoordinadorApp.services import (clasificar_umbral,consolidar_cumplimientos,resumen_cumplimiento,tendencias_cumplimiento,umbral_delegacion,parametros_periodo,ZERO)
 #Importaciones de Modelos Necesarios
 from DelegadoApp.models import Agenda
@@ -211,9 +211,10 @@ def home(request):
         else None
     )
     if period is None:
-        period = periodos.filter(
-            estado=Periodo.Estado.ABIERTO,
-        ).first() or periodos.first()
+        period = (
+            periodo_vigente(periodos.filter(estado=Periodo.Estado.ABIERTO))
+            or periodo_vigente(periodos)
+        )
 
     desempenos = (
         Desempeno.objects.filter(periodo=period)
@@ -285,9 +286,10 @@ def personal(request):
     period_id = request.GET.get('periodo', '')
     period = (periodos.filter(pk=period_id).first() if period_id.isdecimal() else None)
     if period is None:
-        period = periodos.filter(
-            estado=Periodo.Estado.ABIERTO,
-        ).first() or periodos.first()
+        period = (
+            periodo_vigente(periodos.filter(estado=Periodo.Estado.ABIERTO))
+            or periodo_vigente(periodos)
+        )
     performances = (Desempeno.objects.filter(usuario=request.user, periodo=period,).select_related('item', 'periodo')
         if period else Desempeno.objects.none())
     
@@ -445,7 +447,10 @@ def _report_filters(request):
     if period_id.isdecimal():
         period = periods.filter(pk=period_id).first()
     else:
-        period = periods.filter(estado=Periodo.Estado.ABIERTO).first() or periods.first()
+        period = (
+            periodo_vigente(periods.filter(estado=Periodo.Estado.ABIERTO))
+            or periodo_vigente(periods)
+        )
     delegation_id = request.GET.get('delegacion', '')
     cargo_id = request.GET.get('cargo', '')
     user_id = request.GET.get('funcionario', '')
