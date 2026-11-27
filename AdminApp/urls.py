@@ -28,6 +28,14 @@ urlpatterns = [
     path('delegaciones/<int:delegacion_id>/detalle-json/', views.detalle_delegacion_json, name='detalle_delegacion_json'),
     path('delegaciones/<int:delegacion_id>/editar-ajax/', views.editar_delegacion_ajax, name='editar_delegacion_ajax'),
     path('delegaciones/<int:delegacion_id>/cambiar-estado-ajax/', views.cambiar_estado_delegacion_ajax, name='cambiar_estado_delegacion_ajax'),
+    path('items/<int:item_id>/cambiar-estado-ajax/', views.cambiar_estado_item_ajax, name='cambiar_estado_item_ajax'),
+    #Territorios
+    path('territorios/', views.territorios, name='territorios'),
+    path('territorios/buscar-ajax/', views.buscar_territorios_ajax, name='buscar_territorios_ajax'),
+    path('territorios/<int:territorio_id>/detalle-json/', views.detalle_territorio_json, name='detalle_territorio_json'),
+    path('territorios/<int:territorio_id>/editar-ajax/', views.editar_territorio_ajax, name='editar_territorio_ajax'),
+    path('territorios/<int:territorio_id>/eliminar/', views.eliminar_territorio, name='eliminar_territorio'),
+    
     #Items
     path('items/', views.items, name='items'),
     path('items/metas/', views.metas, name='metas'),
@@ -76,4 +84,10 @@ urlpatterns = [
     path('juntas/nueva/', admin_records.junta_nueva, name='junta-nueva'),
     path('juntas/<int:junta_id>/editar/',admin_records.junta_editar,name='junta-editar',),
     path('juntas/<int:junta_id>/eliminar/',admin_records.junta_eliminar,name='junta-eliminar',),
+    #Gestión de Beneficiados (pendiente de eliminar junto con sus vistas y permisos)
+    path('beneficiados/', views.beneficiados_vista, name='beneficiados'),
+    path('beneficiados/crear-ajax/', views.crear_beneficiado_ajax, name='crear_beneficiado_ajax'),
+    path('beneficiados/<int:beneficiado_id>/detalle-json/', views.detalle_beneficiado_json, name='detalle_beneficiado_json'),
+    path('beneficiados/<int:beneficiado_id>/editar-ajax/', views.editar_beneficiado_ajax, name='editar_beneficiado_ajax'),
+    path('beneficiados/<int:beneficiado_id>/eliminar/', views.eliminar_beneficiado, name='eliminar_beneficiado'),
 ]

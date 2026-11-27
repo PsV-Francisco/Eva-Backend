@@ -588,7 +588,7 @@ def editar_delegacion_ajax(request, delegacion_id):
         return JsonResponse({'success': False, 'message': f'Error al actualizar la delegación: {str(e)}'}, status=500)
 
 
-@cargo_required('admin', 'administrador', permission='edit_admin_delegations_ajax')
+@cargo_required('admin', 'administrador', permission='delete_admin_delegations')
 @require_POST
 def cambiar_estado_delegacion_ajax(request, delegacion_id):
     """Alterna el estado lógico de la delegación (ACTIVADO <-> DESACTIVADO) vía AJAX y registra en Historial."""
@@ -626,7 +626,7 @@ def cambiar_estado_delegacion_ajax(request, delegacion_id):
         }, status=500)
 
 
-@cargo_required('admin', 'administrador', permission='access_admin_delegations')
+@cargo_required('admin', 'administrador', permission='search_admin_delegations_ajax')
 @require_GET
 def buscar_delegaciones_ajax(request):
     """Endpoint AJAX (keyup) para filtrar delegaciones dinámicamente sin recargar."""

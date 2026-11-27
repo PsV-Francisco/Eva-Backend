@@ -3,13 +3,6 @@ from . import views
 app_name = 'funcionario'
 urlpatterns = [
     path('', views.home, name='home'),
-    #Territorios
-    path('territorios/', views.territorios, name='territorios'),
-    path('territorios/buscar-ajax/', views.buscar_territorios_ajax, name='buscar_territorios_ajax'),
-    path('territorios/<int:territorio_id>/detalle-json/', views.detalle_territorio_json, name='detalle_territorio_json'),
-    path('territorios/<int:territorio_id>/editar-ajax/', views.editar_territorio_ajax, name='editar_territorio_ajax'),
-    path('territorios/<int:territorio_id>/eliminar/', views.eliminar_territorio, name='eliminar_territorio'),
-    
     path('actividades/', views.gestion_actividades, name='gestion_actividades'),
     path('actividades/<int:registro_id>/detalle-json/', views.detalle_registro_json, name='detalle_registro_json'),
     path('actividades/<int:registro_id>/editar-ajax/', views.editar_registro_ajax, name='editar_registro_ajax'),

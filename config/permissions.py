@@ -16,7 +16,8 @@ PERMISSION_CATALOG = (
     #AdminApp Gestión de Delegaciones
     PermissionDefinition('Administración', 'view_admin_delegations_detail', 'Consultar detalle JSON de delegación', 'administracion:detalle_delegacion_json', ('admin', 'administrador'), (('delegacion_id', 1),), False),
     PermissionDefinition('Administración', 'edit_admin_delegations_ajax', 'Editar delegación por AJAX', 'administracion:editar_delegacion_ajax', ('admin', 'administrador'), (('delegacion_id', 1),), False),
-    PermissionDefinition('Administración', 'delete_admin_delegations', 'Eliminar delegación', 'administracion:eliminar_delegacion', ('admin', 'administrador'), (('delegacion_id', 1),), False),
+    PermissionDefinition('Administración', 'delete_admin_delegations', 'Activar o desactivar delegación', 'administracion:cambiar_estado_delegacion_ajax', ('admin', 'administrador'), (('delegacion_id', 1),), False),
+    PermissionDefinition('Administración', 'search_admin_delegations_ajax', 'Buscar delegaciones por AJAX', 'administracion:buscar_delegaciones_ajax', ('admin', 'administrador'), (), False),
     
     PermissionDefinition('Coordinador', 'view_coordinator_reports', 'Consultar informes consolidados', 'coordinador:informes', ('coordinador', 'admin', 'administrador')),
     PermissionDefinition('Coordinador', 'view_coordinator_trends', 'Consultar tendencias históricas de cumplimiento', 'coordinador:tendencias', ('coordinador', 'admin', 'administrador')),
@@ -161,6 +162,7 @@ PERMISSION_DESCRIPTIONS = {
     'view_admin_delegations_detail': 'Consultar el detalle JSON de una delegación para edición.',
     'edit_admin_delegations_ajax': 'Modificar datos de una delegación mediante AJAX.',
     'delete_admin_delegations': 'Eliminar o desactivar delegaciones desde la administración.',
+    'search_admin_delegations_ajax': 'Buscar delegaciones mediante AJAX.',
     'access_admin_dashboard': 'Consultar métricas generales y accesos rápidos de Administración.',
     'access_admin_users': 'Crear, editar y consultar cuentas de usuario.',
     'access_admin_parameters': 'Consultar y modificar parámetros generales del sistema.',
