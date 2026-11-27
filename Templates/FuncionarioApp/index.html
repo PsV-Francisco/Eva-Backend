@@ -153,7 +153,7 @@
                 </span>
               </td>
               <td class="text-end">
-                {% if reg.estado == 'pendiente' and reg.periodo.estado == 'abierto' and not reg.evidencia_id %}
+                {% if reg.editable %}
                 <button class="btn btn-sm btn-outline-primary btn-editar-registro" data-id="{{ reg.pk }}">
                   Editar
                 </button>

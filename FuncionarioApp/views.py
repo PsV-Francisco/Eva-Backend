@@ -295,6 +295,10 @@ def gestion_actividades(request):
         request, registros, default_ordering='fecha',
         allowed_ordering={'fecha': 'fecha', 'creado': 'creado', 'estado': 'estado'},
     )
+    # El botón Editar se muestra con las mismas reglas que valida el servidor
+    # (período, estado, evidencia y cierre semanal HU-35).
+    for reg in registros:
+        reg.editable = motivo_bloqueo_registro(reg) is None
 
     tipos = Tipo.objects.filter(estado=Tipo.Estado.ACTIVADO).order_by('nombre')
     items = Item.objects.filter(estado=Item.Estado.ACTIVO).order_by('nombre')
