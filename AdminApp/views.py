@@ -18,13 +18,12 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 #Importaciones de Modelos
 from FuncionarioApp.models import Vecino,Registro,Territorio
-from AdminApp.models import (Cargo,Delegacion,Historial,ParametroSistema,PasswordResetAuditEvent,Usuario,is_critical_cargo_name)
+from AdminApp.models import (Cargo,Delegacion,Historial,ParametroSistema,PasswordResetAuditEvent,Usuario,is_critical_cargo_name,Rol,UsuarioRol,PROTECTED_ROLE_NAMES)
 from CoordinadorApp.models import Periodo, SolicitudAutorizacionPeriodo,Item,CargoFuncion,CargoItem,Funcion
 
 #Importaciones de Formularios
-from AdminApp.forms import ItemForm
 from CoordinadorApp.authorization_forms import AuthorizationDecisionForm, AuthorizationRevokeForm
-from AdminApp.forms import (CargoForm,HistorialFilterForm,ParametroSistemaForm,PasswordResetAuditFilterForm,UsuarioCreationForm,UsuarioUpdateForm,DelegacionForm)
+from AdminApp.forms import (CargoForm,HistorialFilterForm,ParametroSistemaForm,PasswordResetAuditFilterForm,UsuarioCreationForm,UsuarioUpdateForm,DelegacionForm,ItemForm,RolForm)
 from FuncionarioApp.forms import TerritorioForm
 
 #Otras Importaciones
@@ -34,7 +33,7 @@ from config.decorators import cargo_required
 from config.permissions import PERMISSION_BY_VIEW, can_access_permission
 from CoordinadorApp.services import _authorization_snapshot, expire_authorizations
 from config.decorators import cargo_required
-
+from AdminApp.roles import ensure_role_group
 
 
 
@@ -1030,9 +1029,207 @@ def cargos_funciones(request):
     return maintainer(request, 'cargos-funciones')
 
 
+## Gestión de los Roles
+
+def _is_protected_role(rol):
+    return rol.nombre.strip().casefold() in PROTECTED_ROLE_NAMES
+
+def _rol_snapshot(rol):
+    group = ensure_role_group(rol)
+    codenames = sorted(group.permissions.values_list('codename', flat=True))
+    return {
+        'nombre': rol.nombre,
+        'estado': rol.estado,
+        'permisos': codenames,
+    }
+
+
 @cargo_required('admin', 'administrador', permission='access_admin_roles')
 def roles(request):
-    return maintainer(request, 'roles')
+    """Vista dedicada para listar, buscar y crear roles y permisos en el panel de administración."""
+    query = request.GET.get('q', '').strip()
+    estado_filtro = request.GET.get('estado', '').lower()
+
+    queryset = Rol.objects.all().order_by('nombre')
+    if query:
+        queryset = queryset.filter(nombre__icontains=query)
+    if estado_filtro:
+        if estado_filtro not in {'activo', 'inactivo'}:
+            return HttpResponseBadRequest('Filtro de estado no válido.')
+        queryset = queryset.filter(estado=estado_filtro)
+
+    form = RolForm(request.POST or None, actor=request.user)
+    if request.method == 'POST':
+        if form.is_valid():
+            with transaction.atomic():
+                rol = form.save()
+                registrar_historial(
+                    actor=request.user,
+                    action='Crear rol',
+                    entity=f'Rol:{rol.pk}',
+                    after=_rol_snapshot(rol),
+                )
+            messages.success(request, f'Rol "{rol.nombre}" creado correctamente.')
+            return redirect('administracion:roles')
+        else:
+            errores = '; '.join(
+                f"{campo}: {', '.join(msgs)}" for campo, msgs in form.errors.items()
+            )
+            messages.error(request, f'Error al registrar el rol: {errores}')
+
+    page_obj = Paginator(queryset, 20).get_page(request.GET.get('page'))
+    roles_list = list(page_obj.object_list)
+    for r in roles_list:
+        r.es_protegido = _is_protected_role(r)
+        r.permisos_count = ensure_role_group(r).permissions.count()
+
+    return render(request, 'AdminApp/roles.html', {
+        'sgr_role': 'Administración',
+        'sidebar_modules': (),
+        'form': form,
+        'page_obj': page_obj,
+        'roles_list': roles_list,
+        'search_query': query,
+        'estado_filtro': estado_filtro,
+    })
+
+@cargo_required('admin', 'administrador', permission='search_admin_roles_ajax')
+@require_GET
+def buscar_roles_ajax(request):
+    """Endpoint AJAX (keyup) para filtrar roles dinámicamente sin recargar."""
+    query = request.GET.get('q', '').strip()
+    estado_filtro = request.GET.get('estado', '').lower()
+
+    queryset = Rol.objects.all().order_by('nombre')
+    if query:
+        queryset = queryset.filter(nombre__icontains=query)
+    if estado_filtro in {'activo', 'inactivo'}:
+        queryset = queryset.filter(estado=estado_filtro)
+
+    resultados = []
+    for r in queryset[:50]:
+        resultados.append({
+            'id': r.pk,
+            'nombre': r.nombre,
+            'estado': r.estado,
+            'es_protegido': _is_protected_role(r),
+            'permisos_count': ensure_role_group(r).permissions.count(),
+        })
+    return JsonResponse({'success': True, 'roles': resultados})
+
+
+@cargo_required('admin', 'administrador', permission='view_admin_roles_detail')
+@require_GET
+def detalle_rol_json(request, rol_id):
+    """Devuelve los datos del rol y los IDs de permisos asignados en JSON para el modal."""
+    rol = get_object_or_404(Rol, pk=rol_id)
+    form_helper = RolForm(instance=rol, actor=request.user)
+    selected_ids = [int(pk) for pk in form_helper.initial.get('permissions', [])]
+
+    return JsonResponse({
+        'id': rol.pk,
+        'nombre': rol.nombre,
+        'estado': rol.estado,
+        'es_protegido': _is_protected_role(rol),
+        'permissions': selected_ids,
+    })
+
+
+@cargo_required('admin', 'administrador', permission='edit_admin_roles_ajax')
+@require_POST
+def editar_rol_ajax(request, rol_id):
+    """Actualiza el rol y sus permisos vía AJAX usando RolForm y registra en Historial."""
+    rol = get_object_or_404(Rol, pk=rol_id)
+    if _is_protected_role(rol):
+        return JsonResponse({
+            'success': False,
+            'message': 'Este rol es reservado del sistema (solo lectura) y no puede modificarse.',
+        }, status=400)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': 'Payload JSON inválido.'}, status=400)
+
+    payload = {
+        'nombre': data.get('nombre', '').strip(),
+        'estado': data.get('estado', 'activo').lower(),
+        'permisos': rol.permisos or '',
+        'permissions': [str(x) for x in data.get('permissions', [])],
+    }
+
+    before = _rol_snapshot(rol)
+    form = RolForm(payload, instance=rol, actor=request.user)
+    if not form.is_valid():
+        errores = '; '.join(
+            f"{campo}: {', '.join(msgs)}" for campo, msgs in form.errors.items()
+        )
+        return JsonResponse({'success': False, 'message': errores}, status=400)
+
+    try:
+        with transaction.atomic():
+            rol = form.save()
+            registrar_historial(
+                actor=request.user,
+                action='Editar rol AJAX',
+                entity=f'Rol:{rol.pk}',
+                before=before,
+                after=_rol_snapshot(rol),
+            )
+        return JsonResponse({
+            'success': True,
+            'message': f'El rol "{rol.nombre}" fue actualizado correctamente.',
+        })
+    except ValidationError as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Error al actualizar el rol: {str(e)}'}, status=500)
+
+
+@cargo_required('admin', 'administrador', permission='toggle_admin_roles_status')
+@require_POST
+def cambiar_estado_rol_ajax(request, rol_id):
+    """Alterna el estado lógico del rol (activo <-> inactivo) vía AJAX y registra en Historial."""
+    rol = get_object_or_404(Rol, pk=rol_id)
+
+    if _is_protected_role(rol):
+        return JsonResponse({
+            'success': False,
+            'message': 'Los roles reservados del sistema no pueden desactivarse.',
+        }, status=400)
+
+    before = _rol_snapshot(rol)
+    nuevo_estado = (
+        Rol.Estado.INACTIVO
+        if rol.estado == Rol.Estado.ACTIVO
+        else Rol.Estado.ACTIVO
+    )
+    accion_texto = 'Desactivar rol' if nuevo_estado == Rol.Estado.INACTIVO else 'Activar rol'
+
+    try:
+        with transaction.atomic():
+            rol.estado = nuevo_estado
+            rol.save(update_fields=['estado'])
+
+            registrar_historial(
+                actor=request.user,
+                action=accion_texto,
+                entity=f'Rol:{rol.pk}',
+                before=before,
+                after=_rol_snapshot(rol),
+            )
+        etiqueta = 'Activado' if nuevo_estado == Rol.Estado.ACTIVO else 'Desactivado'
+        return JsonResponse({
+            'success': True,
+            'estado': nuevo_estado,
+            'message': f'El rol "{rol.nombre}" pasó a estado {etiqueta} y se registró en auditoría.',
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error al cambiar el estado del rol: {str(e)}',
+        }, status=500)
+
 
 ##
 ## FUNCIONES DE LOS ÍTEMS

@@ -17,7 +17,14 @@ urlpatterns = [
 
     path('funciones/', views.funciones, name='funciones'),
     path('cargos-funciones/', views.cargos_funciones, name='cargos-funciones'),
+
+    # Gestión de Roles
     path('roles/', views.roles, name='roles'),
+    path('roles/buscar-ajax/', views.buscar_roles_ajax, name='buscar_roles_ajax'),
+    path('roles/<int:rol_id>/detalle-json/', views.detalle_rol_json, name='detalle_rol_json'),
+    path('roles/<int:rol_id>/editar-ajax/', views.editar_rol_ajax, name='editar_rol_ajax'),
+    path('roles/<int:rol_id>/cambiar-estado-ajax/', views.cambiar_estado_rol_ajax, name='cambiar_estado_rol_ajax'),
+    
     path('tipos-atencion/', views.tipos_atencion, name='tipos-atencion'),
     path('subatenciones/', views.subatenciones, name='subatenciones'),
     path('parametros/', views.parametros, name='parametros'),

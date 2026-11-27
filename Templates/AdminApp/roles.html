@@ -1,0 +1,584 @@
+{% extends 'base.html' %}
+{% block title %}Gestión de Roles y Permisos | SGR{% endblock %}
+{% block page_title %}Gestión de Roles y Permisos{% endblock %}
+
+{% block content %}
+<style>
+  :root {
+    --muni-rojo: #B71C1C;
+    --muni-rojo-hover: #8E0000;
+    --muni-rojo-borde: #EF9A9A;
+  }
+  .text-muni { color: var(--muni-rojo) !important; }
+  .bg-muni { background-color: var(--muni-rojo) !important; color: #ffffff !important; }
+  .bg-muni th { color: #ffffff !important; }
+  .btn-muni { background-color: var(--muni-rojo); border-color: var(--muni-rojo); color: #ffffff; }
+  .btn-muni:hover, .btn-muni:focus { background-color: var(--muni-rojo-hover); border-color: var(--muni-rojo-hover); color: #ffffff; }
+  .btn-outline-muni { color: var(--muni-rojo); border-color: var(--muni-rojo); }
+  .btn-outline-muni:hover, .btn-outline-muni:focus { background-color: var(--muni-rojo); border-color: var(--muni-rojo); color: #ffffff; }
+  .card-muni-top { border-top: 3px solid var(--muni-rojo) !important; }
+  .form-control:focus, .form-select:focus {
+    border-color: var(--muni-rojo-borde);
+    box-shadow: 0 0 0 0.2rem rgba(183, 28, 28, 0.18);
+  }
+  .perm-box {
+    max-height: 340px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    background: #fafafa;
+  }
+</style>
+
+<div class="dashboard-layout">
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+
+    <!-- (1) FORMULARIO DE CREACIÓN DE ROL -->
+    <section class="content-section mb-4">
+      <div class="card shadow-sm border-0 card-muni-top">
+        <div class="card-header bg-white py-3 border-bottom">
+          <h5 class="card-title mb-0 fw-semibold text-muni">
+            <i class="bi bi-shield-lock-fill me-2"></i>Registrar Nuevo Rol
+          </h5>
+        </div>
+        <div class="card-body">
+          <form id="formCrearRol" method="post" action="{% url 'administracion:roles' %}" novalidate>
+            {% csrf_token %}
+            <div class="row g-3 mb-3">
+              <div class="col-md-8">
+                <label for="id_nombre" class="form-label fw-semibold">Nombre del Rol <span class="text-danger">*</span></label>
+                {{ form.nombre }}
+              </div>
+              <div class="col-md-4">
+                <label for="id_estado" class="form-label fw-semibold">Estado <span class="text-danger">*</span></label>
+                {{ form.estado }}
+              </div>
+            </div>
+
+            <div class="mb-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <label class="form-label fw-semibold mb-0">Permisos asignados por módulo</label>
+              <input type="search" class="form-control form-control-sm" style="max-width: 280px;" data-perm-search="crear" placeholder="Filtrar permisos por nombre...">
+            </div>
+
+            <div class="perm-box p-3" id="permContainerCrear">
+              {% for group in form.permission_groups %}
+              <div class="mb-3 perm-module-block" data-module="{{ group.module }}">
+                <div class="d-flex justify-content-between align-items-center border-bottom pb-1 mb-2">
+                  <strong class="text-muni small text-uppercase">{{ group.module }} ({{ group.total }})</strong>
+                  <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-secondary btn-toggle-module" data-target="crear">
+                    Marcar / desmarcar todos
+                  </button>
+                </div>
+                <div class="row g-2">
+                  {% for choice in group.choices %}
+                  <div class="col-md-6 perm-item-col" data-label="{{ choice.label|lower }} {{ choice.attrs.permission_description|lower }}">
+                    <div class="form-check bg-white p-2 ps-4 rounded border h-100">
+                      <input class="form-check-input" type="checkbox" name="permissions" value="{{ choice.value }}" id="create_perm_{{ choice.value }}" {% if choice.selected %}checked{% endif %}>
+                      <label class="form-check-label d-block" for="create_perm_{{ choice.value }}">
+                        <span class="fw-semibold small d-block">{{ choice.label }}</span>
+                        {% if choice.attrs.permission_description %}
+                          <span class="text-muted" style="font-size: 0.78rem;">{{ choice.attrs.permission_description }}</span>
+                        {% endif %}
+                      </label>
+                    </div>
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+
+            <div class="d-flex justify-content-end mt-3 pt-2 border-top">
+              <button type="reset" class="btn btn-light me-2">Limpiar</button>
+              <button type="submit" class="btn btn-muni fw-semibold">
+                <i class="bi bi-save me-1"></i> Guardar Rol
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- (2) LISTADO + BUSCADOR AJAX EN VIVO -->
+    <section class="content-section">
+      <div class="section-head d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <p class="eyebrow mb-0">CONTROL DE ACCESO</p>
+          <h2 class="h5 fw-bold mb-0">Roles Registrados</h2>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-3 bg-light p-3 rounded shadow-sm border">
+        <div class="col-md-6">
+          <label for="buscadorRol" class="form-label fw-bold">Buscar rol (en vivo)</label>
+          <input type="search" id="buscadorRol" class="form-control" value="{{ search_query }}" placeholder="Nombre del rol..." autocomplete="off">
+        </div>
+        <div class="col-md-4">
+          <label for="filtroEstadoRol" class="form-label fw-bold">Estado</label>
+          <select id="filtroEstadoRol" class="form-select">
+            <option value="">Todos los estados</option>
+            <option value="activo" {% if estado_filtro == 'activo' %}selected{% endif %}>Activo</option>
+            <option value="inactivo" {% if estado_filtro == 'inactivo' %}selected{% endif %}>Inactivo</option>
+          </select>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button type="button" id="btnLimpiarFiltro" class="btn btn-outline-secondary w-100 fw-bold">Limpiar</button>
+        </div>
+      </div>
+
+      <div class="table-responsive shadow-sm rounded border bg-white">
+        <table class="table table-hover table-bordered align-middle mb-0" id="tablaRoles">
+          <thead class="bg-muni">
+            <tr>
+              <th class="ps-3">Rol</th>
+              <th class="text-center">Permisos</th>
+              <th class="text-center">Tipo</th>
+              <th class="text-center">Estado</th>
+              <th class="text-end pe-3" style="min-width: 220px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyRoles">
+            {% for r in roles_list %}
+            <tr>
+              <td class="ps-3 fw-semibold text-dark">{{ r.nombre }}</td>
+              <td class="text-center">
+                <span class="badge bg-info-subtle text-dark border border-info-subtle">{{ r.permisos_count }} permiso(s)</span>
+              </td>
+              <td class="text-center">
+                {% if r.es_protegido %}
+                  <span class="badge bg-warning-subtle text-dark border border-warning-subtle">Reservado</span>
+                {% else %}
+                  <span class="badge bg-light text-secondary border">Personalizado</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                {% if r.estado == 'activo' %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle">Activo</span>
+                {% else %}
+                  <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Inactivo</span>
+                {% endif %}
+              </td>
+              <td class="text-end pe-3 text-nowrap">
+                {% if r.es_protegido %}
+                  <button type="button" class="btn btn-sm btn-outline-secondary btn-ver-rol" data-id="{{ r.pk }}">
+                    <i class="bi bi-eye"></i> Ver permisos
+                  </button>
+                {% else %}
+                  <button type="button" class="btn btn-sm btn-outline-muni btn-editar-rol" data-id="{{ r.pk }}">
+                    <i class="bi bi-pencil-square"></i> Editar
+                  </button>
+                  {% if r.estado == 'activo' %}
+                    <button type="button" class="btn btn-sm btn-outline-danger btn-toggle-estado-rol" data-id="{{ r.pk }}" data-nombre="{{ r.nombre }}" data-estado="activo">
+                      <i class="bi bi-slash-circle"></i> Desactivar
+                    </button>
+                  {% else %}
+                    <button type="button" class="btn btn-sm btn-outline-success btn-toggle-estado-rol" data-id="{{ r.pk }}" data-nombre="{{ r.nombre }}" data-estado="inactivo">
+                      <i class="bi bi-check-circle"></i> Activar
+                    </button>
+                  {% endif %}
+                {% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="5" class="text-center py-4 text-muted">No hay roles registrados para los filtros seleccionados.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if page_obj.has_other_pages %}
+      <nav class="mt-3" id="paginacionRoles">
+        <ul class="pagination justify-content-center">
+          {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link text-danger" href="?page={{ page_obj.previous_page_number }}&q={{ search_query }}&estado={{ estado_filtro }}">Anterior</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Anterior</span></li>
+          {% endif %}
+          <li class="page-item active"><span class="page-link bg-danger border-danger">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span></li>
+          {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link text-danger" href="?page={{ page_obj.next_page_number }}&q={{ search_query }}&estado={{ estado_filtro }}">Siguiente</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Siguiente</span></li>
+          {% endif %}
+        </ul>
+      </nav>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<!-- (3) MODAL DE EDICIÓN / CONSULTA DE ROL -->
+<div class="modal fade" id="modalEditarRol" tabindex="-1" aria-labelledby="modalEditarRolLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header bg-muni">
+        <h5 class="modal-title" id="modalEditarRolLabel">
+          <i class="bi bi-pencil-square me-2"></i>Editar Rol y Permisos
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <form id="formEditarRol" novalidate>
+        <div class="modal-body">
+          <input type="hidden" id="edit_rol_id">
+          <div id="alertaRolProtegido" class="alert alert-warning d-none py-2 small">
+            <i class="bi bi-shield-lock-fill me-1"></i>
+            Rol reservado del sistema: modo solo lectura; no se puede editar ni desactivar.
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-8">
+              <label for="edit_nombre" class="form-label fw-semibold">Nombre del Rol <span class="text-danger">*</span></label>
+              <input type="text" id="edit_nombre" class="form-control" maxlength="80" required>
+            </div>
+            <div class="col-md-4">
+              <label for="edit_estado" class="form-label fw-semibold">Estado <span class="text-danger">*</span></label>
+              <select id="edit_estado" class="form-select" required>
+                <option value="activo">Activo</option>
+                <option value="inactivo">Inactivo</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="mb-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <label class="form-label fw-semibold mb-0">Permisos asignados por módulo</label>
+            <input type="search" class="form-control form-control-sm" style="max-width: 280px;" data-perm-search="editar" placeholder="Filtrar permisos por nombre...">
+          </div>
+
+          <div class="perm-box p-3" id="permContainerEditar">
+            {% for group in form.permission_groups %}
+            <div class="mb-3 perm-module-block" data-module="{{ group.module }}">
+              <div class="d-flex justify-content-between align-items-center border-bottom pb-1 mb-2">
+                <strong class="text-muni small text-uppercase">{{ group.module }} ({{ group.total }})</strong>
+                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-secondary btn-toggle-module" data-target="editar">
+                  Marcar / desmarcar todos
+                </button>
+              </div>
+              <div class="row g-2">
+                {% for choice in group.choices %}
+                <div class="col-md-6 perm-item-col" data-label="{{ choice.label|lower }} {{ choice.attrs.permission_description|lower }}">
+                  <div class="form-check bg-white p-2 ps-4 rounded border h-100">
+                    <input class="form-check-input edit-perm-checkbox" type="checkbox" value="{{ choice.value }}" id="edit_perm_{{ choice.value }}">
+                    <label class="form-check-label d-block" for="edit_perm_{{ choice.value }}">
+                      <span class="fw-semibold small d-block">{{ choice.label }}</span>
+                      {% if choice.attrs.permission_description %}
+                        <span class="text-muted" style="font-size: 0.78rem;">{{ choice.attrs.permission_description }}</span>
+                      {% endif %}
+                    </label>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="modal-footer bg-light">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          <button type="submit" id="btnGuardarEditarRol" class="btn btn-muni">
+            <i class="bi bi-check-lg me-1"></i> Guardar Cambios
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+  const buscarUrl = "{% url 'administracion:buscar_roles_ajax' %}";
+  const detalleUrlTemplate = "{% url 'administracion:detalle_rol_json' 0 %}";
+  const editarUrlTemplate = "{% url 'administracion:editar_rol_ajax' 0 %}";
+  const toggleEstadoUrlTemplate = "{% url 'administracion:cambiar_estado_rol_ajax' 0 %}";
+
+  function buildUrl(template, id) {
+    return template.replace('/0/', `/${id}/`);
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+  }
+
+  // Alertas Django con SweetAlert2
+  {% if messages %}
+    {% for message in messages %}
+      Swal.fire({
+        icon: "{% if 'error' in message.tags %}error{% elif 'warning' in message.tags %}warning{% else %}success{% endif %}",
+        title: "{% if 'error' in message.tags %}Atención{% elif 'warning' in message.tags %}Advertencia{% else %}Operación exitosa{% endif %}",
+        text: "{{ message|escapejs }}",
+        confirmButtonColor: "#B71C1C"
+      });
+    {% endfor %}
+  {% endif %}
+
+  // Buscador de permisos dentro de creación y modal
+  document.querySelectorAll('[data-perm-search]').forEach(input => {
+    input.addEventListener('keyup', function () {
+      const term = this.value.trim().toLowerCase();
+      const containerId = this.dataset.permSearch === 'crear' ? 'permContainerCrear' : 'permContainerEditar';
+      const container = document.getElementById(containerId);
+      container.querySelectorAll('.perm-module-block').forEach(block => {
+        let visibleCount = 0;
+        block.querySelectorAll('.perm-item-col').forEach(col => {
+          const match = !term || col.dataset.label.includes(term);
+          col.style.display = match ? '' : 'none';
+          if (match) visibleCount++;
+        });
+        block.style.display = visibleCount > 0 ? '' : 'none';
+      });
+    });
+  });
+
+  // Marcar / desmarcar todos los permisos de un módulo
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.btn-toggle-module');
+    if (!btn) return;
+    const block = btn.closest('.perm-module-block');
+    const checks = Array.from(block.querySelectorAll('input[type="checkbox"]:not(:disabled)'));
+    if (!checks.length) return;
+    const allChecked = checks.every(c => c.checked);
+    checks.forEach(c => { c.checked = !allChecked; });
+  });
+
+  // Validación creación
+  const formCrear = document.getElementById('formCrearRol');
+  if (formCrear) {
+    formCrear.addEventListener('submit', function (e) {
+      const nombre = document.getElementById('id_nombre').value.trim();
+      if (!nombre) {
+        e.preventDefault();
+        Swal.fire({
+          icon: 'warning',
+          title: 'Campo obligatorio',
+          text: 'Debes ingresar el nombre del rol.',
+          confirmButtonColor: '#B71C1C'
+        });
+      }
+    });
+  }
+
+  // Buscador AJAX en vivo de roles
+  const inputBuscar = document.getElementById('buscadorRol');
+  const selectEstado = document.getElementById('filtroEstadoRol');
+  const btnLimpiar = document.getElementById('btnLimpiarFiltro');
+  const tbody = document.getElementById('tbodyRoles');
+  const paginacion = document.getElementById('paginacionRoles');
+  let debounceTimer = null;
+
+  function renderTabla(items, qVal, estadoVal) {
+    if (paginacion) {
+      paginacion.style.display = (qVal || estadoVal) ? 'none' : '';
+    }
+    if (!items.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">No hay roles registrados para los filtros seleccionados.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = items.map(r => {
+      const tipoBadge = r.es_protegido
+        ? '<span class="badge bg-warning-subtle text-dark border border-warning-subtle">Reservado</span>'
+        : '<span class="badge bg-light text-secondary border">Personalizado</span>';
+
+      const estadoBadge = r.estado === 'activo'
+        ? '<span class="badge bg-success-subtle text-success border border-success-subtle">Activo</span>'
+        : '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Inactivo</span>';
+
+      let acciones = '';
+      if (r.es_protegido) {
+        acciones = `<button type="button" class="btn btn-sm btn-outline-secondary btn-ver-rol" data-id="${r.id}"><i class="bi bi-eye"></i> Ver permisos</button>`;
+      } else {
+        const btnEstado = r.estado === 'activo'
+          ? `<button type="button" class="btn btn-sm btn-outline-danger btn-toggle-estado-rol" data-id="${r.id}" data-nombre="${escapeHtml(r.nombre)}" data-estado="activo"><i class="bi bi-slash-circle"></i> Desactivar</button>`
+          : `<button type="button" class="btn btn-sm btn-outline-success btn-toggle-estado-rol" data-id="${r.id}" data-nombre="${escapeHtml(r.nombre)}" data-estado="inactivo"><i class="bi bi-check-circle"></i> Activar</button>`;
+        acciones = `
+          <button type="button" class="btn btn-sm btn-outline-muni btn-editar-rol" data-id="${r.id}">
+            <i class="bi bi-pencil-square"></i> Editar
+          </button>
+          ${btnEstado}`;
+      }
+
+      return `
+        <tr>
+          <td class="ps-3 fw-semibold text-dark">${escapeHtml(r.nombre)}</td>
+          <td class="text-center"><span class="badge bg-info-subtle text-dark border border-info-subtle">${r.permisos_count} permiso(s)</span></td>
+          <td class="text-center">${tipoBadge}</td>
+          <td class="text-center">${estadoBadge}</td>
+          <td class="text-end pe-3 text-nowrap">${acciones}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  function filtrarRoles() {
+    const qVal = inputBuscar.value.trim();
+    const estadoVal = selectEstado.value;
+    const params = new URLSearchParams({ q: qVal, estado: estadoVal });
+
+    fetch(`${buscarUrl}?${params}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) renderTabla(data.roles || [], qVal, estadoVal);
+      })
+      .catch(() => {});
+  }
+
+  inputBuscar.addEventListener('keyup', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(filtrarRoles, 250);
+  });
+  selectEstado.addEventListener('change', filtrarRoles);
+  btnLimpiar.addEventListener('click', () => {
+    inputBuscar.value = '';
+    selectEstado.value = '';
+    filtrarRoles();
+    inputBuscar.focus();
+  });
+
+  // Abrir Modal de Edición / Consulta vía JSON
+  const modalEditar = new bootstrap.Modal(document.getElementById('modalEditarRol'));
+
+  tbody.addEventListener('click', function (e) {
+    const btn = e.target.closest('.btn-editar-rol, .btn-ver-rol');
+    if (!btn) return;
+    const id = btn.dataset.id;
+
+    fetch(buildUrl(detalleUrlTemplate, id), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById('edit_rol_id').value = data.id;
+        const inputNombre = document.getElementById('edit_nombre');
+        const selectEst = document.getElementById('edit_estado');
+        const alertaProt = document.getElementById('alertaRolProtegido');
+        const btnGuardar = document.getElementById('btnGuardarEditarRol');
+        const permSet = new Set((data.permissions || []).map(String));
+
+        inputNombre.value = data.nombre || '';
+        selectEst.value = data.estado || 'activo';
+
+        document.querySelectorAll('.edit-perm-checkbox').forEach(chk => {
+          chk.checked = permSet.has(chk.value);
+          chk.disabled = Boolean(data.es_protegido);
+        });
+
+        if (data.es_protegido) {
+          inputNombre.disabled = true;
+          selectEst.disabled = true;
+          alertaProt.classList.remove('d-none');
+          btnGuardar.classList.add('d-none');
+        } else {
+          inputNombre.disabled = false;
+          selectEst.disabled = false;
+          alertaProt.classList.add('d-none');
+          btnGuardar.classList.remove('d-none');
+        }
+
+        modalEditar.show();
+      })
+      .catch(() => {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudieron cargar los datos del rol.', confirmButtonColor: '#B71C1C' });
+      });
+  });
+
+  // Activar / Desactivar Rol vía AJAX
+  tbody.addEventListener('click', function (e) {
+    const btnToggle = e.target.closest('.btn-toggle-estado-rol');
+    if (!btnToggle) return;
+
+    const id = btnToggle.dataset.id;
+    const nombre = btnToggle.dataset.nombre || '';
+    const estadoActual = btnToggle.dataset.estado;
+    const vaADesactivar = estadoActual === 'activo';
+
+    Swal.fire({
+      icon: 'warning',
+      title: vaADesactivar ? '¿Desactivar rol?' : '¿Activar rol?',
+      text: vaADesactivar
+        ? `El rol "${nombre}" pasará a estado Inactivo y no podrá asignarse a nuevos usuarios.`
+        : `El rol "${nombre}" volverá a estado Activo.`,
+      showCancelButton: true,
+      confirmButtonColor: vaADesactivar ? '#B71C1C' : '#198754',
+      cancelButtonText: 'Cancelar',
+      confirmButtonText: vaADesactivar ? 'Sí, desactivar' : 'Sí, activar'
+    }).then(result => {
+      if (!result.isConfirmed) return;
+
+      fetch(buildUrl(toggleEstadoUrlTemplate, id), {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      })
+        .then(res => res.json().then(body => ({ ok: res.ok, body })))
+        .then(({ ok, body }) => {
+          if (ok && body.success) {
+            Swal.fire({
+              icon: 'success',
+              title: 'Estado actualizado',
+              text: body.message,
+              confirmButtonColor: '#B71C1C'
+            }).then(() => filtrarRoles());
+          } else {
+            Swal.fire({
+              icon: 'error',
+              title: 'Error',
+              text: body.message || 'No se pudo cambiar el estado.',
+              confirmButtonColor: '#B71C1C'
+            });
+          }
+        })
+        .catch(() => {
+          Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Error de comunicación con el servidor.',
+            confirmButtonColor: '#B71C1C'
+          });
+        });
+    });
+  });
+
+  // Guardar Edición vía AJAX
+  document.getElementById('formEditarRol').addEventListener('submit', function (e) {
+    e.preventDefault();
+    const id = document.getElementById('edit_rol_id').value;
+    const nombre = document.getElementById('edit_nombre').value.trim();
+    const estado = document.getElementById('edit_estado').value;
+    const permissions = Array.from(document.querySelectorAll('.edit-perm-checkbox:checked')).map(c => c.value);
+
+    if (!nombre) {
+      Swal.fire({ icon: 'warning', title: 'Campo obligatorio', text: 'El nombre del rol es obligatorio.', confirmButtonColor: '#B71C1C' });
+      return;
+    }
+
+    fetch(buildUrl(editarUrlTemplate, id), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken,
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify({ nombre, estado, permissions })
+    })
+      .then(res => res.json().then(body => ({ ok: res.ok, body })))
+      .then(({ ok, body }) => {
+        if (ok && body.success) {
+          modalEditar.hide();
+          Swal.fire({ icon: 'success', title: 'Actualizado', text: body.message, confirmButtonColor: '#B71C1C' })
+            .then(() => filtrarRoles());
+        } else {
+          Swal.fire({ icon: 'error', title: 'Error de validación', text: body.message || 'No se pudo actualizar.', confirmButtonColor: '#B71C1C' });
+        }
+      })
+      .catch(() => {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Error de comunicación con el servidor.', confirmButtonColor: '#B71C1C' });
+      });
+  });
+});
+</script>
+{% endblock %}

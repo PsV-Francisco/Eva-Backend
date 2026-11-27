@@ -37,7 +37,14 @@ PERMISSION_CATALOG = (
     PermissionDefinition('Administración', 'access_admin_positions', 'Administrar cargos', 'administracion:cargos', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_functions', 'Administrar funciones', 'administracion:funciones', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_position_functions', 'Administrar cargos por función', 'administracion:cargos-funciones', ('admin', 'administrador')),
+
+    ## Gestión de Roles (AdminApp)
     PermissionDefinition('Administración', 'access_admin_roles', 'Administrar roles y permisos', 'administracion:roles', ('admin', 'administrador')),
+    PermissionDefinition('Administración', 'search_admin_roles_ajax', 'Buscar roles por AJAX', 'administracion:buscar_roles_ajax', ('admin', 'administrador'), (), False),
+    PermissionDefinition('Administración', 'view_admin_roles_detail', 'Consultar detalle JSON de rol', 'administracion:detalle_rol_json', ('admin', 'administrador'), (('rol_id', 1),), False),
+    PermissionDefinition('Administración', 'edit_admin_roles_ajax', 'Editar rol por AJAX', 'administracion:editar_rol_ajax', ('admin', 'administrador'), (('rol_id', 1),), False),
+    PermissionDefinition('Administración', 'toggle_admin_roles_status', 'Activar o desactivar roles', 'administracion:cambiar_estado_rol_ajax', ('admin', 'administrador'), (('rol_id', 1),), False),
+    
     PermissionDefinition('Administración', 'access_admin_attention_types', 'Administrar tipos de atención', 'administracion:tipos-atencion', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_subattentions', 'Administrar subatenciones', 'administracion:subatenciones', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_goals', 'Administrar metas', 'administracion:metas', ('coordinador', 'admin', 'administrador')),
@@ -176,7 +183,13 @@ PERMISSION_DESCRIPTIONS = {
     'access_admin_positions': 'Crear, editar y administrar cargos.',
     'access_admin_functions': 'Crear, editar y administrar funciones.',
     'access_admin_position_functions': 'Asociar cargos con funciones.',
+    ##Gestión de Roles (AdminApp)
     'access_admin_roles': 'Crear roles y administrar sus permisos.',
+    'search_admin_roles_ajax': 'Buscar roles mediante AJAX en tiempo real.',
+    'view_admin_roles_detail': 'Consultar el detalle JSON de un rol y sus permisos asignados.',
+    'edit_admin_roles_ajax': 'Modificar un rol y sus permisos mediante AJAX.',
+    'toggle_admin_roles_status': 'Activar o desactivar roles mediante eliminado lógico.',
+    
     'access_admin_attention_types': 'Administrar tipos de atención.',
     'access_admin_subattentions': 'Administrar subatenciones.',
     'access_admin_goals': 'Crear y administrar metas.',
@@ -272,6 +285,7 @@ PERMISSION_DESCRIPTIONS = {
     'view_admin_positions_detail': 'Consultar el detalle JSON de un cargo, sus funciones e ítems vigentes.',
     'edit_admin_positions_ajax': 'Modificar un cargo y sus vigencias mediante AJAX.',
     'toggle_admin_positions_status': 'Activar o desactivar cargos mediante eliminado lógico.',
+
 }
 
 PERMISSION_DESCRIPTIONS['manage_coordinator_periods'] = 'Crear, editar, cerrar y reabrir períodos desde Coordinación.'
