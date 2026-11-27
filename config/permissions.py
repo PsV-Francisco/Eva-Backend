@@ -54,6 +54,13 @@ PERMISSION_CATALOG = (
     PermissionDefinition('Administración', 'access_admin_social_attentions', 'Consultar atenciones sociales por delegación', 'administracion:atenciones-sociales', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'access_admin_commitments', 'Consultar compromisos por delegación', 'administracion:compromisos', ('admin', 'administrador')),
     PermissionDefinition('Administración', 'manage_admin_goal_adjustments', 'Ajustar metas de desempeño', 'administracion:ajustes-metas', ('admin', 'administrador')),
+
+    #AdminApp Gestión de Territorios
+    PermissionDefinition('Administración', 'access_admin_territories', 'Administrar territorios', 'administracion:territorios', ('admin', 'administrador')),
+    PermissionDefinition('Administración', 'search_admin_territories_ajax', 'Buscar territorios por AJAX', 'administracion:buscar_territorios_ajax', ('admin', 'administrador'), (), False),
+    PermissionDefinition('Administración', 'view_admin_territories_detail', 'Consultar detalle JSON de territorio', 'administracion:detalle_territorio_json', ('admin', 'administrador'), (('territorio_id', 1),), False),
+    PermissionDefinition('Administración', 'edit_admin_territories_ajax', 'Editar territorio por AJAX', 'administracion:editar_territorio_ajax', ('admin', 'administrador'), (('territorio_id', 1),), False),
+    PermissionDefinition('Administración', 'delete_admin_territories', 'Eliminar territorio', 'administracion:eliminar_territorio', ('admin', 'administrador'), (('territorio_id', 1),), False),
     
     # Beneficiados / Solicitantes (AdminApp)
     PermissionDefinition('Administración', 'access_admin_beneficiados', 'Consultar beneficiados', 'administracion:beneficiados', ('admin', 'administrador')),
@@ -246,6 +253,12 @@ PERMISSION_DESCRIPTIONS = {
     'view_admin_items_detail': 'Permite consultar el detalle de un ítem para su edición.',
     'edit_admin_items_ajax': 'Permite modificar el nombre, descripción y estado de los ítems.',
     'toggle_admin_items_status': 'Permite activar o desactivar ítems mediante eliminado lógico.',
+    ### Gestión de Territorios (AdminApp)
+    'access_admin_territories': 'Crear, editar y administrar territorios por delegación.',
+    'search_admin_territories_ajax': 'Buscar territorios mediante AJAX.',
+    'view_admin_territories_detail': 'Consultar el detalle JSON de un territorio para edición.',
+    'edit_admin_territories_ajax': 'Modificar datos de un territorio mediante AJAX.',
+    'delete_admin_territories': 'Eliminar territorios sin vecinos, juntas o compromisos asociados.',
 }
 
 PERMISSION_DESCRIPTIONS['manage_coordinator_periods'] = 'Crear, editar, cerrar y reabrir períodos desde Coordinación.'

@@ -76,10 +76,4 @@ urlpatterns = [
     path('juntas/nueva/', admin_records.junta_nueva, name='junta-nueva'),
     path('juntas/<int:junta_id>/editar/',admin_records.junta_editar,name='junta-editar',),
     path('juntas/<int:junta_id>/eliminar/',admin_records.junta_eliminar,name='junta-eliminar',),
-    #Gestión de Beneficiados (Se debe borrar porque ya existen los vecinos)
-    path('beneficiados/', views.beneficiados_vista, name='beneficiados'),
-    path('beneficiados/crear-ajax/', views.crear_beneficiado_ajax, name='crear_beneficiado_ajax'),
-    path('beneficiados/<int:beneficiado_id>/detalle-json/', views.detalle_beneficiado_json, name='detalle_beneficiado_json'),
-    path('beneficiados/<int:beneficiado_id>/editar-ajax/', views.editar_beneficiado_ajax, name='editar_beneficiado_ajax'),
-    path('beneficiados/<int:beneficiado_id>/eliminar/', views.eliminar_beneficiado, name='eliminar_beneficiado'),
 ]

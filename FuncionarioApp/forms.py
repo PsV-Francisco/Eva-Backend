@@ -1,27 +1,24 @@
+#Importaciones de Django
 from django import forms
+import re
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.utils import timezone
 from django.db import models
-import re
+
+#Importaciones de Modelos
 from AdminApp.models import Delegacion
 from CoordinadorApp.models import AtencionSocial, GestionAtencion, Item, Periodo
 from DelegadoApp.models import Compromiso
-from FuncionarioApp.models import (
-    CargoJv,
-    JuntaVecino,
-    Registro,
-    Subtipo,
-    Territorio,
-    Tipo,
-    Vecino,
-    tipo_subtipo_predeterminados,
-    validar_periodo_semanal_abierto,
-)
+from FuncionarioApp.models import (CargoJv,JuntaVecino,Registro,Subtipo,Carta,Territorio,Tipo,Vecino,tipo_subtipo_predeterminados,validar_periodo_semanal_abierto)
+
+#Otras Importaciones
 from config.forms import BootstrapFormMixin
 from SupervisorApp.files import validate_evidence_file
-from FuncionarioApp.models import Carta
 from django.contrib.auth import get_user_model
+
+
+
 
 
 def _assign_tipo_subtipo(form, instance):
@@ -638,11 +635,7 @@ class GestionAtencionForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class CartaForm(forms.ModelForm):
-    documento = forms.FileField(
-        required=False,
-        label='Documento adjunto',
-        widget=forms.ClearableFileInput(attrs={'class': 'form-control'}),
-    )
+    documento = forms.FileField(required=False,label='Documento adjunto',widget=forms.ClearableFileInput(attrs={'class': 'form-control'}),)
 
     class Meta:
         model = Carta
@@ -687,3 +680,21 @@ class CartaForm(forms.ModelForm):
                 usuariodelegacion__fecha_fin__isnull=True,
             ).distinct()
         self.fields['responsable_seguimiento'].queryset = users_qs
+
+class TerritorioForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = Territorio
+        fields = ('nombre', 'delegacion')
+        labels = {'nombre': 'Nombre del territorio','delegacion': 'Delegación',}
+        widgets = {
+            'nombre': forms.TextInput(attrs={'class': 'form-control', 'id': 'id_nombre', 'placeholder': 'Ej: Sector Las Compañías'}),
+            'delegacion': forms.Select(attrs={'class': 'form-select', 'id': 'id_delegacion'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['delegacion'].queryset = Delegacion.objects.filter(estado=Delegacion.Estado.ACTIVADO).order_by('nombre')
+        self.fields['delegacion'].empty_label = 'Seleccione una delegación'
+
+    def clean_nombre(self):
+        return self.cleaned_data['nombre'].strip()

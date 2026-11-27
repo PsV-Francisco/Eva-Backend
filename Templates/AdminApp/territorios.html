@@ -1,0 +1,366 @@
+{% extends 'base.html' %}
+{% block title %}Gestión de Territorios | SGR{% endblock %}
+{% block page_title %}Gestión de Territorios{% endblock %}
+
+{% block content %}
+<style>
+  :root {
+    --muni-rojo: #B71C1C;
+    --muni-rojo-hover: #8E0000;
+    --muni-rojo-borde: #EF9A9A;
+  }
+  .text-muni { color: var(--muni-rojo) !important; }
+  .bg-muni { background-color: var(--muni-rojo) !important; color: #ffffff !important; }
+  .bg-muni th { color: #ffffff !important; }
+  .btn-muni { background-color: var(--muni-rojo); border-color: var(--muni-rojo); color: #ffffff; }
+  .btn-muni:hover, .btn-muni:focus { background-color: var(--muni-rojo-hover); border-color: var(--muni-rojo-hover); color: #ffffff; }
+  .btn-outline-muni { color: var(--muni-rojo); border-color: var(--muni-rojo); }
+  .btn-outline-muni:hover, .btn-outline-muni:focus { background-color: var(--muni-rojo); border-color: var(--muni-rojo); color: #ffffff; }
+  .card-muni-top { border-top: 3px solid var(--muni-rojo) !important; }
+  .form-control:focus, .form-select:focus {
+    border-color: var(--muni-rojo-borde);
+    box-shadow: 0 0 0 0.2rem rgba(183, 28, 28, 0.18);
+  }
+</style>
+
+<div class="dashboard-layout">
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+
+    <!-- (1) FORMULARIO DE CREACIÓN -->
+    <section class="content-section mb-4">
+      <div class="card shadow-sm border-0 card-muni-top">
+        <div class="card-header bg-white py-3 border-bottom">
+          <h5 class="card-title mb-0 fw-semibold text-muni">
+            <i class="bi bi-geo-alt-fill me-2"></i>Registrar Nuevo Territorio
+          </h5>
+        </div>
+        <div class="card-body">
+          <form id="formCrearTerritorio" method="post" action="{% url 'administracion:territorios' %}" novalidate>
+            {% csrf_token %}
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label for="id_nombre" class="form-label fw-semibold">Nombre del Territorio <span class="text-danger">*</span></label>
+                {{ form.nombre }}
+              </div>
+              <div class="col-md-6">
+                <label for="id_delegacion" class="form-label fw-semibold">Delegación <span class="text-danger">*</span></label>
+                {{ form.delegacion }}
+              </div>
+            </div>
+            <div class="d-flex justify-content-end mt-3 pt-2 border-top">
+              <button type="reset" class="btn btn-light me-2">Limpiar</button>
+              <button type="submit" class="btn btn-muni fw-semibold">
+                <i class="bi bi-save me-1"></i> Guardar Territorio
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- (2) LISTADO + BUSCADOR AJAX EN VIVO -->
+    <section class="content-section">
+      <div class="section-head d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <p class="eyebrow mb-0">ORGANIZACIÓN TERRITORIAL</p>
+          <h2 class="h5 fw-bold mb-0">Territorios Registrados</h2>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-3 bg-light p-3 rounded shadow-sm border">
+        <div class="col-md-6">
+          <label for="buscadorTerritorio" class="form-label fw-bold">Buscar territorio (en vivo)</label>
+          <input type="search" id="buscadorTerritorio" class="form-control" value="{{ search_query }}" placeholder="Nombre del territorio o delegación..." autocomplete="off">
+        </div>
+        <div class="col-md-4">
+          <label for="filtroDelegacionTerritorio" class="form-label fw-bold">Filtrar por Delegación</label>
+          <select id="filtroDelegacionTerritorio" class="form-select">
+            <option value="">Todas las delegaciones</option>
+            {% for del in delegaciones %}
+              <option value="{{ del.pk }}" {% if delegacion_filtro == del.pk|stringformat:"s" %}selected{% endif %}>{{ del.nombre }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button type="button" id="btnLimpiarFiltro" class="btn btn-outline-secondary w-100 fw-bold">Limpiar</button>
+        </div>
+      </div>
+
+      <div class="table-responsive shadow-sm rounded border bg-white">
+        <table class="table table-hover table-bordered align-middle mb-0" id="tablaTerritorios">
+          <thead class="bg-muni">
+            <tr>
+              <th class="ps-3" style="width: 80px;">ID</th>
+              <th>Nombre</th>
+              <th>Delegación</th>
+              <th class="text-end pe-3" style="min-width: 190px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyTerritorios">
+            {% for t in page_obj %}
+            <tr>
+              <td class="ps-3 text-muted small">#{{ t.pk }}</td>
+              <td class="fw-semibold text-dark">{{ t.nombre }}</td>
+              <td>{{ t.delegacion.nombre }}</td>
+              <td class="text-end pe-3 text-nowrap">
+                <button type="button" class="btn btn-sm btn-outline-muni btn-editar-territorio" data-id="{{ t.pk }}">
+                  <i class="bi bi-pencil-square"></i> Editar
+                </button>
+                <form method="post" action="{% url 'administracion:eliminar_territorio' t.pk %}" class="d-inline form-eliminar-territorio">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-outline-danger">
+                    <i class="bi bi-trash"></i> Eliminar
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="4" class="text-center py-4 text-muted">No hay territorios registrados para los filtros seleccionados.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if page_obj.has_other_pages %}
+      <nav class="mt-3" id="paginacionTerritorios">
+        <ul class="pagination justify-content-center">
+          {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link text-danger" href="?page={{ page_obj.previous_page_number }}&q={{ search_query }}&delegacion={{ delegacion_filtro }}">Anterior</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Anterior</span></li>
+          {% endif %}
+          <li class="page-item active"><span class="page-link bg-danger border-danger">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span></li>
+          {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link text-danger" href="?page={{ page_obj.next_page_number }}&q={{ search_query }}&delegacion={{ delegacion_filtro }}">Siguiente</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Siguiente</span></li>
+          {% endif %}
+        </ul>
+      </nav>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<!-- (3) MODAL DE EDICIÓN POR REGISTRO -->
+<div class="modal fade" id="modalEditarTerritorio" tabindex="-1" aria-labelledby="modalEditarTerritorioLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header bg-muni">
+        <h5 class="modal-title" id="modalEditarTerritorioLabel">
+          <i class="bi bi-pencil-square me-2"></i>Editar Territorio
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <form id="formEditarTerritorio" novalidate>
+        <div class="modal-body">
+          <input type="hidden" id="edit_territorio_id">
+          <div class="mb-3">
+            <label for="edit_nombre" class="form-label fw-semibold">Nombre del Territorio <span class="text-danger">*</span></label>
+            <input type="text" id="edit_nombre" class="form-control" maxlength="100" required>
+          </div>
+          <div class="mb-3">
+            <label for="edit_delegacion_id" class="form-label fw-semibold">Delegación <span class="text-danger">*</span></label>
+            <select id="edit_delegacion_id" class="form-select" required>
+              <option value="">Seleccione una delegación</option>
+              {% for del in delegaciones %}
+                <option value="{{ del.pk }}">{{ del.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer bg-light">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-muni">
+            <i class="bi bi-check-lg me-1"></i> Guardar Cambios
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+  const buscarUrl = "{% url 'administracion:buscar_territorios_ajax' %}";
+  const detalleUrlTemplate = "{% url 'administracion:detalle_territorio_json' 0 %}";
+  const editarUrlTemplate = "{% url 'administracion:editar_territorio_ajax' 0 %}";
+  const eliminarUrlTemplate = "{% url 'administracion:eliminar_territorio' 0 %}";
+
+  function buildUrl(template, id) {
+    return template.replace('/0/', `/${id}/`);
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+  }
+
+  {% if messages %}
+    {% for message in messages %}
+      Swal.fire({
+        icon: "{% if 'error' in message.tags %}error{% elif 'warning' in message.tags %}warning{% else %}success{% endif %}",
+        title: "{% if 'error' in message.tags %}Atención{% elif 'warning' in message.tags %}Advertencia{% else %}Operación exitosa{% endif %}",
+        text: "{{ message|escapejs }}",
+        confirmButtonColor: "#B71C1C"
+      });
+    {% endfor %}
+  {% endif %}
+
+  const formCrear = document.getElementById('formCrearTerritorio');
+  if (formCrear) {
+    formCrear.addEventListener('submit', function (e) {
+      const nombre = document.getElementById('id_nombre').value.trim();
+      const delegacion = document.getElementById('id_delegacion').value;
+      if (!nombre || !delegacion) {
+        e.preventDefault();
+        Swal.fire({
+          icon: 'warning',
+          title: 'Campos obligatorios',
+          text: 'Debes ingresar el nombre del territorio y seleccionar una delegación.',
+          confirmButtonColor: '#B71C1C'
+        });
+      }
+    });
+  }
+
+  document.addEventListener('submit', function (e) {
+    const formElim = e.target.closest('.form-eliminar-territorio');
+    if (!formElim) return;
+    e.preventDefault();
+    Swal.fire({
+      icon: 'warning',
+      title: '¿Eliminar territorio?',
+      text: 'Si tiene vecinos, juntas o compromisos asociados no podrá eliminarse.',
+      showCancelButton: true,
+      confirmButtonColor: '#B71C1C',
+      cancelButtonText: 'Cancelar',
+      confirmButtonText: 'Sí, eliminar'
+    }).then(result => {
+      if (result.isConfirmed) formElim.submit();
+    });
+  });
+
+  const inputBuscar = document.getElementById('buscadorTerritorio');
+  const selectDelegacion = document.getElementById('filtroDelegacionTerritorio');
+  const btnLimpiar = document.getElementById('btnLimpiarFiltro');
+  const tbody = document.getElementById('tbodyTerritorios');
+  const paginacion = document.getElementById('paginacionTerritorios');
+  let debounceTimer = null;
+
+  function renderTabla(items, qVal, delVal) {
+    if (paginacion) {
+      paginacion.style.display = (qVal || delVal) ? 'none' : '';
+    }
+    if (!items.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">No hay territorios registrados para los filtros seleccionados.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = items.map(t => `
+      <tr>
+        <td class="ps-3 text-muted small">#${t.id}</td>
+        <td class="fw-semibold text-dark">${escapeHtml(t.nombre)}</td>
+        <td>${escapeHtml(t.delegacion_nombre)}</td>
+        <td class="text-end pe-3 text-nowrap">
+          <button type="button" class="btn btn-sm btn-outline-muni btn-editar-territorio" data-id="${t.id}">
+            <i class="bi bi-pencil-square"></i> Editar
+          </button>
+          <form method="post" action="${buildUrl(eliminarUrlTemplate, t.id)}" class="d-inline form-eliminar-territorio">
+            <input type="hidden" name="csrfmiddlewaretoken" value="${escapeHtml(csrfToken)}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">
+              <i class="bi bi-trash"></i> Eliminar
+            </button>
+          </form>
+        </td>
+      </tr>`).join('');
+  }
+
+  function filtrarTerritorios() {
+    const qVal = inputBuscar.value.trim();
+    const delVal = selectDelegacion.value;
+    const params = new URLSearchParams({ q: qVal, delegacion: delVal });
+
+    fetch(`${buscarUrl}?${params}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) renderTabla(data.territorios || [], qVal, delVal);
+      })
+      .catch(() => {});
+  }
+
+  inputBuscar.addEventListener('keyup', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(filtrarTerritorios, 250);
+  });
+  selectDelegacion.addEventListener('change', filtrarTerritorios);
+  btnLimpiar.addEventListener('click', () => {
+    inputBuscar.value = '';
+    selectDelegacion.value = '';
+    filtrarTerritorios();
+    inputBuscar.focus();
+  });
+
+  const modalEditar = new bootstrap.Modal(document.getElementById('modalEditarTerritorio'));
+
+  tbody.addEventListener('click', function (e) {
+    const btn = e.target.closest('.btn-editar-territorio');
+    if (!btn) return;
+    const id = btn.dataset.id;
+
+    fetch(buildUrl(detalleUrlTemplate, id), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById('edit_territorio_id').value = data.id;
+        document.getElementById('edit_nombre').value = data.nombre || '';
+        document.getElementById('edit_delegacion_id').value = data.delegacion_id || '';
+        modalEditar.show();
+      })
+      .catch(() => {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudieron cargar los datos del territorio.', confirmButtonColor: '#B71C1C' });
+      });
+  });
+
+  document.getElementById('formEditarTerritorio').addEventListener('submit', function (e) {
+    e.preventDefault();
+    const id = document.getElementById('edit_territorio_id').value;
+    const nombre = document.getElementById('edit_nombre').value.trim();
+    const delegacion_id = document.getElementById('edit_delegacion_id').value;
+
+    if (!nombre || !delegacion_id) {
+      Swal.fire({ icon: 'warning', title: 'Campos obligatorios', text: 'El nombre y la delegación son obligatorios.', confirmButtonColor: '#B71C1C' });
+      return;
+    }
+
+    fetch(buildUrl(editarUrlTemplate, id), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken,
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify({ nombre, delegacion_id })
+    })
+      .then(res => res.json().then(body => ({ ok: res.ok, body })))
+      .then(({ ok, body }) => {
+        if (ok && body.success) {
+          modalEditar.hide();
+          Swal.fire({ icon: 'success', title: 'Actualizado', text: body.message, confirmButtonColor: '#B71C1C' })
+            .then(() => filtrarTerritorios());
+        } else {
+          Swal.fire({ icon: 'error', title: 'Error de validación', text: body.message || 'No se pudo actualizar.', confirmButtonColor: '#B71C1C' });
+        }
+      })
+      .catch(() => {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Error de comunicación con el servidor.', confirmButtonColor: '#B71C1C' });
+      });
+  });
+});
+</script>
+{% endblock %}

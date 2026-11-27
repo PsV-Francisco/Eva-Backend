@@ -18,6 +18,7 @@ from AdminApp.audit import registrar_historial
 from AdminApp.delegation_scope import (available_delegations, filter_by_delegation)
 from AdminApp.models import Delegacion
 from AdminApp.pagination_utils import paginate_queryset
+from AdminApp.views import _admin_dashboard_modules
 
 # Importaciones de la aplicación FuncionarioApp
 from FuncionarioApp.models import (Carta,CargoJv,JuntaVecino,Registro,Subtipo,Territorio,Tipo,Vecino,WEEKLY_CLOSURE_MESSAGE,normalizar_telefono,periodo_semanal_abierto,validar_periodo_semanal_abierto)
@@ -37,6 +38,7 @@ from SupervisorApp.files import validate_evidence_file
 from config.decorators import cargo_required
 from config.delegations import active_delegation
 from FuncionarioApp.forms import (AtencionSocialForm,CartaForm,CompromisoEvidenciaForm,FuncionarioCompromisoForm,GestionAtencionForm,JuntaVecinoForm,RegistroForm,VecinoForm)
+from FuncionarioApp.forms import TerritorioForm
 
 from django.utils import timezone
 
@@ -2055,3 +2057,158 @@ def territorios_por_delegacion_vecino(request, delegacion_id):
         .values('pk', 'nombre')
     )
     return JsonResponse({'territorios': territorios})
+
+### Gestión de Territorios
+def _territorio_snapshot(territorio):
+    return {
+        'nombre': territorio.nombre,
+        'delegacion_id': territorio.delegacion_id,
+    }
+
+@cargo_required('admin', 'administrador', permission='access_admin_territories')
+def territorios(request):
+    """Vista principal para listar, buscar y crear territorios en el panel de administración."""
+    query = request.GET.get('q', '').strip()
+    delegacion_filtro = request.GET.get('delegacion', '').strip()
+
+    queryset = Territorio.objects.select_related('delegacion').all().order_by('delegacion__nombre', 'nombre')
+
+    if query:
+        queryset = queryset.filter(
+            Q(nombre__icontains=query) | Q(delegacion__nombre__icontains=query)
+        )
+    if delegacion_filtro.isdecimal():
+        queryset = queryset.filter(delegacion_id=int(delegacion_filtro))
+
+    form = TerritorioForm(request.POST or None)
+    if request.method == 'POST':
+        if form.is_valid():
+            nombre = form.cleaned_data['nombre']
+            delegacion = form.cleaned_data['delegacion']
+            if Territorio.objects.filter(nombre__iexact=nombre, delegacion=delegacion).exists():
+                messages.error(request, f'Ya existe el territorio "{nombre}" en la delegación {delegacion.nombre}.')
+            else:
+                with transaction.atomic():
+                    territorio = form.save()
+                    registrar_historial(
+                        actor=request.user,
+                        action='Crear territorio',
+                        entity=f'Territorio:{territorio.pk}',
+                        after=_territorio_snapshot(territorio),
+                    )
+                messages.success(request, 'Territorio creado correctamente.')
+                return redirect('administracion:territorios')
+        else:
+            messages.error(request, 'Revisa los campos obligatorios del formulario.')
+
+    page_obj = Paginator(queryset, 20).get_page(request.GET.get('page'))
+    delegaciones = Delegacion.objects.filter(estado=Delegacion.Estado.ACTIVADO).order_by('nombre')
+
+    return render(request, 'AdminApp/territorios.html', {
+        'sgr_role': 'Administración',
+        'sidebar_modules': _admin_dashboard_modules(request.user),
+        'form': form,
+        'page_obj': page_obj,
+        'delegaciones': delegaciones,
+        'search_query': query,
+        'delegacion_filtro': delegacion_filtro,
+    })
+
+@cargo_required('admin', 'administrador', permission='search_admin_territories_ajax')
+@require_GET
+def buscar_territorios_ajax(request):
+    """Endpoint AJAX (keyup) para filtrar territorios dinámicamente."""
+    query = request.GET.get('q', '').strip()
+    delegacion_filtro = request.GET.get('delegacion', '').strip()
+
+    queryset = Territorio.objects.select_related('delegacion').all().order_by('delegacion__nombre', 'nombre')
+    if query:
+        queryset = queryset.filter(
+            Q(nombre__icontains=query) | Q(delegacion__nombre__icontains=query)
+        )
+    if delegacion_filtro.isdecimal():
+        queryset = queryset.filter(delegacion_id=int(delegacion_filtro))
+
+    resultados = [
+        {
+            'id': t.pk,
+            'nombre': t.nombre,
+            'delegacion_id': t.delegacion_id,
+            'delegacion_nombre': t.delegacion.nombre if t.delegacion else '—',
+        }
+        for t in queryset[:50]
+    ]
+    return JsonResponse({'success': True, 'territorios': resultados})
+
+
+@cargo_required('admin', 'administrador', permission='view_admin_territories_detail')
+@require_GET
+def detalle_territorio_json(request, territorio_id):
+    """Devuelve los datos del territorio en JSON para precargar el modal de edición."""
+    territorio = get_object_or_404(Territorio, pk=territorio_id)
+    return JsonResponse({
+        'id': territorio.pk,
+        'nombre': territorio.nombre,
+        'delegacion_id': territorio.delegacion_id,
+    })
+
+
+@cargo_required('admin', 'administrador', permission='edit_admin_territories_ajax')
+@require_POST
+def editar_territorio_ajax(request, territorio_id):
+    """Actualiza el territorio vía AJAX y registra en Historial."""
+    territorio = get_object_or_404(Territorio, pk=territorio_id)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': 'Payload JSON inválido.'}, status=400)
+
+    nombre = data.get('nombre', '').strip()
+    delegacion_id = data.get('delegacion_id')
+
+    if not nombre or not delegacion_id:
+        return JsonResponse({'success': False, 'message': 'El nombre y la delegación son obligatorios.'}, status=400)
+
+    if Territorio.objects.filter(nombre__iexact=nombre, delegacion_id=delegacion_id).exclude(pk=territorio.pk).exists():
+        return JsonResponse({'success': False, 'message': f'Ya existe otro territorio "{nombre}" en esa delegación.'}, status=400)
+
+    before = _territorio_snapshot(territorio)
+    try:
+        with transaction.atomic():
+            territorio.nombre = nombre
+            territorio.delegacion_id = delegacion_id
+            territorio.save()
+
+            registrar_historial(
+                actor=request.user,
+                action='Editar territorio AJAX',
+                entity=f'Territorio:{territorio.pk}',
+                before=before,
+                after=_territorio_snapshot(territorio),
+            )
+        return JsonResponse({'success': True, 'message': 'El territorio fue actualizado correctamente.'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Error al actualizar el territorio: {str(e)}'}, status=500)
+
+
+@cargo_required('admin', 'administrador', permission='delete_admin_territories')
+@require_POST
+def eliminar_territorio(request, territorio_id):
+    """Elimina un territorio si no tiene registros protegidos asociados."""
+    territorio = get_object_or_404(Territorio, pk=territorio_id)
+    before = _territorio_snapshot(territorio)
+    entity = f'Territorio:{territorio.pk}'
+    try:
+        with transaction.atomic():
+            territorio.delete()
+            registrar_historial(
+                actor=request.user,
+                action='Eliminar territorio',
+                entity=entity,
+                before=before,
+            )
+        messages.success(request, 'Territorio eliminado correctamente.')
+    except ProtectedError:
+        messages.error(request, 'No se puede eliminar el territorio porque tiene vecinos, juntas o compromisos asociados.')
+    return redirect('administracion:territorios')
+

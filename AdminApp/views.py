@@ -79,7 +79,13 @@ ADMIN_DASHBOARD_LINK_GROUPS = (
         ('Auditoría de recuperación', 'administracion:auditoria-recuperacion'),
         ('Solicitudes de autorización', 'administracion:solicitudes-autorizacion'),
     )),
-)
+    ('Territorio', (
+        ('Territorios', 'administracion:territorios'),
+        ('Vecinos', 'administracion:vecinos'),
+        ('Juntas de Vecinos', 'administracion:juntas'),
+        ('Hitos', 'administracion:hitos'),
+    )
+))
 
 
 def _admin_dashboard_modules(user):
