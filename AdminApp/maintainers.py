@@ -107,7 +107,7 @@ def _coordinator_meta_delete_block(record):
         periodo_id=record.periodo_id,
     )
     if activities.exists():
-        if activities.filter(evidencias_registros__isnull=False).exists():
+        if activities.filter(evidencia__isnull=False).exists():
             return 'La meta tiene actividades y evidencias asociadas; no se puede eliminar.'
         return 'La meta tiene actividades asociadas; no se puede eliminar.'
     return ''
