@@ -24,10 +24,10 @@ urlpatterns = [
 
     #Delegaciones
     path('delegaciones/', views.delegaciones, name='delegaciones'),
+    path('delegaciones/buscar-ajax/', views.buscar_delegaciones_ajax, name='buscar_delegaciones_ajax'),
     path('delegaciones/<int:delegacion_id>/detalle-json/', views.detalle_delegacion_json, name='detalle_delegacion_json'),
     path('delegaciones/<int:delegacion_id>/editar-ajax/', views.editar_delegacion_ajax, name='editar_delegacion_ajax'),
     path('delegaciones/<int:delegacion_id>/eliminar/', views.eliminar_delegacion, name='eliminar_delegacion'),
-    path('items/<int:item_id>/cambiar-estado-ajax/', views.cambiar_estado_item_ajax, name='cambiar_estado_item_ajax'),
     #Items
     path('items/', views.items, name='items'),
     path('items/metas/', views.metas, name='metas'),

@@ -564,7 +564,10 @@ def editar_delegacion_ajax(request, delegacion_id):
 
     if estado not in {'ACTIVADO', 'DESACTIVADO'}:
         return JsonResponse({'success': False, 'message': 'Estado no válido. Debe ser ACTIVADO o DESACTIVADO.'}, status=400)
-
+    
+    if Delegacion.objects.filter(nombre__iexact=nombre).exclude(pk=delegacion.pk).exists():
+        return JsonResponse({'success': False, 'message': f'Ya existe otra delegación con el nombre "{nombre}".'}, status=400)
+    
     before = _delegacion_snapshot(delegacion)
     try:
         with transaction.atomic():
@@ -606,7 +609,31 @@ def eliminar_delegacion(request, delegacion_id):
         messages.error(request, 'No se puede eliminar la delegación porque tiene usuarios, territorios o registros asociados. Desactívala en su lugar.')
     return redirect('administracion:delegaciones')
 
+@cargo_required('admin', 'administrador', permission='access_admin_delegations')
+@require_GET
+def buscar_delegaciones_ajax(request):
+    """Endpoint AJAX (keyup) para filtrar delegaciones dinámicamente sin recargar."""
+    query = request.GET.get('q', '').strip()
+    estado_filtro = request.GET.get('estado', '').upper()
 
+    queryset = Delegacion.objects.all().order_by('nombre')
+    if query:
+        queryset = queryset.filter(
+            Q(nombre__icontains=query) | Q(direccion__icontains=query)
+        )
+    if estado_filtro in {'ACTIVADO', 'DESACTIVADO'}:
+        queryset = queryset.filter(estado=estado_filtro)
+
+    resultados = [
+        {
+            'id': d.pk,
+            'nombre': d.nombre,
+            'direccion': d.direccion or '',
+            'estado': d.estado,
+        }
+        for d in queryset[:50]
+    ]
+    return JsonResponse({'success': True, 'delegaciones': resultados})
 
 
 @cargo_required('admin', 'administrador', permission='access_admin_positions')
