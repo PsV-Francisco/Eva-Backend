@@ -426,6 +426,20 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
+  // HU-34: con un hito, el tipo se asigna solo ("Solicitudes o actividades
+  // internas"), así que Tipo y Subtipo no se piden ni se pueden elegir.
+  const selectHitoForm = document.getElementById('id_hito');
+  const conHito = () => Boolean(selectHitoForm && selectHitoForm.value);
+  function actualizarTipoPorHito() {
+    [selectTipoForm, selectSubtipoForm].forEach(el => {
+      if (el) el.disabled = conHito();
+    });
+  }
+  if (selectHitoForm) {
+    selectHitoForm.addEventListener('change', actualizarTipoPorHito);
+    actualizarTipoPorHito();
+  }
+
   // 2. Validación detallada de campos vacíos con SweetAlert2 antes de enviar
   document.getElementById('form-nuevo-registro').addEventListener('submit', function(e) {
     const camposObligatorios = [
@@ -438,7 +452,9 @@ document.addEventListener('DOMContentLoaded', function() {
     ];
 
     let faltantes = [];
-    camposObligatorios.forEach(campo => {
+    camposObligatorios
+      .filter(campo => !(conHito() && (campo.id === 'id_tipo' || campo.id === 'id_subtipo')))
+      .forEach(campo => {
       const el = document.getElementById(campo.id);
       if (!el || !el.value || !el.value.trim()) {
         faltantes.push(campo.nombre);
