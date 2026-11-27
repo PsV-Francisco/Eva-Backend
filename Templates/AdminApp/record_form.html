@@ -2,6 +2,23 @@
 {% block title %}{{ title }} | SGR{% endblock %}
 {% block page_title %}{{ title }}{% endblock %}
 {% block content %}
+<style>
+  /* Selector múltiple con casillas (reemplaza Ctrl + clic) */
+  .checklist { border: 1px solid #dee2e6; border-radius: .375rem; background: #fff; }
+  .checklist-toolbar { display: flex; gap: .5rem; align-items: center; padding: .5rem; border-bottom: 1px solid #dee2e6; background: #f8f9fa; border-radius: .375rem .375rem 0 0; }
+  .checklist-count { background: #e9ecef; color: #495057; font-weight: 600; white-space: nowrap; }
+  .checklist-count.is-active { background: var(--accent); color: #fff; }
+  .checklist-body { max-height: 210px; overflow-y: auto; padding: .25rem 0; }
+  .checklist-option { display: flex; align-items: center; gap: .5rem; padding: .35rem .75rem; margin: 0; cursor: pointer; }
+  .checklist-option[hidden] { display: none; }
+  .checklist-option:hover { background: #fff5f5; }
+  .checklist-option.is-checked { background: #fdecea; font-weight: 600; }
+  .checklist-option .form-check-input { margin: 0; flex-shrink: 0; }
+  .checklist .form-check-input:checked { background-color: var(--accent); border-color: var(--accent); }
+  .checklist-footer { display: flex; justify-content: space-between; padding: .35rem .75rem; border-top: 1px solid #dee2e6; }
+  .checklist-footer .btn-link { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .checklist-empty { margin: 0; padding: .5rem .75rem; color: #6c757d; font-size: .875rem; }
+</style>
 <div class="dashboard-layout">
   {% include 'includes/role_sidebar.html' %}
   <div class="dashboard-main">
@@ -69,4 +86,107 @@
     </section>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  // Selector múltiple con casillas: oculta el <select multiple> y lo mantiene
+  // sincronizado, así el envío del formulario no cambia.
+  function enhanceChecklist(select) {
+    if (!select || select.dataset.checklist) return;
+    select.dataset.checklist = '1';
+    select.classList.add('d-none');
+    const etiqueta = (document.querySelector(`label[for="${select.id}"]`)?.textContent || '').replace('*', '').trim().toLowerCase();
+    const placeholder = etiqueta ? `Filtrar ${etiqueta}...` : 'Filtrar...';
+
+    const box = document.createElement('div');
+    box.className = 'checklist';
+    const toolbar = document.createElement('div');
+    toolbar.className = 'checklist-toolbar';
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'form-control form-control-sm';
+    search.placeholder = placeholder;
+    search.setAttribute('aria-label', placeholder);
+    const count = document.createElement('span');
+    count.className = 'checklist-count badge';
+    toolbar.append(search, count);
+    const body = document.createElement('div');
+    body.className = 'checklist-body';
+    body.setAttribute('role', 'group');
+    const footer = document.createElement('div');
+    footer.className = 'checklist-footer';
+    const btnAll = document.createElement('button');
+    btnAll.type = 'button';
+    btnAll.className = 'btn btn-link btn-sm p-0';
+    btnAll.textContent = 'Marcar visibles';
+    const btnNone = document.createElement('button');
+    btnNone.type = 'button';
+    btnNone.className = 'btn btn-link btn-sm p-0';
+    btnNone.textContent = 'Quitar todos';
+    footer.append(btnAll, btnNone);
+    box.append(toolbar, body, footer);
+    select.insertAdjacentElement('afterend', box);
+
+    function updateCount() {
+      const total = Array.from(select.options).filter(opt => opt.selected).length;
+      count.textContent = total === 1 ? '1 seleccionado' : `${total} seleccionados`;
+      count.classList.toggle('is-active', total > 0);
+    }
+
+    function render() {
+      body.replaceChildren();
+      const term = search.value.trim().toLowerCase();
+      let visibles = 0;
+      Array.from(select.options).forEach(opt => {
+        const label = document.createElement('label');
+        label.className = 'checklist-option';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.className = 'form-check-input';
+        input.checked = opt.selected;
+        const text = document.createElement('span');
+        text.textContent = opt.textContent;
+        input.addEventListener('change', () => {
+          opt.selected = input.checked;
+          label.classList.toggle('is-checked', input.checked);
+          updateCount();
+        });
+        label.classList.toggle('is-checked', opt.selected);
+        label.hidden = Boolean(term) && !opt.textContent.toLowerCase().includes(term);
+        if (!label.hidden) visibles += 1;
+        label.append(input, text);
+        body.appendChild(label);
+      });
+      if (!visibles) {
+        const empty = document.createElement('p');
+        empty.className = 'checklist-empty';
+        empty.textContent = select.options.length ? 'Sin coincidencias.' : 'No hay opciones disponibles.';
+        body.appendChild(empty);
+      }
+      updateCount();
+    }
+
+    search.addEventListener('input', render);
+    // Enter en el filtro no debe enviar el formulario.
+    search.addEventListener('keydown', event => {
+      if (event.key === 'Enter') event.preventDefault();
+    });
+    btnAll.addEventListener('click', () => {
+      body.querySelectorAll('.checklist-option:not([hidden]) input').forEach(input => {
+        input.checked = true;
+        input.dispatchEvent(new Event('change'));
+      });
+    });
+    btnNone.addEventListener('click', () => {
+      Array.from(select.options).forEach(opt => { opt.selected = false; });
+      render();
+    });
+    render();
+  }
+
+  document.querySelectorAll('form[method="post"] select[multiple]').forEach(enhanceChecklist);
+});
+</script>
 {% endblock %}

@@ -122,7 +122,7 @@ class HitoForm(BootstrapFormMixin, forms.ModelForm):
         }
         help_texts = {
             'periodicidad': 'Obligatoria si el hito es un evento recurrente (por ejemplo: semanal, mensual).',
-            'responsables': 'Mantén presionado Ctrl (o Cmd) para seleccionar más de un funcionario.',
+            'responsables': 'Marca uno o varios funcionarios. Puedes filtrar por nombre.',
         }
 
     def __init__(self,*args,delegaciones=None,territorios=None,responsables=None,registros=None,**kwargs,):
