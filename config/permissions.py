@@ -156,6 +156,12 @@ PERMISSION_CATALOG = (
     PermissionDefinition(view_name='administracion:detalle_item_json',codename='view_admin_items_detail',label='Ver detalle JSON de ítems',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),route_kwargs=(('item_id', 1),),show_in_menu=False),
     PermissionDefinition(view_name='administracion:editar_item_ajax',codename='edit_admin_items_ajax',label='Editar ítems vía AJAX',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),route_kwargs=(('item_id', 1),),show_in_menu=False),
     PermissionDefinition(view_name='administracion:cambiar_estado_item_ajax',codename='toggle_admin_items_status',label='Activar o desactivar ítems',module='Metas y seguimiento',cargos=('coordinador', 'admin', 'administrador'),route_kwargs=(('item_id', 1),),show_in_menu=False),
+
+    # Gestión de Cargos
+    PermissionDefinition('Administración', 'search_admin_positions_ajax', 'Buscar cargos por AJAX', 'administracion:buscar_cargos_ajax', ('admin', 'administrador'), (), False),
+    PermissionDefinition('Administración', 'view_admin_positions_detail', 'Consultar detalle JSON de cargo', 'administracion:detalle_cargo_json', ('admin', 'administrador'), (('cargo_id', 1),), False),
+    PermissionDefinition('Administración', 'edit_admin_positions_ajax', 'Editar cargo por AJAX', 'administracion:editar_cargo_ajax', ('admin', 'administrador'), (('cargo_id', 1),), False),
+    PermissionDefinition('Administración', 'toggle_admin_positions_status', 'Activar o desactivar cargos', 'administracion:cambiar_estado_cargo_ajax', ('admin', 'administrador'), (('cargo_id', 1),), False),
 )
 
 PERMISSION_DESCRIPTIONS = {
@@ -261,6 +267,11 @@ PERMISSION_DESCRIPTIONS = {
     'view_admin_territories_detail': 'Consultar el detalle JSON de un territorio para edición.',
     'edit_admin_territories_ajax': 'Modificar datos de un territorio mediante AJAX.',
     'delete_admin_territories': 'Eliminar territorios sin vecinos, juntas o compromisos asociados.',
+    ### Gestión de Cargos (AdminApp)
+    'search_admin_positions_ajax': 'Buscar cargos mediante AJAX en tiempo real.',
+    'view_admin_positions_detail': 'Consultar el detalle JSON de un cargo, sus funciones e ítems vigentes.',
+    'edit_admin_positions_ajax': 'Modificar un cargo y sus vigencias mediante AJAX.',
+    'toggle_admin_positions_status': 'Activar o desactivar cargos mediante eliminado lógico.',
 }
 
 PERMISSION_DESCRIPTIONS['manage_coordinator_periods'] = 'Crear, editar, cerrar y reabrir períodos desde Coordinación.'

@@ -8,7 +8,13 @@ app_name = 'administracion'
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('usuarios/', views.home, name='home'),
+    #Cargos
     path('cargos/', views.cargos, name='cargos'),
+    path('cargos/buscar-ajax/', views.buscar_cargos_ajax, name='buscar_cargos_ajax'),
+    path('cargos/<int:cargo_id>/detalle-json/', views.detalle_cargo_json, name='detalle_cargo_json'),
+    path('cargos/<int:cargo_id>/editar-ajax/', views.editar_cargo_ajax, name='editar_cargo_ajax'),
+    path('cargos/<int:cargo_id>/cambiar-estado-ajax/', views.cambiar_estado_cargo_ajax, name='cambiar_estado_cargo_ajax'),
+
     path('funciones/', views.funciones, name='funciones'),
     path('cargos-funciones/', views.cargos_funciones, name='cargos-funciones'),
     path('roles/', views.roles, name='roles'),

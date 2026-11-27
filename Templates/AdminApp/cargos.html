@@ -1,0 +1,512 @@
+{% extends 'base.html' %}
+{% block title %}Gestión de Cargos | SGR{% endblock %}
+{% block page_title %}Gestión de Cargos{% endblock %}
+
+{% block content %}
+<style>
+  :root {
+    --muni-rojo: #B71C1C;
+    --muni-rojo-hover: #8E0000;
+    --muni-rojo-borde: #EF9A9A;
+  }
+  .text-muni { color: var(--muni-rojo) !important; }
+  .bg-muni { background-color: var(--muni-rojo) !important; color: #ffffff !important; }
+  .bg-muni th { color: #ffffff !important; }
+  .btn-muni { background-color: var(--muni-rojo); border-color: var(--muni-rojo); color: #ffffff; }
+  .btn-muni:hover, .btn-muni:focus { background-color: var(--muni-rojo-hover); border-color: var(--muni-rojo-hover); color: #ffffff; }
+  .btn-outline-muni { color: var(--muni-rojo); border-color: var(--muni-rojo); }
+  .btn-outline-muni:hover, .btn-outline-muni:focus { background-color: var(--muni-rojo); border-color: var(--muni-rojo); color: #ffffff; }
+  .card-muni-top { border-top: 3px solid var(--muni-rojo) !important; }
+  .form-control:focus, .form-select:focus {
+    border-color: var(--muni-rojo-borde);
+    box-shadow: 0 0 0 0.2rem rgba(183, 28, 28, 0.18);
+  }
+</style>
+
+<div class="dashboard-layout">
+  {% include 'includes/role_sidebar.html' %}
+  <div class="dashboard-main">
+
+    <!-- (1) FORMULARIO DE CREACIÓN DE CARGO -->
+    <section class="content-section mb-4">
+      <div class="card shadow-sm border-0 card-muni-top">
+        <div class="card-header bg-white py-3 border-bottom">
+          <h5 class="card-title mb-0 fw-semibold text-muni">
+            <i class="bi bi-person-badge-fill me-2"></i>Registrar Nuevo Cargo
+          </h5>
+        </div>
+        <div class="card-body">
+          <form id="formCrearCargo" method="post" action="{% url 'administracion:cargos' %}" novalidate>
+            {% csrf_token %}
+            <div class="row g-3">
+              <div class="col-md-5">
+                <label for="id_nombre" class="form-label fw-semibold">Nombre del Cargo <span class="text-danger">*</span></label>
+                {{ form.nombre }}
+              </div>
+              <div class="col-md-4">
+                <label for="id_vigente_desde" class="form-label fw-semibold">Vigente desde <span class="text-danger">*</span></label>
+                {{ form.vigente_desde }}
+                <div class="form-text small">{{ form.vigente_desde.help_text }}</div>
+              </div>
+              <div class="col-md-3">
+                <label for="id_estado" class="form-label fw-semibold">Estado <span class="text-danger">*</span></label>
+                {{ form.estado }}
+              </div>
+
+              <div class="col-md-6">
+                <label for="id_funciones" class="form-label fw-semibold">Funciones vigentes asociadas <span class="text-muted small">(opcional)</span></label>
+                {{ form.funciones }}
+                <div class="form-text small">Mantén presionado Ctrl (o Cmd) para seleccionar múltiples opciones.</div>
+              </div>
+              <div class="col-md-6">
+                <label for="id_items" class="form-label fw-semibold">Ítems de medición vigentes <span class="text-muted small">(opcional)</span></label>
+                {{ form.items }}
+                <div class="form-text small">Mantén presionado Ctrl (o Cmd) para seleccionar múltiples opciones.</div>
+              </div>
+            </div>
+            <div class="d-flex justify-content-end mt-3 pt-2 border-top">
+              <button type="reset" class="btn btn-light me-2">Limpiar</button>
+              <button type="submit" class="btn btn-muni fw-semibold">
+                <i class="bi bi-save me-1"></i> Guardar Cargo
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- (2) LISTADO + BUSCADOR AJAX EN VIVO -->
+    <section class="content-section">
+      <div class="section-head d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <p class="eyebrow mb-0">ESTRUCTURA ORGANIZACIONAL</p>
+          <h2 class="h5 fw-bold mb-0">Cargos Registrados</h2>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-3 bg-light p-3 rounded shadow-sm border">
+        <div class="col-md-6">
+          <label for="buscadorCargo" class="form-label fw-bold">Buscar cargo (en vivo)</label>
+          <input type="search" id="buscadorCargo" class="form-control" value="{{ search_query }}" placeholder="Nombre del cargo..." autocomplete="off">
+        </div>
+        <div class="col-md-4">
+          <label for="filtroEstadoCargo" class="form-label fw-bold">Estado</label>
+          <select id="filtroEstadoCargo" class="form-select">
+            <option value="">Todos los estados</option>
+            <option value="activo" {% if estado_filtro == 'activo' %}selected{% endif %}>Activo</option>
+            <option value="inactivo" {% if estado_filtro == 'inactivo' %}selected{% endif %}>Inactivo</option>
+          </select>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button type="button" id="btnLimpiarFiltro" class="btn btn-outline-secondary w-100 fw-bold">Limpiar</button>
+        </div>
+      </div>
+
+      <div class="table-responsive shadow-sm rounded border bg-white">
+        <table class="table table-hover table-bordered align-middle mb-0" id="tablaCargos">
+          <thead class="bg-muni">
+            <tr>
+              <th class="ps-3">Cargo</th>
+              <th class="text-center">Tipo</th>
+              <th class="text-center">Estado</th>
+              <th class="text-end pe-3" style="min-width: 210px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyCargos">
+            {% for c in cargos_list %}
+            <tr>
+              <td class="ps-3 fw-semibold text-dark">{{ c.nombre }}</td>
+              <td class="text-center">
+                {% if c.es_protegido %}
+                  <span class="badge bg-warning-subtle text-dark border border-warning-subtle">Crítico (Sistema)</span>
+                {% else %}
+                  <span class="badge bg-light text-secondary border">Estándar</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                {% if c.estado == 'activo' %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle">Activo</span>
+                {% else %}
+                  <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Inactivo</span>
+                {% endif %}
+              </td>
+              <td class="text-end pe-3 text-nowrap">
+                <button type="button" class="btn btn-sm btn-outline-muni btn-editar-cargo" data-id="{{ c.pk }}">
+                  <i class="bi bi-pencil-square"></i> Editar
+                </button>
+                {% if not c.es_protegido %}
+                  {% if c.estado == 'activo' %}
+                    <button type="button" class="btn btn-sm btn-outline-danger btn-toggle-estado-cargo" data-id="{{ c.pk }}" data-nombre="{{ c.nombre }}" data-estado="activo">
+                      <i class="bi bi-slash-circle"></i> Desactivar
+                    </button>
+                  {% else %}
+                    <button type="button" class="btn btn-sm btn-outline-success btn-toggle-estado-cargo" data-id="{{ c.pk }}" data-nombre="{{ c.nombre }}" data-estado="inactivo">
+                      <i class="bi bi-check-circle"></i> Activar
+                    </button>
+                  {% endif %}
+                {% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="4" class="text-center py-4 text-muted">No hay cargos registrados para los filtros seleccionados.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if page_obj.has_other_pages %}
+      <nav class="mt-3" id="paginacionCargos">
+        <ul class="pagination justify-content-center">
+          {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link text-danger" href="?page={{ page_obj.previous_page_number }}&q={{ search_query }}&estado={{ estado_filtro }}">Anterior</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Anterior</span></li>
+          {% endif %}
+          <li class="page-item active"><span class="page-link bg-danger border-danger">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span></li>
+          {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link text-danger" href="?page={{ page_obj.next_page_number }}&q={{ search_query }}&estado={{ estado_filtro }}">Siguiente</a></li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">Siguiente</span></li>
+          {% endif %}
+        </ul>
+      </nav>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<!-- (3) MODAL DE EDICIÓN POR REGISTRO -->
+<div class="modal fade" id="modalEditarCargo" tabindex="-1" aria-labelledby="modalEditarCargoLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header bg-muni">
+        <h5 class="modal-title" id="modalEditarCargoLabel">
+          <i class="bi bi-pencil-square me-2"></i>Editar Cargo
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <form id="formEditarCargo" novalidate>
+        <div class="modal-body">
+          <input type="hidden" id="edit_cargo_id">
+          <div id="alertaCargoProtegido" class="alert alert-warning d-none py-2 small">
+            <i class="bi bi-shield-lock-fill me-1"></i>
+            Este cargo es utilizado por el control de acceso del sistema: su nombre y estado están bloqueados, pero puedes actualizar sus funciones e ítems vigentes.
+          </div>
+
+          <div class="row g-3">
+            <div class="col-md-5">
+              <label for="edit_nombre" class="form-label fw-semibold">Nombre del Cargo <span class="text-danger">*</span></label>
+              <input type="text" id="edit_nombre" class="form-control" maxlength="120" required>
+            </div>
+            <div class="col-md-4">
+              <label for="edit_vigente_desde" class="form-label fw-semibold">Vigente desde <span class="text-danger">*</span></label>
+              <input type="date" id="edit_vigente_desde" class="form-control" value="{{ hoy_iso }}" required>
+            </div>
+            <div class="col-md-3">
+              <label for="edit_estado" class="form-label fw-semibold">Estado <span class="text-danger">*</span></label>
+              <select id="edit_estado" class="form-select" required>
+                <option value="activo">Activo</option>
+                <option value="inactivo">Inactivo</option>
+              </select>
+            </div>
+
+            <div class="col-md-6">
+              <label for="edit_funciones" class="form-label fw-semibold">Funciones vigentes asociadas</label>
+              <select id="edit_funciones" class="form-select" multiple size="6">
+                {% for fn in funciones_activas %}
+                  <option value="{{ fn.pk }}">{{ fn.nombre }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label for="edit_items" class="form-label fw-semibold">Ítems de medición vigentes</label>
+              <select id="edit_items" class="form-select" multiple size="6">
+                {% for it in items_activos %}
+                  <option value="{{ it.pk }}">{{ it.nombre }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer bg-light">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-muni">
+            <i class="bi bi-check-lg me-1"></i> Guardar Cambios
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+  const buscarUrl = "{% url 'administracion:buscar_cargos_ajax' %}";
+  const detalleUrlTemplate = "{% url 'administracion:detalle_cargo_json' 0 %}";
+  const editarUrlTemplate = "{% url 'administracion:editar_cargo_ajax' 0 %}";
+  const toggleEstadoUrlTemplate = "{% url 'administracion:cambiar_estado_cargo_ajax' 0 %}";
+
+  function buildUrl(template, id) {
+    return template.replace('/0/', `/${id}/`);
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+  }
+
+  // Alertas Django con SweetAlert2
+  {% if messages %}
+    {% for message in messages %}
+      Swal.fire({
+        icon: "{% if 'error' in message.tags %}error{% elif 'warning' in message.tags %}warning{% else %}success{% endif %}",
+        title: "{% if 'error' in message.tags %}Atención{% elif 'warning' in message.tags %}Advertencia{% else %}Operación exitosa{% endif %}",
+        text: "{{ message|escapejs }}",
+        confirmButtonColor: "#B71C1C"
+      });
+    {% endfor %}
+  {% endif %}
+
+  // Validación creación
+  const formCrear = document.getElementById('formCrearCargo');
+  if (formCrear) {
+    formCrear.addEventListener('submit', function (e) {
+      const nombre = document.getElementById('id_nombre').value.trim();
+      const vigenteDesde = document.getElementById('id_vigente_desde').value;
+      if (!nombre || !vigenteDesde) {
+        e.preventDefault();
+        Swal.fire({
+          icon: 'warning',
+          title: 'Campos obligatorios',
+          text: 'Debes ingresar el nombre del cargo y la fecha de vigencia.',
+          confirmButtonColor: '#B71C1C'
+        });
+      }
+    });
+  }
+
+  // Buscador AJAX en vivo
+  const inputBuscar = document.getElementById('buscadorCargo');
+  const selectEstado = document.getElementById('filtroEstadoCargo');
+  const btnLimpiar = document.getElementById('btnLimpiarFiltro');
+  const tbody = document.getElementById('tbodyCargos');
+  const paginacion = document.getElementById('paginacionCargos');
+  let debounceTimer = null;
+
+  function renderTabla(items, qVal, estadoVal) {
+    if (paginacion) {
+      paginacion.style.display = (qVal || estadoVal) ? 'none' : '';
+    }
+    if (!items.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">No hay cargos registrados para los filtros seleccionados.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = items.map(c => {
+      const tipoBadge = c.es_protegido
+        ? '<span class="badge bg-warning-subtle text-dark border border-warning-subtle">Crítico (Sistema)</span>'
+        : '<span class="badge bg-light text-secondary border">Estándar</span>';
+
+      const estadoBadge = c.estado === 'activo'
+        ? '<span class="badge bg-success-subtle text-success border border-success-subtle">Activo</span>'
+        : '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Inactivo</span>';
+
+      let btnEstado = '';
+      if (!c.es_protegido) {
+        btnEstado = c.estado === 'activo'
+          ? `<button type="button" class="btn btn-sm btn-outline-danger btn-toggle-estado-cargo" data-id="${c.id}" data-nombre="${escapeHtml(c.nombre)}" data-estado="activo"><i class="bi bi-slash-circle"></i> Desactivar</button>`
+          : `<button type="button" class="btn btn-sm btn-outline-success btn-toggle-estado-cargo" data-id="${c.id}" data-nombre="${escapeHtml(c.nombre)}" data-estado="inactivo"><i class="bi bi-check-circle"></i> Activar</button>`;
+      }
+
+      return `
+        <tr>
+          <td class="ps-3 fw-semibold text-dark">${escapeHtml(c.nombre)}</td>
+          <td class="text-center">${tipoBadge}</td>
+          <td class="text-center">${estadoBadge}</td>
+          <td class="text-end pe-3 text-nowrap">
+            <button type="button" class="btn btn-sm btn-outline-muni btn-editar-cargo" data-id="${c.id}">
+              <i class="bi bi-pencil-square"></i> Editar
+            </button>
+            ${btnEstado}
+          </td>
+        </tr>`;
+    }).join('');
+  }
+
+  function filtrarCargos() {
+    const qVal = inputBuscar.value.trim();
+    const estadoVal = selectEstado.value;
+    const params = new URLSearchParams({ q: qVal, estado: estadoVal });
+
+    fetch(`${buscarUrl}?${params}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) renderTabla(data.cargos || [], qVal, estadoVal);
+      })
+      .catch(() => {});
+  }
+
+  inputBuscar.addEventListener('keyup', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(filtrarCargos, 250);
+  });
+  selectEstado.addEventListener('change', filtrarCargos);
+  btnLimpiar.addEventListener('click', () => {
+    inputBuscar.value = '';
+    selectEstado.value = '';
+    filtrarCargos();
+    inputBuscar.focus();
+  });
+
+  // Abrir Modal de Edición y rellenar datos vía JSON
+  const modalEditar = new bootstrap.Modal(document.getElementById('modalEditarCargo'));
+
+  tbody.addEventListener('click', function (e) {
+    const btn = e.target.closest('.btn-editar-cargo');
+    if (!btn) return;
+    const id = btn.dataset.id;
+
+    fetch(buildUrl(detalleUrlTemplate, id), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById('edit_cargo_id').value = data.id;
+        const inputNombre = document.getElementById('edit_nombre');
+        const selectEst = document.getElementById('edit_estado');
+        const alertaProt = document.getElementById('alertaCargoProtegido');
+
+        inputNombre.value = data.nombre || '';
+        selectEst.value = data.estado || 'activo';
+        document.getElementById('edit_vigente_desde').value = data.vigente_desde || '{{ hoy_iso }}';
+
+        if (data.es_protegido) {
+          inputNombre.disabled = true;
+          selectEst.disabled = true;
+          alertaProt.classList.remove('d-none');
+        } else {
+          inputNombre.disabled = false;
+          selectEst.disabled = false;
+          alertaProt.classList.add('d-none');
+        }
+
+        const fnSet = new Set((data.funciones || []).map(String));
+        Array.from(document.getElementById('edit_funciones').options).forEach(opt => {
+          opt.selected = fnSet.has(opt.value);
+        });
+
+        const itSet = new Set((data.items || []).map(String));
+        Array.from(document.getElementById('edit_items').options).forEach(opt => {
+          opt.selected = itSet.has(opt.value);
+        });
+
+        modalEditar.show();
+      })
+      .catch(() => {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudieron cargar los datos del cargo.', confirmButtonColor: '#B71C1C' });
+      });
+  });
+
+  // Activar / Desactivar Cargo vía AJAX
+  tbody.addEventListener('click', function (e) {
+    const btnToggle = e.target.closest('.btn-toggle-estado-cargo');
+    if (!btnToggle) return;
+
+    const id = btnToggle.dataset.id;
+    const nombre = btnToggle.dataset.nombre || '';
+    const estadoActual = btnToggle.dataset.estado;
+    const vaADesactivar = estadoActual === 'activo';
+
+    Swal.fire({
+      icon: 'warning',
+      title: vaADesactivar ? '¿Desactivar cargo?' : '¿Activar cargo?',
+      text: vaADesactivar
+        ? `El cargo "${nombre}" pasará a estado Inactivo y no podrá asignarse a nuevos usuarios.`
+        : `El cargo "${nombre}" volverá a estado Activo.`,
+      showCancelButton: true,
+      confirmButtonColor: vaADesactivar ? '#B71C1C' : '#198754',
+      cancelButtonText: 'Cancelar',
+      confirmButtonText: vaADesactivar ? 'Sí, desactivar' : 'Sí, activar'
+    }).then(result => {
+      if (!result.isConfirmed) return;
+
+      fetch(buildUrl(toggleEstadoUrlTemplate, id), {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      })
+        .then(res => res.json().then(body => ({ ok: res.ok, body })))
+        .then(({ ok, body }) => {
+          if (ok && body.success) {
+            Swal.fire({
+              icon: 'success',
+              title: 'Estado actualizado',
+              text: body.message,
+              confirmButtonColor: '#B71C1C'
+            }).then(() => filtrarCargos());
+          } else {
+            Swal.fire({
+              icon: 'error',
+              title: 'Error',
+              text: body.message || 'No se pudo cambiar el estado.',
+              confirmButtonColor: '#B71C1C'
+            });
+          }
+        })
+        .catch(() => {
+          Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Error de comunicación con el servidor.',
+            confirmButtonColor: '#B71C1C'
+          });
+        });
+    });
+  });
+
+  // Guardar Edición vía AJAX
+  document.getElementById('formEditarCargo').addEventListener('submit', function (e) {
+    e.preventDefault();
+    const id = document.getElementById('edit_cargo_id').value;
+    const nombre = document.getElementById('edit_nombre').value.trim();
+    const estado = document.getElementById('edit_estado').value;
+    const vigente_desde = document.getElementById('edit_vigente_desde').value;
+    const funciones = Array.from(document.getElementById('edit_funciones').selectedOptions).map(o => o.value);
+    const items = Array.from(document.getElementById('edit_items').selectedOptions).map(o => o.value);
+
+    if (!nombre || !vigente_desde) {
+      Swal.fire({ icon: 'warning', title: 'Campos obligatorios', text: 'El nombre del cargo y la fecha de vigencia son obligatorios.', confirmButtonColor: '#B71C1C' });
+      return;
+    }
+
+    fetch(buildUrl(editarUrlTemplate, id), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken,
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify({ nombre, estado, vigente_desde, funciones, items })
+    })
+      .then(res => res.json().then(body => ({ ok: res.ok, body })))
+      .then(({ ok, body }) => {
+        if (ok && body.success) {
+          modalEditar.hide();
+          Swal.fire({ icon: 'success', title: 'Actualizado', text: body.message, confirmButtonColor: '#B71C1C' })
+            .then(() => filtrarCargos());
+        } else {
+          Swal.fire({ icon: 'error', title: 'Error de validación', text: body.message || 'No se pudo actualizar.', confirmButtonColor: '#B71C1C' });
+        }
+      })
+      .catch(() => {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Error de comunicación con el servidor.', confirmButtonColor: '#B71C1C' });
+      });
+  });
+});
+</script>
+{% endblock %}

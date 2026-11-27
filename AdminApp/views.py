@@ -18,13 +18,13 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 #Importaciones de Modelos
 from FuncionarioApp.models import Vecino,Registro,Territorio
-from AdminApp.models import (Cargo,Delegacion,Historial,ParametroSistema,PasswordResetAuditEvent,Usuario)
-from CoordinadorApp.models import Periodo, SolicitudAutorizacionPeriodo,Item
+from AdminApp.models import (Cargo,Delegacion,Historial,ParametroSistema,PasswordResetAuditEvent,Usuario,is_critical_cargo_name)
+from CoordinadorApp.models import Periodo, SolicitudAutorizacionPeriodo,Item,CargoFuncion,CargoItem,Funcion
 
 #Importaciones de Formularios
 from AdminApp.forms import ItemForm
 from CoordinadorApp.authorization_forms import AuthorizationDecisionForm, AuthorizationRevokeForm
-from AdminApp.forms import (HistorialFilterForm,ParametroSistemaForm,PasswordResetAuditFilterForm,UsuarioCreationForm,UsuarioUpdateForm,DelegacionForm)
+from AdminApp.forms import (CargoForm,HistorialFilterForm,ParametroSistemaForm,PasswordResetAuditFilterForm,UsuarioCreationForm,UsuarioUpdateForm,DelegacionForm)
 from FuncionarioApp.forms import TerritorioForm
 
 #Otras Importaciones
@@ -34,6 +34,7 @@ from config.decorators import cargo_required
 from config.permissions import PERMISSION_BY_VIEW, can_access_permission
 from CoordinadorApp.services import _authorization_snapshot, expire_authorizations
 from config.decorators import cargo_required
+
 
 
 
@@ -808,11 +809,217 @@ def eliminar_territorio(request, territorio_id):
     return redirect('administracion:territorios')
 
 
+## Gestión de Cargos
+
+def _cargo_snapshot(cargo):
+    hoy = timezone.localdate()
+    funciones_ids = list(
+        CargoFuncion.objects.filter(cargo=cargo).filter(Q(vigente_hasta__isnull=True),Q(vigente_hasta__gte=hoy))
+        .order_by('funcion_id')
+        .values_list('funcion_id', flat=True)
+    )
+    items_ids = list(
+        CargoItem.objects.filter(cargo=cargo).filter(Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gte=hoy)).order_by('item_id').values_list('item_id', flat=True)
+    )
+    return {
+        'nombre': cargo.nombre,
+        'estado': cargo.estado,
+        'funciones_vigentes': funciones_ids,
+        'items_vigentes': items_ids,
+    }
+
+
 @cargo_required('admin', 'administrador', permission='access_admin_positions')
 def cargos(request):
-    return maintainer(request, 'cargos')
+    """Vista dedicada para listar, buscar y crear cargos en el panel de administración."""
+    query = request.GET.get('q', '').strip()
+    estado_filtro = request.GET.get('estado', '').lower()
+
+    queryset = Cargo.objects.all().order_by('nombre')
+    if query:
+        queryset = queryset.filter(nombre__icontains=query)
+    if estado_filtro:
+        if estado_filtro not in {'activo', 'inactivo'}:
+            return HttpResponseBadRequest('Filtro de estado no válido.')
+        queryset = queryset.filter(estado=estado_filtro)
+
+    form = CargoForm(request.POST or None)
+    if request.method == 'POST':
+        if form.is_valid():
+            with transaction.atomic():
+                cargo = form.save()
+                registrar_historial(
+                    actor=request.user,
+                    action='Crear cargo',
+                    entity=f'Cargo:{cargo.pk}',
+                    after=_cargo_snapshot(cargo),
+                )
+            messages.success(request, f'Cargo "{cargo.nombre}" creado correctamente.')
+            return redirect('administracion:cargos')
+        else:
+            errores = '; '.join(
+                f"{campo}: {', '.join(msgs)}" for campo, msgs in form.errors.items()
+            )
+            messages.error(request, f'Error al registrar el cargo: {errores}')
+
+    page_obj = Paginator(queryset, 20).get_page(request.GET.get('page'))
+    cargos_list = list(page_obj.object_list)
+    for c in cargos_list:
+        c.es_protegido = is_critical_cargo_name(c.nombre)
+
+    funciones_activas = Funcion.objects.filter(estado=Funcion.Estado.ACTIVO).order_by('nombre')
+    items_activos = Item.objects.filter(estado=Item.Estado.ACTIVO).order_by('nombre')
+
+    return render(request, 'AdminApp/cargos.html', {
+        'sgr_role': 'Administración',
+        'sidebar_modules': (),
+        'form': form,
+        'page_obj': page_obj,
+        'cargos_list': cargos_list,
+        'funciones_activas': funciones_activas,
+        'items_activos': items_activos,
+        'hoy_iso': timezone.localdate().isoformat(),
+        'search_query': query,
+        'estado_filtro': estado_filtro,
+    })
 
 
+@cargo_required('admin', 'administrador', permission='search_admin_positions_ajax')
+@require_GET
+def buscar_cargos_ajax(request):
+    """Endpoint AJAX (keyup) para filtrar cargos dinámicamente sin recargar."""
+    query = request.GET.get('q', '').strip()
+    estado_filtro = request.GET.get('estado', '').lower()
+
+    queryset = Cargo.objects.all().order_by('nombre')
+    if query:
+        queryset = queryset.filter(nombre__icontains=query)
+    if estado_filtro in {'activo', 'inactivo'}:
+        queryset = queryset.filter(estado=estado_filtro)
+
+    hoy = timezone.localdate()
+    resultados = []
+    for c in queryset[:50]:
+        fn_count = CargoFuncion.objects.filter(cargo=c).filter(Q(vigente_hasta__isnull=True),Q(vigente_hasta__gte=hoy)).count()
+        it_count = CargoItem.objects.filter(cargo=c).filter(Q(vigente_hasta__isnull=True),Q(vigente_hasta__gte=hoy)).count()
+        resultados.append({
+            'id': c.pk,
+            'nombre': c.nombre,
+            'estado': c.estado,
+            'estado_display': c.get_estado_display(),
+            'es_protegido': is_critical_cargo_name(c.nombre),
+            'funciones_count': fn_count,
+            'items_count': it_count,
+        })
+    return JsonResponse({'success': True, 'cargos': resultados})
+
+
+@cargo_required('admin', 'administrador', permission='view_admin_positions_detail')
+@require_GET
+def detalle_cargo_json(request, cargo_id):
+    """Devuelve los datos del cargo y sus asignaciones vigentes en JSON para precargar el modal."""
+    cargo = get_object_or_404(Cargo, pk=cargo_id)
+    hoy = timezone.localdate()
+
+    vigentes_fn = CargoFuncion.objects.filter(cargo=cargo).filter(Q(vigente_hasta__isnull=True),Q(vigente_hasta__gte=hoy))
+    vigentes_it = CargoItem.objects.filter(cargo=cargo).filter(Q(vigente_hasta__isnull=True),Q(vigente_hasta__gte=hoy))
+
+    ultima_fecha = (vigentes_fn.order_by('-vigente_desde').values_list('vigente_desde', flat=True).first() or vigentes_it.order_by('-vigente_desde').values_list('vigente_desde', flat=True).first())
+    vigente_desde = max(ultima_fecha, hoy) if ultima_fecha else hoy
+
+    return JsonResponse({
+        'id': cargo.pk,
+        'nombre': cargo.nombre,
+        'estado': cargo.estado,
+        'es_protegido': is_critical_cargo_name(cargo.nombre),
+        'funciones': list(vigentes_fn.values_list('funcion_id', flat=True)),
+        'items': list(vigentes_it.values_list('item_id', flat=True)),
+        'vigente_desde': vigente_desde.isoformat(),
+    })
+
+
+@cargo_required('admin', 'administrador', permission='edit_admin_positions_ajax')
+@require_POST
+def editar_cargo_ajax(request, cargo_id):
+    """Actualiza el cargo y sus vigencias vía AJAX usando CargoForm y registra en Historial."""
+    cargo = get_object_or_404(Cargo, pk=cargo_id)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': 'Payload JSON inválido.'}, status=400)
+
+    es_protegido = is_critical_cargo_name(cargo.nombre)
+    nombre = cargo.nombre if es_protegido else data.get('nombre', '').strip()
+    estado = cargo.estado if es_protegido else data.get('estado', 'activo').lower()
+
+    payload = {'nombre': nombre,'estado': estado,'funciones': [str(x) for x in data.get('funciones', [])],'items': [str(x) for x in data.get('items', [])],'vigente_desde': data.get('vigente_desde') or timezone.localdate().isoformat(),}
+
+    before = _cargo_snapshot(cargo)
+    form = CargoForm(payload, instance=cargo)
+    if not form.is_valid():
+        errores = '; '.join(
+            f"{campo}: {', '.join(msgs)}" for campo, msgs in form.errors.items()
+        )
+        return JsonResponse({'success': False, 'message': errores}, status=400)
+
+    try:
+        with transaction.atomic():
+            cargo = form.save()
+            registrar_historial(
+                actor=request.user,
+                action='Editar cargo AJAX',
+                entity=f'Cargo:{cargo.pk}',
+                before=before,
+                after=_cargo_snapshot(cargo),
+            )
+        return JsonResponse({'success': True,'message': f'El cargo "{cargo.nombre}" fue actualizado correctamente.',})
+    except ValidationError as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Error al actualizar el cargo: {str(e)}'}, status=500)
+
+
+@cargo_required('admin', 'administrador', permission='toggle_admin_positions_status')
+@require_POST
+def cambiar_estado_cargo_ajax(request, cargo_id):
+    """Alterna el estado lógico del cargo (activo <-> inactivo) vía AJAX y registra en Historial."""
+    cargo = get_object_or_404(Cargo, pk=cargo_id)
+
+    if is_critical_cargo_name(cargo.nombre):
+        return JsonResponse({
+            'success': False,
+            'message': 'Este cargo es crítico para el control de acceso del sistema y no puede desactivarse.',
+        }, status=400)
+
+    before = _cargo_snapshot(cargo)
+    nuevo_estado = (Cargo.Estado.INACTIVO if cargo.estado == Cargo.Estado.ACTIVO else Cargo.Estado.ACTIVO)
+    accion_texto = 'Desactivar cargo' if nuevo_estado == Cargo.Estado.INACTIVO else 'Activar cargo'
+
+    try:
+        with transaction.atomic():
+            cargo.estado = nuevo_estado
+            cargo.save(update_fields=['estado'])
+
+            registrar_historial(
+                actor=request.user,
+                action=accion_texto,
+                entity=f'Cargo:{cargo.pk}',
+                before=before,
+                after=_cargo_snapshot(cargo),
+            )
+        etiqueta = 'Activado' if nuevo_estado == Cargo.Estado.ACTIVO else 'Desactivado'
+        return JsonResponse({
+            'success': True,
+            'estado': nuevo_estado,
+            'message': f'El cargo "{cargo.nombre}" pasó a estado {etiqueta} y se registró en auditoría.',
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error al cambiar el estado del cargo: {str(e)}',
+        }, status=500)
+
+### Gestión de Funciones
 @cargo_required('admin', 'administrador', permission='access_admin_functions')
 def funciones(request):
     return maintainer(request, 'funciones')
