@@ -78,7 +78,10 @@ class Compromiso(models.Model):
 	
 	@property
 	def esta_vencido(self):
-		if self.estado == self.Estado.REALIZADO or not self.fecha_compromiso:
+		# HU-14: vence si la fecha comprometida pasó sin quedar Realizado, Cerrado o No aplica.
+		if self.estado == self.Estado.VENCIDO:
+			return True
+		if self.estado in (self.Estado.REALIZADO, self.Estado.CERRADO, self.Estado.NO_APLICA) or not self.fecha_compromiso:
 			return False
 		return self.fecha_compromiso < timezone.now()
 

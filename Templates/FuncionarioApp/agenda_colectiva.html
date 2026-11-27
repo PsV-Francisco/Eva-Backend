@@ -66,6 +66,23 @@
   .tabla-agenda td {
     font-size: 0.85rem;
   }
+
+  /* Encabezados rojo/oscuro: sgr.css pinta todos los th en gris y no se leen sobre fondo oscuro. */
+  .bg-muni th,
+  .table-dark th {
+    color: #ffffff !important;
+  }
+
+  /* Separación entre filas y columnas; evita cortar palabras a la mitad ("Soci-al"). */
+  .tabla-agenda-bordes > :not(caption) > * > * {
+    border-color: var(--line);
+    padding: 0.6rem 0.75rem;
+  }
+
+  .tabla-agenda-bordes td {
+    overflow-wrap: normal;
+    word-break: normal;
+  }
 </style>
 
 <div class="dashboard-layout">
@@ -202,7 +219,7 @@
                 <h2 class="h5 fw-bold mb-0"><i class="bi bi-list-check text-muni me-2"></i>Compromisos de la delegación</h2>
             </div>
             <div class="table-responsive shadow-sm rounded border bg-white">
-                <table class="table table-hover align-middle mb-0 tabla-agenda" id="tablaCompromisos">
+                <table class="table table-hover table-bordered align-middle mb-0 tabla-agenda tabla-agenda-bordes" id="tablaCompromisos">
                     <thead class="bg-muni text-white">
                         <tr>
                             <th class="ps-3" style="min-width: 210px;">Descripción</th>
@@ -227,7 +244,7 @@
                                 <div class="fw-bold text-muni small">{{ compromiso.codigo_publico }}</div>
                                 <div class="fw-medium text-dark">{{ compromiso.descripcion }}</div>
                                 {% if compromiso.esta_vencido %}
-                                    <span class="badge bg-danger mt-1">Vencido ({{ compromiso.get_estado_display }})</span>
+                                    <span class="badge bg-danger mt-1">Vencido{% if compromiso.estado != 'vencido' %} ({{ compromiso.get_estado_display }}){% endif %}</span>
                                 {% else %}
                                     <span class="badge {% if compromiso.estado == 'realizado' %}bg-success{% elif compromiso.estado == 'en_proceso' %}bg-primary{% else %}bg-secondary{% endif %} mt-1">
                                         {{ compromiso.get_estado_display }}
@@ -319,7 +336,7 @@
         <section class="content-section mb-4">
             <h2 class="h5 fw-bold mb-3"><i class="bi bi-journal-check text-muni me-2"></i>Registros incluidos en agenda</h2>
             <div class="table-responsive shadow-sm rounded border bg-white">
-                <table class="table table-striped mb-0">
+                <table class="table table-striped table-bordered align-middle mb-0 tabla-agenda-bordes">
                     <thead class="table-dark">
                         <tr><th>Fecha</th><th>Funcionario</th><th>Ítem</th><th>Actividad</th><th>Estado</th></tr>
                     </thead>
@@ -347,7 +364,7 @@
                 <span id="agenda-search-status" class="text-muted small"></span>
             </div>
             <div class="table-responsive shadow-sm rounded border bg-white">
-                <table class="table table-striped mb-0" id="agenda-results-table">
+                <table class="table table-striped table-bordered align-middle mb-0 tabla-agenda-bordes" id="agenda-results-table">
                     <thead class="table-dark"><tr><th>Código</th><th>Fecha</th><th>Origen</th><th>Solicitante</th><th>Descripción</th><th>Estado</th><th>Acción</th></tr></thead>
                     <tbody id="agenda-results">
                     {% for item in agenda_results %}
