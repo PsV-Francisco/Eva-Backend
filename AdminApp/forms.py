@@ -671,6 +671,17 @@ class CargoForm(BootstrapFormMixin, forms.ModelForm):
             ).filter(Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gte=hoy))
             self.initial['items'] = list(vigentes_it.values_list('item_id', flat=True))
 
+            # Mantener asignaciones vigentes aunque la función o el ítem esté
+            # inactivo; si no, al guardar se cerraban sin que nadie lo pidiera.
+            self.fields['funciones'].queryset = (
+                self.fields['funciones'].queryset
+                | Funcion.objects.filter(pk__in=self.initial['funciones'])
+            ).distinct().order_by('nombre')
+            self.fields['items'].queryset = (
+                self.fields['items'].queryset
+                | Item.objects.filter(pk__in=self.initial['items'])
+            ).distinct().order_by('nombre')
+
             ultima_fecha = (
                 vigentes_fn.order_by('-vigente_desde').values_list('vigente_desde', flat=True).first()
                 or vigentes_it.order_by('-vigente_desde').values_list('vigente_desde', flat=True).first()

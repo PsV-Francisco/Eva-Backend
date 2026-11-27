@@ -72,8 +72,14 @@ def _asignar_tipo_hito(form, instance):
 
 def _hito_label(hito):
     inicio = timezone.localtime(hito.fecha_inicio).strftime('%d/%m/%Y') if hito.fecha_inicio else ''
-    termino = timezone.localtime(hito.fecha_termino).strftime('%d/%m/%Y') if hito.fecha_termino else 'sin término'
-    return f'{hito.nombre} — {hito.territorio.nombre} ({inicio} al {termino})'
+    if not hito.fecha_termino:
+        rango = f'desde {inicio}'
+    else:
+        rango = f'{inicio} al ' + timezone.localtime(hito.fecha_termino).strftime('%d/%m/%Y')
+    territorio = hito.territorio.nombre
+    if len(territorio) > 40:
+        territorio = territorio[:40].rstrip(' ,.;') + '…'
+    return f'{hito.nombre} — {territorio} ({rango})'
 
 
 def _active_catalog_queryset(model):

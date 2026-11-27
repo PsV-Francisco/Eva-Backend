@@ -406,6 +406,15 @@ def _column_value(record, field):
     return value
 
 
+def _delegation_param(request):
+    # Un delegado no puede usar "todas": sin parámetro vuelve a su
+    # delegación activa en lugar de terminar en un 404.
+    raw_value = request.GET.get('delegacion', '').strip()
+    if raw_value:
+        return raw_value
+    return 'todas' if is_system_administrator(request.user) else ''
+
+
 def _csv_value(value):
     # Las columnas con insignias HTML se exportan solo como texto.
     return strip_tags(value) if isinstance(value, SafeString) else value
@@ -585,14 +594,14 @@ def _ausencia_form(request, ausencia_id=None):
         )
         return redirect(
             f'{reverse("administracion:ausencias")}'
-            f'?delegacion={request.GET.get("delegacion", "todas")}',
+            f'?delegacion={_delegation_param(request)}',
         )
 
     return render(request, 'AdminApp/record_form.html', {
         'title': 'Editar ausencia' if editing else 'Crear ausencia',
         'form': form,
         'list_url': reverse('administracion:ausencias'),
-        'selected_delegation': request.GET.get('delegacion', 'todas'),
+        'selected_delegation': _delegation_param(request),
         'delegaciones': available_delegations(request.user),
         'is_administrator': is_system_administrator(request.user),
     })
@@ -636,7 +645,7 @@ def ausencia_eliminar(request, ausencia_id):
         messages.success(request, 'La ausencia se eliminó correctamente.')
     return redirect(
         f'{reverse("administracion:ausencias")}'
-        f'?delegacion={request.GET.get("delegacion", "todas")}',
+        f'?delegacion={_delegation_param(request)}',
     )
 
 
@@ -784,14 +793,14 @@ def _related_record_form(request, key, record_id=None):
         )
         return redirect(
             f'{reverse(f"administracion:{key}")}'
-            f'?delegacion={request.GET.get("delegacion", "todas")}',
+            f'?delegacion={_delegation_param(request)}',
         )
 
     return render(request, 'AdminApp/record_form.html', {
         'title': f'{"Editar" if editing else "Crear"} {spec.title.lower()}',
         'form': form,
         'list_url': reverse(f'administracion:{key}'),
-        'selected_delegation': request.GET.get('delegacion', 'todas'),
+        'selected_delegation': _delegation_param(request),
         'delegaciones': available_delegations(request.user),
         'is_administrator': is_system_administrator(request.user),
     })
@@ -829,7 +838,7 @@ def _related_record_delete(request, key, record_id):
         )
     return redirect(
         f'{reverse(f"administracion:{key}")}'
-        f'?delegacion={request.GET.get("delegacion", "todas")}',
+        f'?delegacion={_delegation_param(request)}',
     )
 
 

@@ -21,6 +21,21 @@
     border-color: var(--muni-rojo-borde);
     box-shadow: 0 0 0 0.2rem rgba(183, 28, 28, 0.18);
   }
+  /* Selector múltiple con casillas (reemplaza Ctrl + clic) */
+  .checklist { border: 1px solid #dee2e6; border-radius: .375rem; background: #fff; }
+  .checklist-toolbar { display: flex; gap: .5rem; align-items: center; padding: .5rem; border-bottom: 1px solid #dee2e6; background: #f8f9fa; border-radius: .375rem .375rem 0 0; }
+  .checklist-count { background: #e9ecef; color: #495057; font-weight: 600; white-space: nowrap; }
+  .checklist-count.is-active { background: var(--muni-rojo); color: #fff; }
+  .checklist-body { max-height: 210px; overflow-y: auto; padding: .25rem 0; }
+  .checklist-option { display: flex; align-items: center; gap: .5rem; padding: .35rem .75rem; margin: 0; cursor: pointer; }
+  .checklist-option[hidden] { display: none; }
+  .checklist-option:hover { background: #fff5f5; }
+  .checklist-option.is-checked { background: #fdecea; font-weight: 600; }
+  .checklist-option .form-check-input { margin: 0; flex-shrink: 0; }
+  .checklist .form-check-input:checked { background-color: var(--muni-rojo); border-color: var(--muni-rojo); }
+  .checklist-footer { display: flex; justify-content: space-between; padding: .35rem .75rem; border-top: 1px solid #dee2e6; }
+  .checklist-footer .btn-link { color: var(--muni-rojo); text-decoration: none; font-weight: 600; }
+  .checklist-empty { margin: 0; padding: .5rem .75rem; color: #6c757d; font-size: .875rem; }
 </style>
 
 <div class="dashboard-layout">
@@ -56,12 +71,12 @@
               <div class="col-md-6">
                 <label for="id_funciones" class="form-label fw-semibold">Funciones vigentes asociadas <span class="text-muted small">(opcional)</span></label>
                 {{ form.funciones }}
-                <div class="form-text small">Mantén presionado Ctrl (o Cmd) para seleccionar múltiples opciones.</div>
+                <div class="form-text small">Marca una o varias opciones. Puedes filtrar por nombre.</div>
               </div>
               <div class="col-md-6">
                 <label for="id_items" class="form-label fw-semibold">Ítems de medición vigentes <span class="text-muted small">(opcional)</span></label>
                 {{ form.items }}
-                <div class="form-text small">Mantén presionado Ctrl (o Cmd) para seleccionar múltiples opciones.</div>
+                <div class="form-text small">Marca una o varias opciones. Puedes filtrar por nombre.</div>
               </div>
             </div>
             <div class="d-flex justify-content-end mt-3 pt-2 border-top">
@@ -261,6 +276,108 @@ document.addEventListener('DOMContentLoaded', function () {
     return div.innerHTML;
   }
 
+  // Selector múltiple con casillas: oculta el <select multiple> y lo mantiene
+  // sincronizado, así el envío del formulario y el AJAX no cambian.
+  function enhanceChecklist(select, placeholder) {
+    if (!select || select.dataset.checklist) return;
+    select.dataset.checklist = '1';
+    select.classList.add('d-none');
+
+    const box = document.createElement('div');
+    box.className = 'checklist';
+    const toolbar = document.createElement('div');
+    toolbar.className = 'checklist-toolbar';
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'form-control form-control-sm';
+    search.placeholder = placeholder;
+    search.setAttribute('aria-label', placeholder);
+    const count = document.createElement('span');
+    count.className = 'checklist-count badge';
+    toolbar.append(search, count);
+    const body = document.createElement('div');
+    body.className = 'checklist-body';
+    body.setAttribute('role', 'group');
+    const footer = document.createElement('div');
+    footer.className = 'checklist-footer';
+    const btnAll = document.createElement('button');
+    btnAll.type = 'button';
+    btnAll.className = 'btn btn-link btn-sm p-0';
+    btnAll.textContent = 'Marcar visibles';
+    const btnNone = document.createElement('button');
+    btnNone.type = 'button';
+    btnNone.className = 'btn btn-link btn-sm p-0';
+    btnNone.textContent = 'Quitar todas';
+    footer.append(btnAll, btnNone);
+    box.append(toolbar, body, footer);
+    select.insertAdjacentElement('afterend', box);
+
+    function updateCount() {
+      const total = Array.from(select.options).filter(opt => opt.selected).length;
+      count.textContent = total === 1 ? '1 seleccionada' : `${total} seleccionadas`;
+      count.classList.toggle('is-active', total > 0);
+    }
+
+    function render() {
+      body.replaceChildren();
+      const term = search.value.trim().toLowerCase();
+      let visibles = 0;
+      Array.from(select.options).forEach(opt => {
+        const label = document.createElement('label');
+        label.className = 'checklist-option';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.className = 'form-check-input';
+        input.checked = opt.selected;
+        const text = document.createElement('span');
+        text.textContent = opt.textContent;
+        input.addEventListener('change', () => {
+          opt.selected = input.checked;
+          label.classList.toggle('is-checked', input.checked);
+          updateCount();
+        });
+        label.classList.toggle('is-checked', opt.selected);
+        label.hidden = Boolean(term) && !opt.textContent.toLowerCase().includes(term);
+        if (!label.hidden) visibles += 1;
+        label.append(input, text);
+        body.appendChild(label);
+      });
+      if (!visibles) {
+        const empty = document.createElement('p');
+        empty.className = 'checklist-empty';
+        empty.textContent = select.options.length ? 'Sin coincidencias.' : 'No hay opciones activas.';
+        body.appendChild(empty);
+      }
+      updateCount();
+    }
+
+    search.addEventListener('input', render);
+    btnAll.addEventListener('click', () => {
+      body.querySelectorAll('.checklist-option:not([hidden]) input').forEach(input => {
+        input.checked = true;
+        input.dispatchEvent(new Event('change'));
+      });
+    });
+    btnNone.addEventListener('click', () => {
+      Array.from(select.options).forEach(opt => { opt.selected = false; });
+      render();
+    });
+    select.addEventListener('checklist:refresh', () => {
+      search.value = '';
+      render();
+    });
+    render();
+  }
+
+  function refreshChecklist(select) {
+    if (select) select.dispatchEvent(new Event('checklist:refresh'));
+  }
+
+  enhanceChecklist(document.getElementById('id_funciones'), 'Filtrar funciones...');
+  enhanceChecklist(document.getElementById('id_items'), 'Filtrar ítems...');
+  enhanceChecklist(document.getElementById('edit_funciones'), 'Filtrar funciones...');
+  enhanceChecklist(document.getElementById('edit_items'), 'Filtrar ítems...');
+
   // Alertas Django con SweetAlert2
   {% if messages %}
     {% for message in messages %}
@@ -276,6 +393,13 @@ document.addEventListener('DOMContentLoaded', function () {
   // Validación creación
   const formCrear = document.getElementById('formCrearCargo');
   if (formCrear) {
+    // "Limpiar" restablece el <select>; se redibujan las casillas después.
+    formCrear.addEventListener('reset', () => {
+      setTimeout(() => {
+        refreshChecklist(document.getElementById('id_funciones'));
+        refreshChecklist(document.getElementById('id_items'));
+      }, 0);
+    });
     formCrear.addEventListener('submit', function (e) {
       const nombre = document.getElementById('id_nombre').value.trim();
       const vigenteDesde = document.getElementById('id_vigente_desde').value;
@@ -366,6 +490,26 @@ document.addEventListener('DOMContentLoaded', function () {
   // Abrir Modal de Edición y rellenar datos vía JSON
   const modalEditar = new bootstrap.Modal(document.getElementById('modalEditarCargo'));
 
+  // Marca las asignaciones vigentes. Si alguna función o ítem está inactivo
+  // se agrega como opción temporal para no perderlo al guardar.
+  function prepararSeleccion(selectId, ids, info, etiquetaInactivo) {
+    const select = document.getElementById(selectId);
+    select.querySelectorAll('option[data-extra]').forEach(opt => opt.remove());
+    const seleccion = new Set((ids || []).map(String));
+    (info || []).forEach(asignacion => {
+      const valor = String(asignacion.id);
+      if (!Array.from(select.options).some(opt => opt.value === valor)) {
+        const opt = new Option(`${asignacion.nombre} (${etiquetaInactivo})`, valor);
+        opt.dataset.extra = '1';
+        select.add(opt);
+      }
+    });
+    Array.from(select.options).forEach(opt => {
+      opt.selected = seleccion.has(opt.value);
+    });
+    refreshChecklist(select);
+  }
+
   tbody.addEventListener('click', function (e) {
     const btn = e.target.closest('.btn-editar-cargo');
     if (!btn) return;
@@ -393,15 +537,8 @@ document.addEventListener('DOMContentLoaded', function () {
           alertaProt.classList.add('d-none');
         }
 
-        const fnSet = new Set((data.funciones || []).map(String));
-        Array.from(document.getElementById('edit_funciones').options).forEach(opt => {
-          opt.selected = fnSet.has(opt.value);
-        });
-
-        const itSet = new Set((data.items || []).map(String));
-        Array.from(document.getElementById('edit_items').options).forEach(opt => {
-          opt.selected = itSet.has(opt.value);
-        });
+        prepararSeleccion('edit_funciones', data.funciones, data.funciones_info, 'inactiva');
+        prepararSeleccion('edit_items', data.items, data.items_info, 'inactivo');
 
         modalEditar.show();
       })

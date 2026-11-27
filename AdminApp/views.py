@@ -813,7 +813,7 @@ def eliminar_territorio(request, territorio_id):
 def _cargo_snapshot(cargo):
     hoy = timezone.localdate()
     funciones_ids = list(
-        CargoFuncion.objects.filter(cargo=cargo).filter(Q(vigente_hasta__isnull=True),Q(vigente_hasta__gte=hoy))
+        CargoFuncion.objects.filter(cargo=cargo).filter(Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gte=hoy))
         .order_by('funcion_id')
         .values_list('funcion_id', flat=True)
     )
@@ -899,8 +899,8 @@ def buscar_cargos_ajax(request):
     hoy = timezone.localdate()
     resultados = []
     for c in queryset[:50]:
-        fn_count = CargoFuncion.objects.filter(cargo=c).filter(Q(vigente_hasta__isnull=True),Q(vigente_hasta__gte=hoy)).count()
-        it_count = CargoItem.objects.filter(cargo=c).filter(Q(vigente_hasta__isnull=True),Q(vigente_hasta__gte=hoy)).count()
+        fn_count = CargoFuncion.objects.filter(cargo=c).filter(Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gte=hoy)).count()
+        it_count = CargoItem.objects.filter(cargo=c).filter(Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gte=hoy)).count()
         resultados.append({
             'id': c.pk,
             'nombre': c.nombre,
@@ -920,8 +920,8 @@ def detalle_cargo_json(request, cargo_id):
     cargo = get_object_or_404(Cargo, pk=cargo_id)
     hoy = timezone.localdate()
 
-    vigentes_fn = CargoFuncion.objects.filter(cargo=cargo).filter(Q(vigente_hasta__isnull=True),Q(vigente_hasta__gte=hoy))
-    vigentes_it = CargoItem.objects.filter(cargo=cargo).filter(Q(vigente_hasta__isnull=True),Q(vigente_hasta__gte=hoy))
+    vigentes_fn = CargoFuncion.objects.filter(cargo=cargo).filter(Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gte=hoy))
+    vigentes_it = CargoItem.objects.filter(cargo=cargo).filter(Q(vigente_hasta__isnull=True) | Q(vigente_hasta__gte=hoy))
 
     ultima_fecha = (vigentes_fn.order_by('-vigente_desde').values_list('vigente_desde', flat=True).first() or vigentes_it.order_by('-vigente_desde').values_list('vigente_desde', flat=True).first())
     vigente_desde = max(ultima_fecha, hoy) if ultima_fecha else hoy
@@ -933,6 +933,16 @@ def detalle_cargo_json(request, cargo_id):
         'es_protegido': is_critical_cargo_name(cargo.nombre),
         'funciones': list(vigentes_fn.values_list('funcion_id', flat=True)),
         'items': list(vigentes_it.values_list('item_id', flat=True)),
+        # Nombres para que el modal muestre también asignaciones a funciones
+        # o ítems que hoy están inactivos (no vienen en la lista de activos).
+        'funciones_info': [
+            {'id': a.funcion_id, 'nombre': a.funcion.nombre, 'activo': a.funcion.estado == Funcion.Estado.ACTIVO}
+            for a in vigentes_fn.select_related('funcion').order_by('funcion__nombre')
+        ],
+        'items_info': [
+            {'id': a.item_id, 'nombre': a.item.nombre, 'activo': a.item.estado == Item.Estado.ACTIVO}
+            for a in vigentes_it.select_related('item').order_by('item__nombre')
+        ],
         'vigente_desde': vigente_desde.isoformat(),
     })
 
