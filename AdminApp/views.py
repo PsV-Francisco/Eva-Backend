@@ -890,7 +890,7 @@ def solicitudes_autorizacion(request):
                 return redirect('administracion:solicitudes-autorizacion')
             messages.error(request, 'La revocación requiere un comentario.')
     solicitudes = SolicitudAutorizacionPeriodo.objects.select_related(
-        'periodo', 'solicitante', 'aprobador',
+        'periodo', 'vecino', 'aprobador',
     ).prefetch_related('funcionarios')
     now = timezone.now()
     for solicitud in solicitudes:

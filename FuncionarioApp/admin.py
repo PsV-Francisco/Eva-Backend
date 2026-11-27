@@ -31,7 +31,7 @@ class RegistroAdmin(admin.ModelAdmin):
 class AtencionSocialAdmin(admin.ModelAdmin):
 	list_display = ('vecino', 'autor', 'tipo', 'subtipo', 'gestion_atencion', 'fecha', 'creado')
 	list_filter = ('tipo', 'subtipo', 'fecha')
-	search_fields = ('autor__email', 'vecino__nombre', 'beneficiado__apellido', 'resultado')
+	search_fields = ('autor__email', 'vecino__nombre', 'vecino__apellido', 'resultado')
 	readonly_fields = ('creado',)
 
 

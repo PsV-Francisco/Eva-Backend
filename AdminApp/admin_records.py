@@ -276,7 +276,7 @@ LIST_SPECS = {
         columns=(
             ('Fecha', 'fecha'),
             ('Autor', 'autor__email'),
-            ('Beneficiado', 'beneficiado__nombre'),
+            ('Vecino', 'vecino__nombre'),
             ('Tipo', 'tipo__nombre'),
             ('Subtipo', 'subtipo__nombre'),
             ('Gestión', 'gestion_atencion__numero_gestion'),
@@ -284,8 +284,8 @@ LIST_SPECS = {
         ),
         search_fields=(
             'autor__email',
-            'beneficiado__nombre',
-            'beneficiado__apellido',
+            'vecino__nombre',
+            'vecino__apellido',
             'tipo__nombre',
             'subtipo__nombre',
             'resultado',
@@ -295,7 +295,7 @@ LIST_SPECS = {
         assignment_lookup='autor__usuariodelegacion',
         select_related=(
             'autor',
-            'beneficiado',
+            'vecino',
             'tipo',
             'subtipo',
             'gestion_atencion',
@@ -1214,7 +1214,7 @@ def _atencion_en_alcance(request):
     return filter_by_delegation(
         AtencionSocial.objects.select_related(
             'autor',
-            'beneficiado',
+            'vecino',
             'tipo',
             'subtipo',
             'gestion_atencion',
@@ -1229,7 +1229,7 @@ def _atencion_snapshot(atencion):
     return {
         'fecha': atencion.fecha.isoformat(),
         'autor_id': atencion.autor_id,
-        'beneficiado_id': atencion.beneficiado_id,
+        'vecino_id': atencion.vecino_id,
         'tipo_id': atencion.tipo_id,
         'subtipo_id': atencion.subtipo_id,
         'gestion_id': atencion.gestion_atencion_id,

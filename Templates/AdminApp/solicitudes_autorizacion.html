@@ -3,7 +3,7 @@
 <h1>Bandeja de autorizaciones</h1>
 {% for solicitud in solicitudes %}
 <article{% if solicitud.es_antigua %} class="solicitud-antigua"{% endif %}>
-  <strong>{{ solicitud.periodo }}</strong> — {{ solicitud.solicitante }} — {{ solicitud.get_estado_display }}
+  <strong>{{ solicitud.periodo }}</strong> — {{ solicitud.vecino }} — {{ solicitud.get_estado_display }}
   {% if solicitud.es_antigua %}<strong> Pendiente por más de 3 días</strong>{% endif %}
   <p>{{ solicitud.motivo }}</p>
   {% if solicitud.estado == 'pendiente' %}
