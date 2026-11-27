@@ -15,8 +15,9 @@ class PeriodoForm(BootstrapFormMixin, forms.ModelForm):
             'estado': 'Estado',
         }
         widgets = {
-            'fecha_inicio': forms.DateInput(attrs={'type': 'date'}),
-            'fecha_fin': forms.DateInput(attrs={'type': 'date'}),
+            # El input type=date solo acepta AAAA-MM-DD; sin formato aparecía vacío al editar.
+            'fecha_inicio': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'fecha_fin': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
         }
 
     def clean(self):

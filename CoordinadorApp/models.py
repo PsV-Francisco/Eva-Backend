@@ -180,6 +180,9 @@ class Periodo(models.Model):
 		]
 
 	def save(self, *args, **kwargs):
+		# HU-28: guarda siempre el estado en minúsculas ('Abierto' -> 'abierto').
+		# MariaDB compara sin distinguir mayúsculas, pero el código Python sí.
+		self.estado = (self.estado or '').strip().lower() or self.Estado.ABIERTO
 		if self.estado == self.Estado.CERRADO and any(
 			getattr(self, field, None) is None
 			for field in ('semaforo_rojo', 'semaforo_ambar', 'umbral_delegacion', 'tope_cumplimiento')
