@@ -325,6 +325,26 @@ def ids_cargos_funcionario():
     ]
 
 
+def q_usuarios_funcionario():
+    """Filtro de usuarios cuyo cargo **o rol** vigente opera como funcionario.
+
+    El Encargado Área Social puede tenerse como cargo o como rol; el control de
+    acceso (has_cargo_access) acepta ambos, así que los listados también.
+    Usar siempre con .distinct().
+    """
+    from django.db.models import Q
+    from AdminApp.models import Rol
+    rol_ids = [
+        rol.pk
+        for rol in Rol.objects.only('pk', 'nombre')
+        if cargo_key_for_access(rol.nombre) == 'funcionario'
+    ]
+    return (
+        Q(usuariocargo__cargo_id__in=ids_cargos_funcionario(), usuariocargo__fecha_fin__isnull=True)
+        | Q(usuariorol__rol_id__in=rol_ids, usuariorol__fecha_fin__isnull=True)
+    )
+
+
 def _is_matching_cargo(name, cargos):
     cargo_key = cargo_key_for_access(name)
     accepted = {

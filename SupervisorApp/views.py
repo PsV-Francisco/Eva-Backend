@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from AdminApp.audit import registrar_historial
 from CoordinadorApp.models import Periodo
 from config.decorators import cargo_required
-from config.permissions import ids_cargos_funcionario
+from config.permissions import q_usuarios_funcionario
 from CoordinadorApp.services import periodo_vigente
 from config.delegations import active_delegation
 from FuncionarioApp.models import Registro
@@ -178,9 +178,8 @@ def home(request):
     )
     delegation = active_delegation(request)
     users = get_user_model().objects.filter(
+        q_usuarios_funcionario(),
         is_active=True,
-        usuariocargo__cargo_id__in=ids_cargos_funcionario(),
-        usuariocargo__fecha_fin__isnull=True,
         usuariodelegacion__fecha_fin__isnull=True,
     )
     if delegation:

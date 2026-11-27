@@ -65,9 +65,12 @@ def home(request):
 			| Q(periodo__nombre__icontains=query)
 		)
 
-	summary = desempenos.filter(
-		usuario__usuariodelegacion__fecha_fin__isnull=True,
-	).values(
+	# Mismo filtro (un solo JOIN): sin esto, un funcionario con dos delegaciones
+	# mostraba filas de otra delegación fuera del alcance del usuario.
+	summary_filter = {'usuario__usuariodelegacion__fecha_fin__isnull': True}
+	if delegation:
+		summary_filter['usuario__usuariodelegacion__delegacion_id'] = delegation.pk
+	summary = desempenos.filter(**summary_filter).values(
 		delegacion=F('usuario__usuariodelegacion__delegacion__nombre'),
 		periodo_nombre=F('periodo__nombre'),
 	).annotate(meta_total=Sum('meta'), avance_total=Sum('avance')).order_by(
