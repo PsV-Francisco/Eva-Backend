@@ -1,6 +1,7 @@
 # Importaciones de Django y estándar
 from datetime import date
 from decimal import Decimal
+from datetime import datetime
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
@@ -678,11 +679,17 @@ def buscar_compromisos_ajax(request):
 
 def _compromiso_snapshot(compromiso):
     return {
+        'periodo_id': compromiso.agenda.periodo_id if compromiso.agenda_id else None,
         'descripcion': compromiso.descripcion,
+        'fecha_solicitud': compromiso.fecha_solicitud.isoformat() if compromiso.fecha_solicitud else None,
+        'fecha_compromiso': compromiso.fecha_compromiso.isoformat() if compromiso.fecha_compromiso else None,
+        'mes': compromiso.mes,
+        'ambito': compromiso.ambito,
         'solicitante_id': compromiso.solicitante_id,
         'territorio_id': compromiso.territorio_id,
-        'fecha_compromiso': compromiso.fecha_compromiso.isoformat(),
+        'area_apoyo': compromiso.area_apoyo,
         'observaciones': compromiso.observaciones,
+        'estado': compromiso.estado,
         'tipo_id': compromiso.tipo_id,
         'subtipo_id': compromiso.subtipo_id,
         'responsable_ids': sorted(compromiso.responsable.values_list('pk', flat=True)),
@@ -765,6 +772,7 @@ def editar_compromiso_ajax(request, compromiso_id):
     solicitante_id = data.get('solicitante_id') or None
     territorio_id = data.get('territorio_id') or None
     area_apoyo = data.get('area_apoyo', '').strip()
+    mes_raw = data.get('mes')
     tipo_id = data.get('tipo_id') or None
     subtipo_id = data.get('subtipo_id') or None
     estado = data.get('estado', commitment.estado)
@@ -774,7 +782,7 @@ def editar_compromiso_ajax(request, compromiso_id):
     if not descripcion or not fecha_solicitud_raw or not fecha_compromiso_raw:
         return JsonResponse({'success': False, 'message': 'La descripción, fecha de solicitud y fecha de compromiso son obligatorias.'}, status=400)
 
-    from datetime import datetime
+    
     try:
         fecha_sol = timezone.make_aware(datetime.fromisoformat(fecha_solicitud_raw))
         fecha_comp = timezone.make_aware(datetime.fromisoformat(fecha_compromiso_raw))
@@ -784,22 +792,43 @@ def editar_compromiso_ajax(request, compromiso_id):
     if fecha_comp < fecha_sol:
         return JsonResponse({'success': False, 'message': 'La fecha de compromiso no puede ser anterior a la fecha de solicitud.'}, status=400)
 
+    # Validar mes entre 1 y 12 (si viene vacío, hereda el mes de fecha_compromiso)
+    if mes_raw not in (None, ''):
+        try:
+            mes = int(mes_raw)
+        except (TypeError, ValueError):
+            return JsonResponse({'success': False, 'message': 'El mes debe ser un número entero entre 1 y 12.'}, status=400)
+        if not (1 <= mes <= 12):
+            return JsonResponse({'success': False, 'message': 'El mes debe estar entre 1 y 12.'}, status=400)
+    else:
+        mes = fecha_comp.month
+
+    # Validar coherencia entre tipo y subtipo
+    if tipo_id and subtipo_id:
+        if not Subtipo.objects.filter(pk=subtipo_id, tipo_id=tipo_id).exists():
+            return JsonResponse({'success': False, 'message': 'El subtipo seleccionado no pertenece al tipo elegido.'}, status=400)
+    elif tipo_id or subtipo_id:
+        return JsonResponse({'success': False, 'message': 'Debes seleccionar tanto el tipo como el subtipo.'}, status=400)
+
     valid_estados = {choice[0] for choice in Compromiso.Estado.choices}
     if estado not in valid_estados:
         return JsonResponse({'success': False, 'message': 'El estado seleccionado no es válido.'}, status=400)
 
+    valid_ambitos = {choice[0] for choice in Compromiso.Ambito.choices}
+    if ambito not in valid_ambitos:
+        return JsonResponse({'success': False, 'message': 'El ámbito seleccionado no es válido.'}, status=400)
+
     period = get_object_or_404(Periodo, pk=periodo_id, estado=Periodo.Estado.ABIERTO)
     before = _compromiso_snapshot(commitment)
     estado_anterior = commitment.estado
-
     try:
         with transaction.atomic():
-            agenda, _ = Agenda.objects.get_or_create(delegacion=delegation,periodo=period)
+            agenda, _ = Agenda.objects.get_or_create(delegacion=delegation, periodo=period)
             commitment.agenda = agenda
             commitment.descripcion = descripcion
             commitment.fecha_solicitud = fecha_sol
             commitment.fecha_compromiso = fecha_comp
-            commitment.mes = fecha_comp.month
+            commitment.mes = mes
             commitment.ambito = ambito
             commitment.solicitante_id = solicitante_id
             commitment.territorio_id = territorio_id
@@ -807,9 +836,8 @@ def editar_compromiso_ajax(request, compromiso_id):
             commitment.observaciones = observaciones
             commitment.estado = estado
 
-            if tipo_id:
+            if tipo_id and subtipo_id:
                 commitment.tipo_id = tipo_id
-            if subtipo_id:
                 commitment.subtipo_id = subtipo_id
 
             commitment.save()

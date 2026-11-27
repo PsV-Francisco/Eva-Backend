@@ -470,7 +470,7 @@
               </select>
             </div>
 
-            <div class="col-md-4">
+            <div class="col-md-3">
               <label for="edit_tipo_id" class="form-label fw-semibold">Tipo</label>
               <select id="edit_tipo_id" class="form-select">
                 <option value="">Seleccione un tipo</option>
@@ -480,7 +480,7 @@
               </select>
             </div>
 
-            <div class="col-md-4">
+            <div class="col-md-3">
               <label for="edit_subtipo_id" class="form-label fw-semibold">Subtipo</label>
               <select id="edit_subtipo_id" class="form-select">
                 <option value="">Seleccione un subtipo</option>
@@ -490,6 +490,11 @@
             <div class="col-md-4">
               <label for="edit_area_apoyo" class="form-label fw-semibold">Área de Apoyo</label>
               <input type="text" id="edit_area_apoyo" class="form-control" maxlength="100">
+            </div>
+
+            <div class="col-md-2">
+              <label for="edit_mes" class="form-label fw-semibold">Mes (1-12)</label>
+              <input type="number" id="edit_mes" class="form-control" min="1" max="12">
             </div>
 
             <div class="col-12">
@@ -590,8 +595,21 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const editTipoSelect = document.getElementById('edit_tipo_id');
   const editSubtipoSelect = document.getElementById('edit_subtipo_id');
+  const editFechaComp = document.getElementById('edit_fecha_compromiso');
+  const editMesInput = document.getElementById('edit_mes');
+
   if (editTipoSelect && editSubtipoSelect) {
     editTipoSelect.addEventListener('change', () => cargarSubtiposEnSelect(editTipoSelect, editSubtipoSelect));
+  }
+  if (editFechaComp && editMesInput) {
+    editFechaComp.addEventListener('change', function () {
+      if (this.value) {
+        const dt = new Date(this.value);
+        if (!isNaN(dt.getTime())) {
+          editMesInput.value = dt.getMonth() + 1;
+        }
+      }
+    });
   }
 
   // Sincronizar mes automáticamente al cambiar Fecha Compromiso en Creación
@@ -616,6 +634,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const fechaSol = document.getElementById('id_fecha_solicitud').value;
       const fechaComp = document.getElementById('id_fecha_compromiso').value;
       const periodo = document.getElementById('id_periodo').value;
+      const mesRaw = document.getElementById('id_mes').value.trim();
 
       if (!periodo || !descripcion || !fechaSol || !fechaComp) {
         e.preventDefault();
@@ -636,6 +655,21 @@ document.addEventListener('DOMContentLoaded', function () {
           text: 'La fecha de compromiso no puede ser anterior a la fecha de solicitud.',
           confirmButtonColor: '#B71C1C'
         });
+      }
+
+      
+      if (mesRaw !== '') {
+        const mesNum = Number(mesRaw);
+        if (!Number.isInteger(mesNum) || mesNum < 1 || mesNum > 12) {
+          e.preventDefault();
+          Swal.fire({
+            icon: 'error',
+            title: 'Mes inválido',
+            text: 'El mes debe ser un número entero entre 1 y 12.',
+            confirmButtonColor: '#B71C1C'
+          });
+          return;
+        }
       }
     });
   }
@@ -843,6 +877,7 @@ document.addEventListener('DOMContentLoaded', function () {
           document.getElementById('edit_solicitante_id').value = body.solicitante_id || '';
           document.getElementById('edit_territorio_id').value = body.territorio_id || '';
           document.getElementById('edit_area_apoyo').value = body.area_apoyo || '';
+          document.getElementById('edit_mes').value = body.mes || '';
           document.getElementById('edit_observaciones').value = body.observaciones || '';
           document.getElementById('edit_tipo_id').value = body.tipo_id || '';
 
@@ -880,6 +915,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const descripcion = document.getElementById('edit_descripcion').value.trim();
       const fechaSolicitud = document.getElementById('edit_fecha_solicitud').value;
       const fechaCompromiso = document.getElementById('edit_fecha_compromiso').value;
+      const editMesRaw = document.getElementById('edit_mes').value.trim();
 
       if (!descripcion || !fechaSolicitud || !fechaCompromiso) {
         Swal.fire({
@@ -901,6 +937,19 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
+      
+      if (editMesRaw !== '') {
+        const editMesNum = Number(editMesRaw);
+        if (!Number.isInteger(editMesNum) || editMesNum < 1 || editMesNum > 12) {
+          Swal.fire({
+            icon: 'error',
+            title: 'Mes inválido',
+            text: 'El mes debe ser un número entero entre 1 y 12.',
+            confirmButtonColor: '#B71C1C'
+          });
+          return;
+        }
+      }
       const urlEditar = buildUrlWithId(editarUrlTemplate, compromisoId);
 
       fetchJsonSafe(urlEditar, {
@@ -922,6 +971,7 @@ document.addEventListener('DOMContentLoaded', function () {
           tipo_id: document.getElementById('edit_tipo_id').value || null,
           subtipo_id: document.getElementById('edit_subtipo_id').value || null,
           area_apoyo: document.getElementById('edit_area_apoyo').value.trim(),
+          mes: editMesRaw !== '' ? Number(editMesRaw) : null,
           observaciones: document.getElementById('edit_observaciones').value.trim()
         })
       })

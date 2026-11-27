@@ -109,6 +109,13 @@ class FuncionarioCompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.Mod
         if self.instance and self.instance.pk and getattr(self.instance, 'agenda_id', None):
             self.initial.setdefault('periodo', self.instance.agenda.periodo_id)
 
+    def clean_mes(self):
+        mes = self.cleaned_data.get('mes')
+        if mes is not None and not (1 <= mes <= 12):
+            raise forms.ValidationError('El mes debe estar entre 1 y 12.')
+        return mes
+    
+
     def clean(self):
         cleaned_data = super().clean()
         fecha_sol = cleaned_data.get('fecha_solicitud')
@@ -116,11 +123,10 @@ class FuncionarioCompromisoForm(TipoSubtipoFields, BootstrapFormMixin, forms.Mod
         mes = cleaned_data.get('mes')
 
         if fecha_sol and fecha_comp and fecha_comp < fecha_sol:
-            self.add_error('fecha_compromiso','La fecha de compromiso no puede ser anterior a la fecha de solicitud.')
+            self.add_error('fecha_compromiso', 'La fecha de compromiso no puede ser anterior a la fecha de solicitud.')
 
-        if fecha_comp and not mes:
+        if fecha_comp and mes is None:
             cleaned_data['mes'] = fecha_comp.month
-            self.cleaned_data['mes'] = fecha_comp.month
         return cleaned_data
 
     def save(self, commit=True):
