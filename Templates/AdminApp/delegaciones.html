@@ -281,6 +281,11 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
     tbody.innerHTML = items.map(d => {
+
+      const badge = d.estado === 'ACTIVADO'
+        ? '<span class="badge bg-success-subtle text-success border border-success-subtle">ACTIVADO</span>'
+        : '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">DESACTIVADO</span>';
+      
       const btnEstado = d.estado === 'ACTIVADO'
         ? `<button type="button" class="btn btn-sm btn-outline-danger btn-toggle-estado-delegacion" data-id="${d.id}" data-nombre="${escapeHtml(d.nombre)}" data-estado="ACTIVADO"><i class="bi bi-slash-circle"></i> Desactivar</button>`
         : `<button type="button" class="btn btn-sm btn-outline-success btn-toggle-estado-delegacion" data-id="${d.id}" data-nombre="${escapeHtml(d.nombre)}" data-estado="DESACTIVADO"><i class="bi bi-check-circle"></i> Activar</button>`;
