@@ -19,7 +19,7 @@ from AdminApp.models import Delegacion
 from AdminApp.pagination_utils import paginate_queryset
 
 # Importaciones de la aplicación FuncionarioApp
-from FuncionarioApp.models import (Carta,CargoJv,JuntaVecino,Registro,Subtipo,Territorio,Tipo,Vecino,normalizar_telefono,validar_periodo_semanal_abierto)
+from FuncionarioApp.models import (Carta,CargoJv,JuntaVecino,Registro,Subtipo,Territorio,Tipo,Vecino,WEEKLY_CLOSURE_MESSAGE,normalizar_telefono,periodo_semanal_abierto,validar_periodo_semanal_abierto)
 
 # Importaciones de la aplicación CoordinadorApp
 from CoordinadorApp.models import AtencionSocial, Desempeno, GestionAtencion, Item, Periodo
@@ -30,6 +30,7 @@ from DelegadoApp.models import Agenda, Compromiso
 from DelegadoApp.services import agenda_items, actualizar_compromiso, actualizar_estado_compromiso, detalle_actividades, marcar_compromisos_vencidos
 from DelegadoApp.forms import CompromisoEstadoForm
 from SupervisorApp.models import Evidencia, ObservacionRegistro
+from SupervisorApp.files import validate_evidence_file
 
 # Importaciones de Decoradores y Formularios de FuncionarioApp
 from config.decorators import cargo_required
@@ -198,6 +199,12 @@ def gestion_actividades(request):
             }),
         )
 
+    if registro is not None and not adding_observation:
+        bloqueo = motivo_bloqueo_registro(registro)
+        if bloqueo:
+            messages.error(request, bloqueo)
+            return redirect('funcionario:gestion_actividades')
+
     if request.method == 'POST' and request.POST.get('action') == 'agregar_observacion':
         comentario = request.POST.get('comentario', '').strip()
         if not comentario:
@@ -362,52 +369,109 @@ def detalle_registro_json(request, registro_id):
     })
 
 
+def motivo_bloqueo_registro(registro):
+    """Indica por qué una actividad ya no se puede modificar ni eliminar.
+
+    Centraliza las reglas de HU-28 (período cerrado), HU-35 (cierre semanal),
+    el flujo de validación (solo pendientes) y el bloqueo por evidencia.
+    Retorna ``None`` cuando la actividad es editable.
+    """
+    if registro.periodo.estado != Periodo.Estado.ABIERTO:
+        return 'La actividad pertenece a un período cerrado y no se puede modificar.'
+    if registro.estado != Registro.Estado.PENDIENTE:
+        return 'Solo se pueden modificar actividades en estado Pendiente.'
+    if registro.evidencia_id:
+        return 'La actividad ya tiene evidencia asociada; la edición está bloqueada.'
+    if not periodo_semanal_abierto(registro.fecha):
+        return f'{WEEKLY_CLOSURE_MESSAGE}: la actividad ya no se puede modificar.'
+    return None
+
+
+def _datos_edicion_registro(request):
+    """Acepta tanto FormData (lo que envía el modal) como JSON."""
+    if request.content_type in ('multipart/form-data', 'application/x-www-form-urlencoded'):
+        return request.POST
+    return json.loads(request.body or b'{}')
+
+
+def _texto(data, key):
+    return str(data.get(key) or '').strip()
+
+
 @cargo_required('funcionario', permission='edit_employee_record_ajax')
 @require_POST
 def editar_registro_ajax(request, registro_id):
-    registro = get_object_or_404(Registro, pk=registro_id, autor=request.user)
+    registro = get_object_or_404(
+        Registro.objects.select_related('periodo'),
+        pk=registro_id,
+        autor=request.user,
+    )
+    bloqueo = motivo_bloqueo_registro(registro)
+    if bloqueo:
+        return JsonResponse({'success': False, 'message': bloqueo}, status=400)
+
     try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
+        data = _datos_edicion_registro(request)
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return JsonResponse({'success': False, 'message': 'Payload JSON inválido.'}, status=400)
 
-    fecha = data.get('fecha')
-    descripcion = data.get('descripcion', '').strip()
-    contacto = data.get('contacto', '').strip()
-    telefono = data.get('telefono') or None
-    accion = data.get('accion', '').strip()
-    incluir_en_agenda = bool(data.get('incluir_en_agenda', False))
-    item_id = data.get('item_id')
-    periodo_id = data.get('periodo_id')
-    tipo_id = data.get('tipo_id')
-    subtipo_id = data.get('subtipo_id')
+    fecha = _texto(data, 'fecha')
+    descripcion = _texto(data, 'descripcion')
+    contacto = _texto(data, 'contacto')
+    telefono = _texto(data, 'telefono') or None
+    accion = _texto(data, 'accion')
+    incluir_en_agenda = _texto(data, 'incluir_en_agenda').casefold() in {'true', '1', 'on', 'si', 'sí'}
+    item_id = _texto(data, 'item_id')
+    periodo_id = _texto(data, 'periodo_id')
+    tipo_id = _texto(data, 'tipo_id')
+    subtipo_id = _texto(data, 'subtipo_id')
 
     if not fecha or not descripcion or not item_id or not periodo_id or not tipo_id or not subtipo_id:
         return JsonResponse({'success': False, 'message': 'Por favor completa todos los campos requeridos (*).'}, status=400)
 
     try:
         fecha_actividad = date.fromisoformat(fecha)
-        validar_periodo_semanal_abierto(fecha_actividad)
     except (TypeError, ValueError):
         return JsonResponse({'success': False, 'message': 'La fecha de actividad no es válida.'}, status=400)
-    except ValidationError as error:
-        return JsonResponse({'success': False, 'message': error.message}, status=400)
+
+    periodo = Periodo.objects.filter(pk=periodo_id, estado=Periodo.Estado.ABIERTO).first() if periodo_id.isdecimal() else None
+    if periodo is None:
+        return JsonResponse({'success': False, 'message': 'Selecciona un período abierto.'}, status=400)
+    if not (tipo_id.isdecimal() and subtipo_id.isdecimal()) or not Subtipo.objects.filter(pk=subtipo_id, tipo_id=tipo_id).exists():
+        return JsonResponse({'success': False, 'message': 'El subtipo debe pertenecer al tipo seleccionado.'}, status=400)
+    if not item_id.isdecimal() or not Item.objects.filter(pk=item_id).exists():
+        return JsonResponse({'success': False, 'message': 'Selecciona un ítem válido.'}, status=400)
+
+    archivo = request.FILES.get('evidencia')
+    if archivo:
+        try:
+            validate_evidence_file(archivo)
+        except ValidationError as error:
+            return JsonResponse({'success': False, 'message': error.messages[0]}, status=400)
 
     before = _registro_snapshot(registro)
+    registro.fecha = fecha_actividad
+    registro.descripcion = descripcion
+    registro.contacto = contacto
+    registro.telefono = telefono
+    registro.accion = accion
+    registro.incluir_en_agenda = incluir_en_agenda
+    registro.item_id = int(item_id)
+    registro.periodo = periodo
+    registro.tipo_id = int(tipo_id)
+    registro.subtipo_id = int(subtipo_id)
+    try:
+        # Aplica las reglas del modelo: cierre semanal de la nueva fecha,
+        # tope diario de actividades y validación de cada campo.
+        registro.full_clean()
+    except ValidationError as error:
+        return JsonResponse({'success': False, 'message': ' '.join(error.messages)}, status=400)
+
     try:
         with transaction.atomic():
-            registro.fecha = fecha_actividad
-            registro.descripcion = descripcion
-            registro.contacto = contacto
-            registro.telefono = telefono
-            registro.accion = accion
-            registro.incluir_en_agenda = incluir_en_agenda
-            registro.item_id = item_id
-            registro.periodo_id = periodo_id
-            registro.tipo_id = tipo_id
-            registro.subtipo_id = subtipo_id
+            if archivo:
+                registro.evidencia = Evidencia.objects.create(archivo=archivo)
             registro.save()
-
             registrar_historial(
                 actor=request.user,
                 action='Editar actividad AJAX',

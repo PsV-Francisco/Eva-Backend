@@ -153,9 +153,13 @@
                 </span>
               </td>
               <td class="text-end">
+                {% if reg.estado == 'pendiente' and reg.periodo.estado == 'abierto' and not reg.evidencia_id %}
                 <button class="btn btn-sm btn-outline-primary btn-editar-registro" data-id="{{ reg.pk }}">
                   Editar
                 </button>
+                {% else %}
+                <span class="text-muted small">Solo lectura</span>
+                {% endif %}
                 <form method="post" class="mt-2 text-start">
                   {% csrf_token %}<input type="hidden" name="action" value="agregar_observacion"><input type="hidden" name="registro_id" value="{{ reg.pk }}">
                   <input class="form-control form-control-sm" name="comentario" required placeholder="Agregar observación">

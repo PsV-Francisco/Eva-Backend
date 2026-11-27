@@ -17,6 +17,7 @@ from AdminApp.csv_utils import csv_response
 from AdminApp.maintainers import maintainer
 from AdminApp.models import Cargo, Delegacion, ParametroSistema
 from config.decorators import cargo_required
+from config.permissions import cargo_key_for_access
 from AdminApp.csv_utils import excel_rows_response, pdf_rows_response
 #Importaciones de CoordinadorApp
 from CoordinadorApp.forms import PeriodoForm
@@ -53,9 +54,11 @@ def _periods_view(request):
     Gestiona el ciclo de vida CRUD y los cambios de estado (abrir, cerrar, eliminar) de los períodos,
     validando permisos por cargo y registrando auditoría en el historial.
     """
-    cargo_name = request.user.cargo.nombre.strip().casefold()
+    cargo = request.user.cargo
+    cargo_name = cargo.nombre.strip().casefold() if cargo else ''
     is_coordinator = cargo_name == 'coordinador'
-    can_reopen = cargo_name in {'coordinador', 'admin', 'administrador'}
+    # HU-28: solo Administración puede reabrir un período cerrado (queda en la bitácora).
+    can_reopen = request.user.is_superuser or cargo_key_for_access(cargo_name) == 'admin'
 
     if request.method == 'POST':
         action = request.POST.get('action', 'guardar')

@@ -164,6 +164,10 @@ class RegistroForm(TipoSubtipoFields, BootstrapFormMixin, forms.ModelForm):
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        # El autor debe existir antes de validar para que Registro.clean()
+        # aplique el tope diario de actividades (HU-01).
+        if user is not None and not self.instance.autor_id:
+            self.instance.autor = user
         # Tipos y Subtipos
         _set_tipo_subtipo_choices(self, self.instance)
         periods = Periodo.objects.filter(estado=Periodo.Estado.ABIERTO)
