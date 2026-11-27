@@ -306,9 +306,23 @@ def cargo_key_for_access(name):
         return 'delegado'
     if normalized in {'supervisor', 'verificador'}:
         return 'supervisor'
-    if normalized in {'vistaf', 'consulta', 'usuario de consulta'}:
+    if normalized in {'vistaf', 'consulta', 'usuario de consulta', 'vista funcional', 'usuario vista funcional'}:
         return 'vistaf'
     return None
+
+
+def ids_cargos_funcionario():
+    """IDs de los cargos que operan como funcionario (incluye Encargado Área Social).
+
+    Usa la misma regla que el control de acceso, para que los listados de
+    funcionarios (resumen, inactividad, responsables) no omitan esos cargos.
+    """
+    from AdminApp.models import Cargo
+    return [
+        cargo.pk
+        for cargo in Cargo.objects.only('pk', 'nombre')
+        if cargo_key_for_access(cargo.nombre) == 'funcionario'
+    ]
 
 
 def _is_matching_cargo(name, cargos):

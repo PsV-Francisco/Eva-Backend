@@ -36,6 +36,7 @@ from AdminApp.record_forms import (
     ReclamoForm,
 )
 from config.decorators import cargo_required
+from config.permissions import ids_cargos_funcionario
 from CoordinadorApp.models import AtencionSocial, Desempeno, Periodo
 from CoordinadorApp.reporting import consolidated_report_csv_rows
 from DelegadoApp.models import (
@@ -664,7 +665,7 @@ def _related_form_kwargs(spec, request):
     )
     responsible_users = get_user_model().objects.filter(
         is_active=True,
-        usuariocargo__cargo__nombre__iexact='funcionario',
+        usuariocargo__cargo_id__in=ids_cargos_funcionario(),
         usuariocargo__fecha_fin__isnull=True,
         usuariodelegacion__fecha_fin__isnull=True,
     )
@@ -1063,7 +1064,7 @@ def compromisos(request):
 def _admin_active_functionaries(delegation=None):
     users = get_user_model().objects.filter(
         is_active=True,
-        usuariocargo__cargo__nombre__iexact='funcionario',
+        usuariocargo__cargo_id__in=ids_cargos_funcionario(),
         usuariocargo__fecha_fin__isnull=True,
         usuariodelegacion__fecha_fin__isnull=True,
     )

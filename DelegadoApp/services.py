@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from django.db.models import OuterRef, Subquery
 from django.db import transaction
 from django.urls import reverse
+from config.permissions import ids_cargos_funcionario
 from django.utils import timezone
 
 from AdminApp.audit import registrar_historial
@@ -126,7 +127,7 @@ def resumen_delegacion(*, delegation=None, period=None, all_delegations=False, f
     ).order_by('-fecha', '-creado').values('fecha')[:1]
     users_queryset = Usuario.objects.filter(
         is_active=True,
-        usuariocargo__cargo__nombre__iexact='funcionario',
+        usuariocargo__cargo_id__in=ids_cargos_funcionario(),
         usuariocargo__fecha_fin__isnull=True,
         usuariodelegacion__fecha_fin__isnull=True,
     )

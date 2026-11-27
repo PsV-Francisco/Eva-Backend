@@ -8,6 +8,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from AdminApp.audit import registrar_historial
 from CoordinadorApp.models import Periodo
 from config.decorators import cargo_required
+from config.permissions import ids_cargos_funcionario
+from CoordinadorApp.services import periodo_vigente
 from config.delegations import active_delegation
 from FuncionarioApp.models import Registro
 from SupervisorApp.forms import RevisionEvidenciaForm
@@ -171,13 +173,13 @@ def home(request):
     )
     periods = Periodo.objects.order_by('-fecha_inicio')
     period_id = request.GET.get('periodo', '')
-    period = periods.filter(pk=int(period_id)).first() if period_id.isdecimal() else periods.filter(
-        estado=Periodo.Estado.ABIERTO,
-    ).first()
+    period = periods.filter(pk=int(period_id)).first() if period_id.isdecimal() else periodo_vigente(
+        periods.filter(estado=Periodo.Estado.ABIERTO),
+    )
     delegation = active_delegation(request)
     users = get_user_model().objects.filter(
         is_active=True,
-        usuariocargo__cargo__nombre__iexact='funcionario',
+        usuariocargo__cargo_id__in=ids_cargos_funcionario(),
         usuariocargo__fecha_fin__isnull=True,
         usuariodelegacion__fecha_fin__isnull=True,
     )

@@ -232,10 +232,19 @@ def home_redirect(request):
     return redirect(route_name)
 
 
+def _manual_key(name):
+    """Traduce el nombre del cargo a la clave del manual (p. ej. Encargado Área Social -> funcionario)."""
+    key = _role_key(name)
+    if key in MANUALS:
+        return key
+    access_key = cargo_key_for_access(key)
+    return 'administrador' if access_key == 'admin' else (access_key or '')
+
+
 @login_required
 def manual(request, role=None):
     user_cargo = request.user.cargo
-    user_cargo_key = _role_key(getattr(user_cargo, 'nombre', '')) if user_cargo else ''
+    user_cargo_key = _manual_key(getattr(user_cargo, 'nombre', '')) if user_cargo else ''
     is_admin = user_cargo_key in {'admin', 'administrador'}
 
     if role is None:
