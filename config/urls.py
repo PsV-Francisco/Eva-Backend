@@ -11,7 +11,7 @@ from . import delegations, password_reset, views
 urlpatterns = [
     #Django Admin
     path('admin/', admin.site.urls),
-    path('',auth_views.LoginView.as_view(template_name='AdminApp/login.html',authentication_form=password_reset.FormularioAcceso,),name='login',),
+    path('',password_reset.AccesoView.as_view(),name='login',),
     #Restauración de Contraseña
     path('accounts/password-reset/',password_reset.solicitar_recuperacion,name='password_reset',),
     path('accounts/password-reset/code/',password_reset.verificar_codigo,name='password_reset_code',),

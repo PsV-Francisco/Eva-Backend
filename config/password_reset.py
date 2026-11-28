@@ -14,6 +14,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm, SetPasswordForm
+from django.contrib.auth.views import LoginView
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import password_validators_help_text_html
 from django.core.mail import EmailMultiAlternatives
@@ -52,6 +53,19 @@ class FormularioAcceso(AuthenticationForm):
             'autofocus': True,
         }),
     )
+
+
+class AccesoView(LoginView):
+    # Quien ya inició sesión y vuelve a "/" (por ejemplo, al pulsar el logo)
+    # va a su inicio en lugar de ver otra vez el formulario de acceso.
+    template_name = 'AdminApp/login.html'
+    authentication_form = FormularioAcceso
+    redirect_authenticated_user = True
+
+    def get_redirect_url(self):
+        url = super().get_redirect_url()
+        # "?next=/" apunta al mismo login; Django lo trata como bucle (error 500).
+        return '' if url == self.request.path else url
 
 
 class SolicitudRecuperacionForm(forms.Form):
